@@ -92,8 +92,9 @@ textarea{resize:vertical;min-height:60px}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield}
 /* ── 登录页样式 ── */
-#login-overlay{position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#0D47A1 0%,#1565C0 50%,#1976D2 100%);display:flex;align-items:center;justify-content:center}
-#login-box{background:#fff;border-radius:12px;padding:36px 40px;width:380px;box-shadow:0 12px 48px rgba(0,0,0,.25)}
+#bg-canvas{position:fixed;inset:0;z-index:99998;pointer-events:none;width:100%;height:100%}
+#login-overlay{position:fixed;inset:0;z-index:99999;background:rgba(13,71,161,0.6);display:flex;align-items:center;justify-content:center}
+#login-box{background:rgba(255,255,255,0.96);border-radius:14px;padding:36px 40px;width:380px;box-shadow:0 12px 48px rgba(0,0,0,.25);backdrop-filter:blur(8px)}
 #login-box h2{font-size:18px;font-weight:700;color:#1a2332;margin-bottom:4px;text-align:center}
 #login-box p.sub{font-size:12px;color:#8699AF;margin-bottom:24px;text-align:center}
 #login-box label{font-size:12px;font-weight:600;color:#455A74;display:block;margin-bottom:4px}
@@ -132,10 +133,12 @@ input[type=number]{-moz-appearance:textfield}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
+<canvas id="bg-canvas"></canvas>
 <!-- ── 登录覆盖层 ── -->
 <div id="login-overlay">
   <div id="login-box">
-    <h2>🔄 巨人纺织ERP</h2>
+    <img id="login-logo" style="width:64px;height:64px;object-fit:contain;margin:0 auto 8px;display:block;border-radius:8px" alt="巨人纺织">
+    <h2>巨人纺织ERP</h2>
     <p class="sub">东莞市巨人纺织有限公司</p>
     <div class="err" id="login-err"></div>
     <div class="s" id="login-msg"></div>
@@ -402,12 +405,51 @@ var LOGO="data:image/jpeg;base64,"+[
 "hAREhGIWF0QOxZykKItbjDd5ZI4w1eyvQ1IiUakICUoiRCUIRYuv/9k="
 ].join('');
 (function(){
+  function setLogos(){
+    var li=document.getElementById('logoImg');
+    if(li)li.src=LOGO;
+    var ll=document.getElementById('login-logo');
+    if(ll)ll.src=LOGO;
+  }
   var li=document.getElementById('logoImg');
-  if(li)li.src=LOGO;
-  else{document.addEventListener('DOMContentLoaded',function(){
-    var li2=document.getElementById('logoImg');
-    if(li2)li2.src=LOGO;
-  });}
+  if(li)setLogos();
+  else document.addEventListener('DOMContentLoaded',setLogos);
+})();
+
+// ── 登录页动态粒子背景（纺织丝线流光特效）──
+(function(){
+  var c=document.getElementById('bg-canvas');
+  if(!c)return;
+  var ctx=c.getContext('2d'),pts=[],W,H;
+  function rs(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  window.addEventListener('resize',rs);rs();
+  for(var i=0;i<60;i++)pts.push({
+    x:Math.random()*W,y:Math.random()*H,
+    vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,
+    r:Math.random()*2+0.8,h:200+Math.random()*40
+  });
+  function an(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<pts.length;i++){
+      for(var j=i+1;j<pts.length;j++){
+        var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<130){
+          ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.strokeStyle='hsla('+pts[i].h+',65%,55%,'+(1-d/130)*0.2+')';
+          ctx.lineWidth=0.5;ctx.stroke();
+        }
+      }
+    }
+    for(var i=0;i<pts.length;i++){
+      var p=pts[i];p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=W;if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle='hsla('+p.h+',75%,60%,0.55)';ctx.fill();
+    }
+    requestAnimationFrame(an);
+  }
+  an();
 })();
 
 // ═══ HELPERS ═══

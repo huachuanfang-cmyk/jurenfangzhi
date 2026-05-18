@@ -844,10 +844,11 @@ DB.save = function(n, v){
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
-    // 驼峰→蛇形转换，匹配Supabase列名
     var snakeData = v.map(camelToSnake);
-    _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false})
-      .catch(function(e){console.warn('Supabase同步失败['+n+']:', e.message);});
+    (async function(){
+      var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
+      if(error) console.warn('Supabase同步失败['+n+']:', error.message);
+    })();
   }
 };
 

@@ -833,7 +833,7 @@ function bindAuthUI(){
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn){
     logoutBtn.onclick = async function(){
-      if (window.supabase) {
+      if(_supabase) {
         await _supabase.auth.signOut();
       }
       _authUser = null;

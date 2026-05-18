@@ -705,6 +705,7 @@ var DB={
 var SUPABASE_URL = 'https://upgudkwdnplzfylitqzq.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_TNSfUp_ax3UDKxTI9PV6hA_kCb0mbPY';
 var _supabase = null;
+var _supabaseData = null;
 var _authUser = null;
 
 var TABLE_MAP = {
@@ -720,18 +721,19 @@ function isOnline(){return navigator.onLine!==false;}
 function initSupabase(){
   if(!_supabase && window.supabase){
     _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:true}});
+    _supabaseData = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}});
   }
   return _supabase;
 }
 
 async function pullFromSupabase(){
-  if(!_supabase) initSupabase();
-  if(!_supabase){ showToast('Supabase 未初始化','error'); return; }
+  initSupabase();
+  if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
   var loaded = 0;
   for(var key in TABLE_MAP){
     try{
       var table = TABLE_MAP[key];
-      var {data, error} = await _supabase.from(table).select('*');
+      var {data, error} = await _supabaseData.from(table).select('*');
       if(error){ console.warn('拉取['+table+']失败:', error.message); continue; }
       if(data && data.length > 0){
         localStorage.setItem('gjr5_'+key, JSON.stringify(data));
@@ -741,16 +743,16 @@ async function pullFromSupabase(){
     }catch(e){ console.warn('拉取['+key+']异常:', e.message); }
   }
   if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
-  else showToast('未加载到数据，请检查网络或权限','warning');
+  else showToast('未加载到数据','warning');
 }
 
 var _origSave = DB.save.bind(DB);
 DB.save = function(n, v){
   _origSave(n, v);
-  if(_supabase && isOnline()){
+  if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
-    _supabase.from(table).upsert(v, {onConflict:'id', ignoreDuplicates:false})
+    _supabaseData.from(table).upsert(v, {onConflict:'id', ignoreDuplicates:false})
       .catch(function(e){console.warn('Supabase同步失败['+n+']:', e.message);});
   }
 };

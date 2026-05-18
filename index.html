@@ -778,7 +778,7 @@ var _authUser = null;
 
 var TABLE_MAP = {
   c:'customers', f:'factories', mat:'materials', o:'orders',
-  t:'trackings', fm:'fab_mem', wd:'weaving_docs', qt:'quotations',
+  t:'trackings', wd:'weaving_docs', qt:'quotations',
   ar:'ar_records', rc:'ap_records', dd:'dyeing_docs', yn:'yarns',
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
   fgr:'fg_rolls', cnotices:'color_notices'
@@ -819,35 +819,57 @@ function camelToSnake(obj){
 async function pullFromSupabase(){
   initSupabase();
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
+  // 先推送离线期间修改过的脏数据到云端，防止本地更新被云端旧数据覆盖
+  for(var key in TABLE_MAP){
+    if(localStorage.getItem('gjr5_dirty_'+key) === '1'){
+      var table = TABLE_MAP[key];
+      var localData = DB.load(key);
+      if(localData && localData.length > 0){
+        try{
+          var {error} = await _supabaseData.from(table).upsert(localData.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
+          if(!error) localStorage.removeItem('gjr5_dirty_'+key);
+        }catch(e){}
+      }
+    }
+  }
+  // 从云端拉取全部数据
   var loaded = 0;
+  var fails = [];
   for(var key in TABLE_MAP){
     try{
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
-      if(error){ console.warn('拉取['+table+']失败:', error.message); continue; }
+      if(error){ fails.push(table); continue; }
       if(data && data.length > 0){
-        // 蛇形→驼峰转换，前端组件才能正确渲染
         var camelData = data.map(snakeToCamel);
         localStorage.setItem('gjr5_'+key, JSON.stringify(camelData));
         DB._c[key] = camelData;
         loaded += data.length;
       }
-    }catch(e){ console.warn('拉取['+key+']异常:', e.message); }
+    }catch(e){ fails.push(TABLE_MAP[key]); }
   }
-  if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
+  if(fails.length) showToast('加载失败: '+fails.join(', '), 'error');
+  else if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
   else showToast('未加载到数据','warning');
 }
 
 var _origSave = DB.save.bind(DB);
 DB.save = function(n, v){
   _origSave(n, v);
+  // 标记为未同步（离线期间修改过）
+  if(TABLE_MAP[n]) localStorage.setItem('gjr5_dirty_'+n, '1');
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
     var snakeData = v.map(camelToSnake);
     (async function(){
       var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
-      if(error) console.warn('Supabase同步失败['+n+']:', error.message);
+      if(error){
+        console.warn('Supabase同步失败['+n+']:', error.message);
+        showToast(table+' 同步失败', 'error');
+      } else {
+        localStorage.removeItem('gjr5_dirty_'+n);
+      }
     })();
   }
 };
@@ -920,7 +942,11 @@ function bindAuthUI(){
         await _supabase.auth.signOut();
       }
       _authUser = null;
-      localStorage.clear();
+      // 仅清除业务数据，保留登录偏好和锁屏密码
+      var _keep = ['gjr5_remember','gjr5_lock_pin'];
+      for(var k in localStorage){
+        if(k.indexOf('gjr5_')===0 && _keep.indexOf(k)<0) localStorage.removeItem(k);
+      }
       location.reload();
     };
   }
@@ -1164,26 +1190,26 @@ function rollbackSnap(snap){
 setTimeout(autoSnapshot, 2000);
 
 // ══ 颜色级别生产进度状态 ══
-// ── 统一打印函数（Blob URL方式，兼容file://本地文件） ──
+// ── 统一打印函数（隐藏iframe原地打印，零多余窗口） ──
 function printHTML(html){
   try{
-    // 在html的</body>前注入自动打印脚本
-    var printScript='<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>';
-    var printHtml=html.replace(/<\/body>/i,printScript+'</body>');
-    var blob=new Blob([printHtml],{type:'text/html;charset=utf-8'});
-    var url=URL.createObjectURL(blob);
-    var w=window.open(url,'_print_'+Date.now(),'width=1000,height=780');
-    if(!w){
-      // 弹窗被拦截：降级下载
-      var a=document.createElement('a');a.href=url;
-      a.download='打印文件_'+new Date().toISOString().slice(0,10)+'.html';
-      a.click();
-      setTimeout(function(){URL.revokeObjectURL(url);},5000);
-      alert('浏览器阻止了弹窗。\n已自动下载HTML文件，双击打开后按Ctrl+P打印。\n\n或在浏览器地址栏右侧点击"始终允许弹出式窗口"后重试。');
-    } else {
-      setTimeout(function(){URL.revokeObjectURL(url);},120000);
-    }
-  }catch(e){alert('打印失败：'+e.message);}
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+    document.body.appendChild(iframe);
+    var doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    var win = iframe.contentWindow;
+    var printed = false;
+    var doPrint = function(){ if(printed)return; printed=true; win.focus(); setTimeout(function(){win.print();},50); };
+    var rm = function(){ setTimeout(function(){ if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 100); };
+    win.addEventListener('afterprint', rm, {once:true});
+    win.addEventListener('load', doPrint);
+    // fallback: 等3秒后强制打印（防止某些浏览器load不触发）
+    setTimeout(doPrint, 3000);
+    setTimeout(function(){ if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 61000);
+  }catch(e){ alert('打印失败：'+e.message); }
 }
 
 var CLR_STATUS_LIST=[
@@ -4684,8 +4710,10 @@ function saveWDcfg(){
     rm:(document.getElementById('wd-rm')||{value:''}).value
   };
   var l=DB.wdocs||[];
-  var i=l.findIndex(function(x){return x.ordId===oid;});
-  if(i>=0)l[i]=cfg;else l.push(cfg);
+  var existing = null, idx = -1;
+  l.forEach(function(x,i){if(x.ordId===oid){existing=x;idx=i;}});
+  if(existing && existing.id) cfg.id = existing.id;
+  if(idx>=0)l[idx]=cfg;else l.push(cfg);
   DB.wdocs=l;
 }
 function setDWord(id){
@@ -5663,8 +5691,10 @@ function saveDDcfg(){
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value
   };
   var l=DB.ddocs||[];
-  var i=l.findIndex(function(x){return x.ordId===oid;});
-  if(i>=0)l[i]=cfg;else l.push(cfg);
+  var existing = null, idx = -1;
+  l.forEach(function(x,i){if(x.ordId===oid){existing=x;idx=i;}});
+  if(existing && existing.id) cfg.id = existing.id;
+  if(idx>=0)l[idx]=cfg;else l.push(cfg);
   DB.ddocs=l;
   }catch(e){showToast('保存失败: '+e.message,'error');console.error(e);}
 }

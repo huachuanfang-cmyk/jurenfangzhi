@@ -189,11 +189,33 @@ input[type=number]{-moz-appearance:textfield}
   <div class="topb">
     <div><h1 id="pt">工作台</h1><p id="ps">东莞市巨人纺织有限公司</p></div>
     <div id="clk" style="font-size:11px;color:var(--t3)"></div>
-    <div><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
+    <div style="display:flex;gap:6px"><button id="lock-btn" class="btn bs bsm" style="display:none;font-size:14px;padding:4px 10px" title="一键锁屏" onclick="lockScreen()">🔒</button><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
   </div>
   <div class="pg" id="pg"></div>
 </div>
 <div id="ov" class="ov hidden"></div>
+<!-- ── 锁屏遮罩 ── -->
+<div id="lock-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.92);justify-content:center;align-items:center">
+  <div style="background:#1a1a2e;border-radius:16px;padding:40px 50px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-width:360px">
+    <div style="font-size:52px;margin-bottom:8px">🔒</div>
+    <div style="color:#fff;font-size:22px;font-weight:700;margin-bottom:2px">系统已锁定</div>
+    <div style="color:#888;font-size:13px;margin-bottom:22px">输入锁屏密码解锁</div>
+    <input type="password" id="lock-pin" style="width:200px;padding:12px 16px;font-size:20px;text-align:center;border:2px solid #333;border-radius:8px;background:#16213e;color:#fff;outline:none;letter-spacing:8px" maxlength="6" placeholder="● ● ● ●" onkeydown="if(event.key==='Enter')unlockScreen()">
+    <div style="margin-top:10px;font-size:12px;color:#e74c3c;min-height:18px" id="lock-err"></div>
+    <div style="margin-top:14px;display:flex;gap:10px;justify-content:center">
+      <button class="btn bs" style="padding:8px 24px" onclick="document.getElementById('lock-pin').value='';document.getElementById('lock-err').textContent=''">清除</button>
+      <button class="btn bp" style="padding:8px 24px" onclick="unlockScreen()">解锁</button>
+    </div>
+    <div style="margin-top:18px;font-size:11px;color:#555;cursor:pointer" onclick="var s=document.getElementById('lock-pin-settings');s.style.display=s.style.display==='none'?'block':'none'">设置锁屏密码</div>
+    <div id="lock-pin-settings" style="display:none;margin-top:12px;border-top:1px solid #333;padding-top:12px">
+      <div style="display:flex;gap:6px;justify-content:center">
+        <input type="password" id="lock-new-pin" style="width:100px;padding:8px 10px;font-size:14px;text-align:center;border:1px solid #444;border-radius:6px;background:#16213e;color:#fff" maxlength="6" placeholder="新密码">
+        <button class="btn bsm bs" onclick="changeLockPin()">保存</button>
+      </div>
+      <div style="font-size:10px;color:#555;margin-top:4px">留空重置为默认 1234</div>
+    </div>
+  </div>
+</div>
 <script>
 var LOGO="data:image/jpeg;base64,"+[
 "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABh",
@@ -860,12 +882,34 @@ function bindAuthUI(){
   }
 }
 
+// ── 锁屏机制 ──
+function getLockPin(){return localStorage.getItem('gjr5_lock_pin')||'1234';}
+function lockScreen(){
+  var b=document.getElementById('lock-btn');if(b)b.style.display='none';
+  document.getElementById('lock-overlay').style.display='flex';
+  document.getElementById('lock-pin').value='';document.getElementById('lock-err').textContent='';
+  document.getElementById('lock-pin').focus();
+}
+function unlockScreen(){
+  var pin=document.getElementById('lock-pin').value.trim();
+  if(pin!==getLockPin()){document.getElementById('lock-err').textContent='密码错误，请重试';document.getElementById('lock-pin').value='';document.getElementById('lock-pin').focus();return;}
+  document.getElementById('lock-overlay').style.display='none';
+  var b=document.getElementById('lock-btn');if(b&&_authUser)b.style.display='inline-block';
+}
+function changeLockPin(){
+  var np=document.getElementById('lock-new-pin').value.trim();
+  localStorage.setItem('gjr5_lock_pin',np||'1234');
+  document.getElementById('lock-new-pin').value='';
+  document.getElementById('lock-pin-settings').style.display='none';
+  showToast('锁屏密码已'+(np?'设置为 '+np:'重置为 1234'),'success');
+}
+
 var _authReady = false;
 async function onAuthSuccess(){
   _authReady = true;
   document.getElementById('login-overlay').style.display = 'none';
   var logoutBtn = document.getElementById('logout-btn');
-  if(logoutBtn) logoutBtn.style.display = 'inline-block';
+  if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
 
   // 从Supabase拉取数据
   await pullFromSupabase();

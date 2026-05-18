@@ -727,6 +727,28 @@ function initSupabase(){
   return _supabase;
 }
 
+// 字段名转换：蛇形→驼峰（从Supabase加载到前端）
+function snakeToCamel(obj){
+  if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  var r = {};
+  for(var k in obj){
+    var ck = k.replace(/_([a-z])/g, function(m, c){return c.toUpperCase();});
+    r[ck] = obj[k];
+  }
+  return r;
+}
+
+// 字段名转换：驼峰→蛇形（从前端保存到Supabase）
+function camelToSnake(obj){
+  if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  var r = {};
+  for(var k in obj){
+    var sk = k.replace(/([a-z])([A-Z])/g, function(m, a, b){return a+'_'+b.toLowerCase();});
+    r[sk] = obj[k];
+  }
+  return r;
+}
+
 async function pullFromSupabase(){
   initSupabase();
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
@@ -737,8 +759,10 @@ async function pullFromSupabase(){
       var {data, error} = await _supabaseData.from(table).select('*');
       if(error){ console.warn('拉取['+table+']失败:', error.message); continue; }
       if(data && data.length > 0){
-        localStorage.setItem('gjr5_'+key, JSON.stringify(data));
-        DB._c[key] = data;
+        // 蛇形→驼峰转换，前端组件才能正确渲染
+        var camelData = data.map(snakeToCamel);
+        localStorage.setItem('gjr5_'+key, JSON.stringify(camelData));
+        DB._c[key] = camelData;
         loaded += data.length;
       }
     }catch(e){ console.warn('拉取['+key+']异常:', e.message); }
@@ -753,7 +777,9 @@ DB.save = function(n, v){
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
-    _supabaseData.from(table).upsert(v, {onConflict:'id', ignoreDuplicates:false})
+    // 驼峰→蛇形转换，匹配Supabase列名
+    var snakeData = v.map(camelToSnake);
+    _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false})
       .catch(function(e){console.warn('Supabase同步失败['+n+']:', e.message);});
   }
 };

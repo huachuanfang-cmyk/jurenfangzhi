@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -145,7 +145,7 @@ input[type=number]{-moz-appearance:textfield}
       <label>密码</label>
       <input type="password" id="login-pwd" placeholder="输入密码" autocomplete="current-password">
       <button class="btn-primary" id="login-btn">登 录</button>
-      <div style="text-align:center"><button class="btn-link" id="login-register-btn">没有账号？先注册</button></div>
+      <!-- 注册已关闭，仅允许已创建的用户登录 -->
     </div>
     <div id="login-ver">v9.0.0 · 数据已迁移至云端</div>
   </div>
@@ -799,17 +799,9 @@ async function authLogin(email, pwd){
 }
 
 async function authRegister(email, pwd){
-  initSupabase();
-  if(!_supabase) return false;
-  try {
-    var {data, error} = await _supabase.auth.signUp({email:email, password:pwd});
-    if(error) throw error;
-    showToast('注册成功！请检查邮箱验证','success');
-    return true;
-  } catch(e) {
-    showToast('注册失败：'+e.message, 'error');
-    return false;
-  }
+  // 注册已关闭
+  showToast('暂不开放自助注册，请联系管理员','error');
+  return false;
 }
 
 async function authCheckSession(){
@@ -828,7 +820,6 @@ async function authCheckSession(){
 
 function bindAuthUI(){
   var loginBtn = document.getElementById('login-btn');
-  var registerBtn = document.getElementById('login-register-btn');
   var emailInp = document.getElementById('login-email');
   var pwdInp = document.getElementById('login-pwd');
   var errEl = document.getElementById('login-err');
@@ -844,22 +835,6 @@ function bindAuthUI(){
     loginBtn.disabled = false; loginBtn.textContent = '登 录';
     if(ok) await onAuthSuccess();
     else errEl.textContent = '登录失败，请检查邮箱和密码';
-  };
-  registerBtn.onclick = async function(){
-    var email = emailInp.value.trim();
-    var pwd = pwdInp.value.trim();
-    if(!email || !pwd){ errEl.textContent = '请输入邮箱和密码'; return; }
-    if(pwd.length < 6){ errEl.textContent = '密码至少6位'; return; }
-    errEl.textContent = '';
-    registerBtn.disabled = true; registerBtn.textContent = '注册中...';
-    var ok = await authRegister(email, pwd);
-    registerBtn.disabled = false; registerBtn.textContent = '没有账号？先注册';
-    if(ok){
-      msgEl.textContent = '注册成功，尝试登录中...';
-      var loginOk = await authLogin(email, pwd);
-      if(loginOk) await onAuthSuccess();
-      else errEl.textContent = '注册成功，请直接登录';
-    }
   };
   pwdInp.onkeydown = function(e){ if(e.key === 'Enter') loginBtn.click(); };
 

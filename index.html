@@ -182,8 +182,6 @@ input[type=number]{-moz-appearance:textfield}
   <div class="ni" data-page="facts"><span class="nic">&#127981;</span>加工厂档案</div>
   <div class="ni" data-page="mat"><span class="nic">&#129529;</span>物料档案</div>
   <div class="ni" data-page="cnotice"><span class="nic">&#127881;</span>打办通知单</div>
-  <div class="nl">数据管理</div>
-  <div class="ni" data-page="backup" id="nav-backup"><span class="nic">&#128190;</span>备份 / 恢复</div>
 </div>
 <div id="mn">
   <div class="topb">
@@ -1188,7 +1186,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,backup:pgBackup,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb};
   if(fn[p])fn[p]();
 }
 
@@ -1486,33 +1484,14 @@ function pgDash(){
   var pg=document.getElementById('pg');
   pg.innerHTML='';
 
-  // ── 备份提醒横幅（始终显示，颜色随状态变化）──
+  // ── 云同步状态横幅 ──
   (function(){
-    var lastBak=localStorage.getItem('gjr5_last_backup');
-    var daysSince=99;
-    if(lastBak){daysSince=Math.floor((Date.now()-new Date(lastBak).getTime())/86400000);}
-    var isWarn=daysSince>=7;
     var banner=document.createElement('div');
-    banner.style.cssText='background:'+(isWarn?'#fff7ed':'#f0fdf4')+';border:1px solid '+(isWarn?'#fed7aa':'#bbf7d0')+';border-radius:8px;padding:9px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px';
-    var icon=document.createElement('span');icon.style.cssText='font-size:16px';icon.textContent=isWarn?'⚠':'✓';
-    var txt=document.createElement('span');txt.style.cssText='font-size:11.5px;color:'+(isWarn?'#92400e':'#166534')+';flex:1';
-    if(isWarn){
-      txt.innerHTML='<b>'+(daysSince>=99?'从未备份过':'已 '+daysSince+' 天未备份')+'</b> — 建议立即导出到E盘或U盘';
-    } else {
-      var d=new Date(lastBak);
-      txt.innerHTML='上次备份：<b>'+d.toLocaleDateString()+'</b> · 数据安全';
-    }
-    var bakBtn=document.createElement('button');
-    bakBtn.innerHTML='&#128190; 立即备份';
-    bakBtn.style.cssText='padding:4px 14px;border-radius:5px;border:1px solid '+(isWarn?'#f97316':'#4ade80')+';background:#fff;color:'+(isWarn?'#c2410c':'#166534')+';font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap';
-    bakBtn.onclick=function(){
-      DB.backup();
-      txt.innerHTML='上次备份：<b>刚刚</b> · 数据安全';
-      bakBtn.style.borderColor='#4ade80';bakBtn.style.color='#166534';
-      banner.style.background='#f0fdf4';banner.style.borderColor='#bbf7d0';
-      icon.textContent='✓';txt.style.color='#166534';
-    };
-    banner.appendChild(icon);banner.appendChild(txt);banner.appendChild(bakBtn);
+    banner.style.cssText='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px';
+    var icon=document.createElement('span');icon.style.cssText='font-size:16px';icon.textContent='☁';
+    var txt=document.createElement('span');txt.style.cssText='font-size:11.5px;color:#166534;flex:1';
+    txt.innerHTML='<b>数据已接入云端</b> · Supabase 实时同步 · 无需手动备份';
+    banner.appendChild(icon);banner.appendChild(txt);
     pg.appendChild(banner);
   })();
 

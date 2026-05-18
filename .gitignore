@@ -3,3 +3,13 @@
 
 # 临时代码
 *.tmp
+
+# 依赖
+node_modules/
+
+# 迁移脚本
+migrate_to_supabase.mjs
+grants.sql
+
+# 系统截图
+*.png

@@ -144,6 +144,7 @@ input[type=number]{-moz-appearance:textfield}
       <input type="email" id="login-email" placeholder="输入你的邮箱" autocomplete="email">
       <label>密码</label>
       <input type="password" id="login-pwd" placeholder="输入密码" autocomplete="current-password">
+      <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin:4px 0;cursor:pointer"><input type="checkbox" id="login-remember" checked> 记住登录</label>
       <button class="btn-primary" id="login-btn">登 录</button>
       <!-- 注册已关闭，仅允许已创建的用户登录 -->
     </div>
@@ -188,7 +189,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="topb">
     <div><h1 id="pt">工作台</h1><p id="ps">东莞市巨人纺织有限公司</p></div>
     <div id="clk" style="font-size:11px;color:var(--t3)"></div>
-    <div><button id="logout-btn" class="btn bs bsm" style="display:none">退出登录</button></div>
+    <div><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
   </div>
   <div class="pg" id="pg"></div>
 </div>
@@ -523,14 +524,15 @@ function shipBx(s){
 }
 // ── 订单全生命周期快照 ──
 function lifecycleOf(o){
-  var hasProd=(DB.trks||[]).some(function(t){return t.ordId===o.id;});
+  if(!o)return{hasProd:false,hasShip:false,partialShip:false,shipSt:null,hasArec:false,hasPaid:false};
+  var hasProd=(DB.trks||[]).some(function(t){return t&&t.ordId===o.id;});
   var shipSt=calcShipStatus(o.id);
   var hasShip=shipSt==='fully_out'||shipSt==='partial_out';
   var partialShip=shipSt==='partial_out';
   // 对账：该订单的任意一笔fgout是否出现在某个arec的outIds里
-  var ordOutIds=(DB.fgouts||[]).filter(function(x){return x.ordNo===o.no;}).map(function(x){return x.id;});
+  var ordOutIds=(DB.fgouts||[]).filter(function(x){return x&&x.ordNo===o.no;}).map(function(x){return x&&x.id;}).filter(function(id){return id;});
   var allArecOutIds=[];
-  (DB.arecs||[]).forEach(function(a){(a.outIds||[]).forEach(function(id){allArecOutIds.push(id);});});
+  (DB.arecs||[]).forEach(function(a){if(a&&a.outIds)(a.outIds||[]).forEach(function(id){allArecOutIds.push(id);});});
   var hasArec=ordOutIds.some(function(id){return allArecOutIds.indexOf(id)>=0;});
   var hasPaid=!!o.paid;
   return{hasProd:hasProd,hasShip:hasShip,partialShip:partialShip,shipSt:shipSt,hasArec:hasArec,hasPaid:hasPaid};
@@ -791,6 +793,8 @@ async function authLogin(email, pwd){
     var {data, error} = await _supabase.auth.signInWithPassword({email:email, password:pwd});
     if(error) throw error;
     _authUser = data.user;
+    var rm = document.getElementById('login-remember');
+    localStorage.setItem('gjr5_remember', (rm && rm.checked) ? '1' : '');
     return true;
   } catch(e) {
     showToast('登录失败：'+e.message, 'error');
@@ -808,6 +812,10 @@ async function authCheckSession(){
   initSupabase();
   if(!_supabase) return null;
   try {
+    if(localStorage.getItem('gjr5_remember') !== '1'){
+      await _supabase.auth.signOut();
+      return null;
+    }
     var {data, error} = await _supabase.auth.getSession();
     if(error) throw error;
     if(data && data.session){
@@ -838,7 +846,7 @@ function bindAuthUI(){
   };
   pwdInp.onkeydown = function(e){ if(e.key === 'Enter') loginBtn.click(); };
 
-  // 退出登录
+  // 安全退出
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn){
     logoutBtn.onclick = async function(){
@@ -1510,11 +1518,12 @@ function pgDash(){
       var baseUnitPr=parseFloat(ord.unitPr)||0;
       var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
       (fgo.rollIds||[]).forEach(function(rid){
-        var roll=allRolls.find(function(x){return x.id===rid;});
+        if(!rid)return;
+        var roll=allRolls.find(function(x){return x&&x.id===rid;});
         if(!roll)return;
         var kg=parseFloat(roll.kg)||0;
         var m=parseFloat(roll.m)||0;
-        var clr=(ord.colors||[]).find(function(c){return c.nm===roll.colorNm;})||{};
+        var clr=(ord.colors||[]).find(function(c){return c&&c.nm===roll.colorNm;})||{};
         var unitPr=baseUnitPr+(parseFloat(clr.extraPr)||0);
         var qty=_byM?m:kg;
         mKG+=kg; mAmt+=qty*unitPr;
@@ -1542,7 +1551,7 @@ function pgDash(){
   // 逾期未收款提醒
   var todayD=new Date();todayD.setHours(0,0,0,0);
   var overdueOrds=orders.filter(function(o){
-    if(o.paid||o.status==='cancelled'||o.status==='draft')return false;
+    if(!o||o.paid||o.status==='cancelled'||o.status==='draft')return false;
     return o.delDate&&new Date(o.delDate)<todayD;
   });
   if(overdueOrds.length){
@@ -5616,6 +5625,7 @@ function getDaysStatus(dueDate){
   if(!dueDate)return{type:'normal',days:0,label:'—'};
   var today=new Date();today.setHours(0,0,0,0);
   var due=new Date(dueDate);
+  if(isNaN(due.getTime()))return{type:'normal',days:0,label:'日期无效'};
   var diff=Math.round((due-today)/86400000);
   if(diff<0)return{type:'overdue',days:-diff,label:'逾期'+(-diff)+'天'};
   if(diff<=7)return{type:'warning',days:diff,label:'还剩'+diff+'天'};

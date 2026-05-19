@@ -832,16 +832,20 @@ async function pullFromSupabase(){
       }
     }
   }
-  // 从云端拉取全部数据
+  // 从云端拉取全部数据（跳过推送失败的表，防止旧数据覆盖本地新数据）
   var loaded = 0;
   var fails = [];
   for(var key in TABLE_MAP){
+    if(localStorage.getItem('gjr5_dirty_'+key) === '1') continue;
     try{
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
       if(error){ fails.push(table); continue; }
       if(data && data.length > 0){
         var camelData = data.map(snakeToCamel);
+        // 按编号/日期降序排列，最新数据置顶
+        if(key === 'o') camelData.sort(function(a,b){ return (a.no||'') < (b.no||'') ? 1 : -1; });
+        else if(['c','f','mat','qt','yn'].indexOf(key)>=0) camelData.sort(function(a,b){ var an=a.nm||a.name||''; var bn=b.nm||b.name||''; return an<bn?-1:an>bn?1:0; });
         localStorage.setItem('gjr5_'+key, JSON.stringify(camelData));
         DB._c[key] = camelData;
         loaded += data.length;
@@ -4186,7 +4190,7 @@ function fTrk(){
 }
 function openTM(id){
   var t=(id&&DB.trks.find(function(x){return x.id===id;}))||{};
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var so=t.ordId?ords.find(function(o){return o.id===t.ordId;}):null;
   var modal=buildModal((id?'编辑':'新增')+'加工跟踪记录','mxl',function(body){
     body.appendChild(secHdr('关联订单'));
@@ -4365,7 +4369,7 @@ function applySpecToDOM(specVals, widthUnit){
 
 function pgDW(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var facts=DB.facts;
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
@@ -4922,7 +4926,7 @@ function prtW(){var d=getWD();if(!d)return alert('请先选择订单');printDoc(
 // ═══ DOC: DYEING ═══
 function pgDD(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
   ch.innerHTML='<span class="ct">生成染整加工单</span><span style="font-size:11px;color:var(--t3)">填写后点"保存配置"，下次打开自动恢复</span>';
@@ -5262,14 +5266,7 @@ function pgDD(){
         });
       },200);
     }
-    // FIX: restore vatCode (色号)
-    if(ddCfg.vatCode&&ddCfg.vatCode.length){
-      setTimeout(function(){
-        ddCfg.vatCode.forEach(function(code,i){
-          var el=document.getElementById('dvc-'+i);if(el&&code)el.value=code;
-        });
-      },200);
-    }
+    // 色号不从快照恢复，始终从 ord.colors 实时读取
     // FIX: restore vatQ1 (落缸数)
     if(ddCfg.vatQ1&&ddCfg.vatQ1.length){
       setTimeout(function(){
@@ -5347,7 +5344,9 @@ function getDDdata(){
   var vatColors=printOrdColors.map(function(c){
     var origIdx=allOrdColorsForIdx.findIndex(function(x){return x.nm===c.nm;});
     var i=origIdx>=0?origIdx:0;
-    return{nm:c.nm,code:(document.getElementById('dvc-'+i)||{value:c.code||''}).value||c.code||'',q1:(document.getElementById('dvq1-'+i)||{value:''}).value||'',q2:(document.getElementById('dvq2-'+i)||{value:''}).value||'',q3:(document.getElementById('dvq3-'+i)||{value:''}).value||'',rm:(document.getElementById('dvr-'+i)||{value:''}).value||''};
+    var liveCode=c.code||'';
+    var domCode=(document.getElementById('dvc-'+i)||{value:''}).value;
+    return{nm:c.nm,code:liveCode||domCode,q1:domCode?((document.getElementById('dvq1-'+i)||{value:''}).value||c.vatQty||c.prodQty||''):(c.vatQty||c.prodQty||''),q2:(document.getElementById('dvq2-'+i)||{value:''}).value||'',q3:(document.getElementById('dvq3-'+i)||{value:''}).value||'',rm:(document.getElementById('dvr-'+i)||{value:''}).value||''};
   });
   var _ddWd=(document.getElementById('dd-wd')||{value:''}).value||ord&&ord.width||'';
   var _ddWt=(document.getElementById('dd-wt')||{value:''}).value||ord&&ord.weight||'';
@@ -5686,7 +5685,6 @@ function saveDDcfg(){
       return a.map(function(x){return x.v;});
     })(),
     vatRm:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvr-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
-    vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatQ1:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value
   };
@@ -10603,7 +10601,7 @@ function printFGOut(outId){
 // ── 修订送货单 ──
 
 function openFGOutM(id){
-  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='draft';});
+  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var modal=buildModal('登记出货 — 勾选在库匹','mxl',function(body){
     var hdrDiv=document.createElement('div');hdrDiv.className='fg';
     var ordSel=mkSelect('fgo-ord',[{v:'',l:'请选择订单'}].concat(ords.map(function(o){return{v:o.id,l:o.no+' — '+shortName(o.custNm||'')};})),'');

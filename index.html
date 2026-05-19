@@ -679,6 +679,9 @@ document.addEventListener('keydown',function(e){
   if(next){next.focus();next.select&&next.select();}
 },true);
 
+// Set favicon from company logo
+(function(){var l=document.createElement('link');l.rel='icon';l.href=LOGO;document.head.appendChild(l);})();
+
 // ═══ DATA ═══
 var DB={
   _c: {},
@@ -1311,6 +1314,103 @@ function mkSelect(id,opts,val){
     s.appendChild(op);
   });
   return s;
+}
+function mkSearchableSelect(id,opts,val,ph){
+  var wrap=document.createElement('div');
+  wrap.id=id;
+  wrap.style.cssText='position:relative;width:100%';
+  var input=document.createElement('input');
+  input.id=id+'-i';input.type='text';input.autocomplete='off';
+  input.placeholder=ph||'输入关键字搜索...';
+  input.style.cssText='width:100%;box-sizing:border-box;padding:7px 10px 7px 30px;border:1.5px solid var(--bd,#d0d5dd);border-radius:6px;font-size:13px;color:var(--t,#1a1a2e);background:#fff;outline:none;transition:border-color .2s,box-shadow .2s';
+  input.onmouseenter=function(){if(this!==document.activeElement)this.style.borderColor='var(--p,#4f46e5)';};
+  input.onmouseleave=function(){if(this!==document.activeElement)this.style.borderColor='var(--bd,#d0d5dd)';};
+  input.onfocus=function(){this.style.borderColor='var(--p,#4f46e5)';this.style.boxShadow='0 0 0 3px rgba(79,70,229,.12)';};
+  input.onblur=function(){this.style.borderColor='var(--bd,#d0d5dd)';this.style.boxShadow='none';};
+  // Search icon
+  var icon=document.createElement('span');
+  icon.textContent='🔍';
+  icon.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;opacity:.45;pointer-events:none;z-index:1';
+  var dd=document.createElement('div');
+  dd.style.cssText='display:none;position:fixed;max-height:300px;overflow-y:auto;background:#fff;border:1px solid var(--bd,#d0d5dd);z-index:99999;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.06);min-width:320px;padding:4px 0';
+  document.body.appendChild(dd);
+  var _val=val||'',_chg=null,hideTimer=null;
+  var items=opts||[];
+  function selByVal(v){
+    var it=items.find(function(x){return(typeof x==='object'?x.v:x)===v;});
+    input.value=it?(typeof it==='object'?it.l:it):'';
+    _val=v;
+  }
+  if(val!==undefined&&val!==null)selByVal(val);
+  function posDD(){
+    var r=input.getBoundingClientRect();
+    dd.style.left=Math.max(4,Math.min(r.left,document.documentElement.clientWidth-400))+'px';
+    dd.style.top=(r.bottom+4)+'px';
+    dd.style.width=Math.max(Math.min(r.width,document.documentElement.clientWidth-r.left-8),320)+'px';
+  }
+  function render(q){
+    dd.innerHTML='';
+    var lower=(q||'').toLowerCase();
+    var any=false;
+    items.forEach(function(x){
+      var label=typeof x==='object'?x.l:''+x;
+      var value=typeof x==='object'?x.v:''+x;
+      if(!lower||label.toLowerCase().includes(lower)||value.toLowerCase().includes(lower)){
+        var item=document.createElement('div');
+        // Highlight matching text if searching
+        if(lower && label.toLowerCase().includes(lower)){
+          var idx=label.toLowerCase().indexOf(lower);
+          var before=label.slice(0,idx);
+          var match=label.slice(idx,idx+lower.length);
+          var after=label.slice(idx+lower.length);
+          item.innerHTML=esc(before)+'<strong style="color:var(--p,#4f46e5);font-weight:700">'+esc(match)+'</strong>'+esc(after);
+        }else{item.textContent=label;}
+        item.style.cssText='padding:8px 12px;cursor:pointer;font-size:13px;color:var(--t,#1a1a2e);border-bottom:1px solid #f0f0f0;transition:background .12s'+(value===_val?';background:rgba(79,70,229,.07);font-weight:600':'');
+        item.onmouseenter=function(){this.style.background='rgba(79,70,229,.05)';};
+        item.onmouseleave=function(){this.style.background=value===_val?'rgba(79,70,229,.07)':'';};
+        item.onclick=function(){
+          _val=value;input.value=label;dd.style.display='none';
+          if(_chg)_chg.call(wrap);
+        };
+        dd.appendChild(item);any=true;
+      }
+    });
+    if(!any&&lower){
+      var e=document.createElement('div');
+      e.textContent='无匹配订单';
+      e.style.cssText='padding:16px;color:#999;text-align:center;font-size:13px';
+      dd.appendChild(e);
+    }
+    posDD();dd.style.display='block';
+  }
+  input.onfocus=function(){clearTimeout(hideTimer);render(input.value);};
+  input.oninput=function(){render(this.value);};
+  input.onblur=function(){hideTimer=setTimeout(function(){dd.style.display='none';},200);};
+  input.onkeydown=function(e){
+    if(e.key==='Escape'){dd.style.display='none';input.blur();}
+    if(e.key==='Enter'&&dd.style.display==='block'){
+      var sel=dd.querySelector('[style*="background:rgba(79,70,229,.07)"]')||dd.children[0];
+      if(sel)sel.click();
+    }
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      var els=dd.querySelectorAll('div');
+      var cur=Array.from(els).findIndex(function(el){return el.style.background.includes('rgba(79,70,229,.07)')||el.style.background.includes('rgba(79,70,229,.05)');});
+      var next=e.key==='ArrowDown'?Math.min(cur+1,els.length-1):Math.max(cur-1,0);
+      if(cur>=0)els[cur].style.background='';
+      els[next].style.background='rgba(79,70,229,.07)';
+      els[next].scrollIntoView({block:'nearest'});
+    }
+  };
+  var reposition=function(){if(dd.style.display!=='none')posDD();};
+  document.addEventListener('scroll',reposition,true);
+  window.addEventListener('resize',function(){dd.style.display='none';});
+  wrap._cleanup=function(){document.removeEventListener('scroll',reposition,true);if(dd.parentNode)dd.parentNode.removeChild(dd);};
+  wrap.appendChild(icon);wrap.appendChild(input);
+  Object.defineProperty(wrap,'value',{get:function(){return _val;},set:function(v){selByVal(v);}});
+  Object.defineProperty(wrap,'onchange',{get:function(){return _chg;},set:function(fn){_chg=fn;}});
+  Object.defineProperty(wrap,'__setItems',{value:function(newItems){items=newItems;}});
+  return wrap;
 }
 function mkTA(id,val){var t=document.createElement('textarea');if(id)t.id=id;t.value=val||'';return t;}
 function fv(label,el,req){
@@ -4190,12 +4290,12 @@ function fTrk(){
 }
 function openTM(id){
   var t=(id&&DB.trks.find(function(x){return x.id===id;}))||{};
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var so=t.ordId?ords.find(function(o){return o.id===t.ordId;}):null;
   var modal=buildModal((id?'编辑':'新增')+'加工跟踪记录','mxl',function(body){
     body.appendChild(secHdr('关联订单'));
     var g=document.createElement('div');g.className='fg';
-    var ordSel=mkSelect('t-ord',[{v:'',l:'请选择'}].concat(ords.map(function(o){return{v:o.id,l:o.no+' — '+o.custNm};})),t.ordId||'');
+    var ordSel=mkSearchableSelect('t-ord',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),t.ordId||'','输入订单号/客户名搜索');
     ordSel.onchange=function(){
       var oid=this.value;var ord=DB.orders.find(function(o){return o.id===oid;});
       var cs=document.getElementById('t-col');if(!cs)return;
@@ -4369,7 +4469,7 @@ function applySpecToDOM(specVals, widthUnit){
 
 function pgDW(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var facts=DB.facts;
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
@@ -4378,7 +4478,7 @@ function pgDW(){
   // ══ Define al, ordSel, facSel (needed by body) ══
   var al=document.createElement('div');al.className='al alb';
   al.textContent='选择订单后填写织厂信息，点"保存配置"保存当前填写，再点"预览/打印"生成加工单。';
-  var ordSel=mkSelect('wd-o',[{v:'',l:'请选择订单'}].concat(ords.map(function(o){return{v:o.id,l:o.no+(o.sty?' ('+o.sty+')':'')};})),'');
+  var ordSel=mkSearchableSelect('wd-o',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
   var facSel=mkSelect('wd-f',[{v:'',l:'请选择织厂'}].concat(DB.facts.filter(function(f){var ps=f.prcs||[];return ps.indexOf('织厂')>=0||ps.indexOf('织布厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
   facSel.onchange=function(){
     var fnm=this.value;var fac=facts.find(function(f){return f.nm===fnm;});
@@ -4926,7 +5026,7 @@ function prtW(){var d=getWD();if(!d)return alert('请先选择订单');printDoc(
 // ═══ DOC: DYEING ═══
 function pgDD(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
   ch.innerHTML='<span class="ct">生成染整加工单</span><span style="font-size:11px;color:var(--t3)">填写后点"保存配置"，下次打开自动恢复</span>';
@@ -4934,7 +5034,7 @@ function pgDD(){
   // ══ Define al, ordSel, facSel for pgDD ══
   var al=document.createElement('div');al.className='al alb';
   al.textContent='选择订单后自动带入规格数据，填写染厂信息后保存配置。';
-  var ordSel=mkSelect('dd-o',[{v:'',l:'请选择订单'}].concat(ords.map(function(o){return{v:o.id,l:o.no+(o.sty?' ('+o.sty+')':'')};})),'');
+  var ordSel=mkSearchableSelect('dd-o',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
   var facSel=mkSelect('dd-f',[{v:'',l:'请选择染厂'}].concat(DB.facts.filter(function(f){var ps=f.prcs||[];return ps.indexOf('染厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
   facSel.onchange=function(){
     var fnm=this.value;var fac=DB.facts.find(function(f){return f.nm===fnm;});
@@ -10601,10 +10701,10 @@ function printFGOut(outId){
 // ── 修订送货单 ──
 
 function openFGOutM(id){
-  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var modal=buildModal('登记出货 — 勾选在库匹','mxl',function(body){
     var hdrDiv=document.createElement('div');hdrDiv.className='fg';
-    var ordSel=mkSelect('fgo-ord',[{v:'',l:'请选择订单'}].concat(ords.map(function(o){return{v:o.id,l:o.no+' — '+shortName(o.custNm||'')};})),'');
+    var ordSel=mkSearchableSelect('fgo-ord',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
     hdrDiv.appendChild(fv('关联订单',ordSel));
     hdrDiv.appendChild(fv('出货日期',mkInput('fgo-date',new Date().toISOString().slice(0,10),'','date')));
     hdrDiv.appendChild(fv('客户送货单号',mkInput('fgo-dlv','','客户单号（可选）')));

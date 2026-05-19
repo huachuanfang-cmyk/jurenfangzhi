@@ -4290,7 +4290,7 @@ function fTrk(){
 }
 function openTM(id){
   var t=(id&&DB.trks.find(function(x){return x.id===id;}))||{};
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var so=t.ordId?ords.find(function(o){return o.id===t.ordId;}):null;
   var modal=buildModal((id?'编辑':'新增')+'加工跟踪记录','mxl',function(body){
     body.appendChild(secHdr('关联订单'));
@@ -4469,7 +4469,7 @@ function applySpecToDOM(specVals, widthUnit){
 
 function pgDW(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var facts=DB.facts;
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
@@ -5026,7 +5026,7 @@ function prtW(){var d=getWD();if(!d)return alert('请先选择订单');printDoc(
 // ═══ DOC: DYEING ═══
 function pgDD(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
   ch.innerHTML='<span class="ct">生成染整加工单</span><span style="font-size:11px;color:var(--t3)">填写后点"保存配置"，下次打开自动恢复</span>';
@@ -10701,7 +10701,7 @@ function printFGOut(outId){
 // ── 修订送货单 ──
 
 function openFGOutM(id){
-  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='completed'&&o.status!=='draft';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var modal=buildModal('登记出货 — 勾选在库匹','mxl',function(body){
     var hdrDiv=document.createElement('div');hdrDiv.className='fg';
     var ordSel=mkSearchableSelect('fgo-ord',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');

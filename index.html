@@ -9489,6 +9489,11 @@ function pgFGStock(){
         tr.appendChild(mkRTd(esc(ret.rm||''),'color:var(--t3)'));
         var opTd=mkRTd('','text-align:center');
         opTd.appendChild(mkBtn('打印','btn bsm bs',function(retId){return function(){printFGReturn(retId);};}(ret.id)));
+        opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
+          if(!confirm('确认删除退货单 '+esc(retId)+'？'))return;
+          DB.fgreturns=(DB.fgreturns||[]).filter(function(x){return x.id!==retId;});
+          pgFGStock();showToast('已删除','success');
+        };}(ret.id)));
         tr.appendChild(opTd);
         rtbody.appendChild(tr);
       });

@@ -9183,6 +9183,8 @@ function pgFGStock(){
     // 过滤出货记录
     var _fgq=(window._fgoutSrch||'').toLowerCase();
     var _fgLim=parseInt(window._fgoutLimit||'0')||0;
+    // 建立出货→退货映射，用于标注已退货的送货单
+    var retByOutId={};(DB.fgreturns||[]).forEach(function(ret){if(ret.outId&&ret.status!=='cancelled'){if(!retByOutId[ret.outId])retByOutId[ret.outId]=[];retByOutId[ret.outId].push(ret);}});
     var filteredOuts=fgouts.slice().reverse().filter(function(r){
       if(_fgDate==='month'&&!(r.date||'').startsWith(thisMonth))return false;
       if(_fgDate==='lastMonth'&&!(r.date||'').startsWith(lastMonth))return false;
@@ -9230,8 +9232,9 @@ function pgFGStock(){
       var totKG=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
       var clrNms=[...new Set(rls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
       var bg2=idx%2===0?'#ffffff':'#f9f8ff';
+      var hasRet=retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0;
       var tr=document.createElement('tr');
-      tr.style.cssText='cursor:pointer;transition:background .1s';
+      tr.style.cssText='cursor:pointer;transition:background .1s'+(hasRet?';border-left:4px solid #DC2626':'');
       tr.onmouseover=function(){this.style.background='#f0f0ff';};
       tr.onmouseout=function(){this.style.background=bg2;};
       function mkOTd(txt,style){
@@ -9256,7 +9259,7 @@ function pgFGStock(){
       tr.appendChild(mkOTd(esc(r.date||''),'color:var(--t2);font-size:11px'));
       tr.appendChild(mkOTd(esc(r.no||''),'color:var(--p);font-weight:700;font-family:monospace;font-size:10.5px'));
       tr.appendChild(mkOTd(rls.length+'匹 / '+totKG.toFixed(1)+'KG','text-align:center;font-weight:700;color:#e67e22;font-size:11px'));
-      tr.appendChild(mkOTd(esc(r.rm||''),'color:var(--t3);font-size:11px'));
+      tr.appendChild(mkOTd(esc(r.rm||'')+(hasRet?' <span style="display:inline-block;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:3px;padding:0 5px;font-size:9px;font-weight:700">已退货</span>':''),'color:var(--t3);font-size:11px'));
       var opTd=mkOTd('','white-space:nowrap');
       opTd.appendChild(mkBtn('编辑','btn bsm bs',function(rid){return function(){
         var rec=DB.fgouts.find(function(x){return x.id===rid;});

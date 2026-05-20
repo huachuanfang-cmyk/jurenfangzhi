@@ -1706,7 +1706,35 @@ function pgDash(){
     setNextNo(v);
     showToast('订单号起始已设置为 '+v,'success');
   });
-  noSetWrap.appendChild(noSetLbl);noSetWrap.appendChild(noSetInp);noSetWrap.appendChild(noSetBtn);
+  // 锁定开关
+  var noLocked=DB.load('nextNoLock')===true;
+  var noLockBtn=document.createElement('button');noLockBtn.type='button';
+  noLockBtn.innerHTML=noLocked?'&#128274;':'&#128275;';
+  noLockBtn.title=noLocked?'点击解锁（需管理员密码）':'点击锁定';
+  noLockBtn.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:4px 8px;background:'+(noLocked?'#fee2e2':'#f0fdf4')+';font-size:13px;cursor:pointer;line-height:1';
+  noLockBtn.onclick=function(){
+    if(noLocked){
+      verifyPwd(function(){
+        noLocked=false;
+        noLockBtn.innerHTML='&#128275;';
+        noLockBtn.title='点击锁定';
+        noLockBtn.style.background='#f0fdf4';
+        noSetInp.disabled=false;
+        noSetBtn.style.display='';
+        DB.save('nextNoLock',false);
+      });
+    }else{
+      noLocked=true;
+      noLockBtn.innerHTML='&#128274;';
+      noLockBtn.title='点击解锁（需管理员密码）';
+      noLockBtn.style.background='#fee2e2';
+      noSetInp.disabled=true;
+      noSetBtn.style.display='none';
+      DB.save('nextNoLock',true);
+    }
+  };
+  if(noLocked){noSetInp.disabled=true;noSetBtn.style.display='none';}
+  noSetWrap.appendChild(noSetLbl);noSetWrap.appendChild(noSetInp);noSetWrap.appendChild(noSetBtn);noSetWrap.appendChild(noLockBtn);
   var noHint=document.createElement('span');noHint.style.cssText='font-size:10px;color:var(--t3)';noHint.textContent='新建订单将从此号开始';
   noSetWrap.appendChild(noHint);
   pg.appendChild(noSetWrap);

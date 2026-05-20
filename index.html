@@ -7557,6 +7557,15 @@ function openARecModal(id){
       matched.forEach(function(o){
         o._isLegacy=(o.date||'').slice(0,7)<mVal;
       });
+      // 查找匹配的退货记录（用于红字冲销行）
+      var retForMatched={};
+      (DB.fgreturns||[]).forEach(function(ret){
+        if(!ret.outId||ret.status==='cancelled')return;
+        if(matched.some(function(o){return o.id===ret.outId;})||savedOutIds.indexOf(ret.outId)>=0){
+          if(!retForMatched[ret.outId])retForMatched[ret.outId]=[];
+          retForMatched[ret.outId].push(ret);
+        }
+      });
       outWrap.innerHTML='';
       if(!matched.length){
         var tip=document.createElement('div');tip.style.cssText='padding:12px;text-align:center;color:var(--t3);font-size:11px';tip.textContent='暂无未对账出货记录';outWrap.appendChild(tip);return;
@@ -7566,7 +7575,7 @@ function openARecModal(id){
       var saCb=document.createElement('input');saCb.type='checkbox';
       // 新建：全选；编辑：跟随本单已关联的记录
       saCb.checked=!rec||matched.every(function(o){return savedOutIds.indexOf(o.id)>=0;});
-      saCb.onchange=function(){outWrap.querySelectorAll('.ar-out-cb').forEach(function(c){c.checked=saCb.checked;});calcTotal();};
+      saCb.onchange=function(){outWrap.querySelectorAll('.ar-out-cb:not(:disabled)').forEach(function(c){c.checked=saCb.checked;});calcTotal();};
       saLbl.appendChild(saCb);saLbl.appendChild(document.createTextNode('全选'));
       var selInfo=document.createElement('span');selInfo.id='ar-sel-info';selInfo.style.cssText='margin-left:auto;color:#1e3a8a;font-weight:600';
       selAll.appendChild(saLbl);selAll.appendChild(selInfo);outWrap.appendChild(selAll);
@@ -7652,23 +7661,54 @@ function openARecModal(id){
           '<td style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:#1e3a8a">'+(amt?'¥'+amt.toFixed(2):'手填')+'</td>'+
           '<td style="padding:5px 8px;font-size:10px;color:var(--t2)">'+esc(o.date||'')+'</td>';
         tbody.appendChild(tr);
+        // ── 退货/扣损红字冲销行 ──
+        var retRecs=(retForMatched||{})[o.id];
+        if(retRecs&&retRecs.length){
+          retRecs.forEach(function(retRec){
+            var retTotalKG=parseFloat(retRec.totalKG)||0;
+            var retDeductKG=parseFloat(retRec.deductKG)||retTotalKG;
+            if(retDeductKG<=0)return;
+            // 按扣损KG比例计算金额
+            var retAmtVal=0;
+            if(kg>0&&amt>0){retAmtVal=-(retDeductKG/kg)*amt;}
+            var retTr=document.createElement('tr');
+            retTr.style.cssText='background:#FEF2F2;border-bottom:.5px solid #FECACA';
+            var retTd=document.createElement('td');retTd.style.cssText='padding:5px 8px;text-align:center';
+            var retCb=document.createElement('input');retCb.type='checkbox';retCb.className='ar-out-cb';
+            retCb.checked=true;retCb.disabled=true;
+            retCb.dataset.kg=(-retDeductKG).toFixed(1);retCb.dataset.amt=retAmtVal.toFixed(2);
+            retTd.appendChild(retCb);
+            retTr.appendChild(retTd);
+            var retNoTd=document.createElement('td');retNoTd.style.cssText='padding:5px 8px;font-size:10px;color:#DC2626;font-weight:600';
+            retNoTd.innerHTML='↩ 退货 <span style="font-family:monospace">'+esc(retRec.no||'')+'</span>';
+            retTr.appendChild(retNoTd);
+            retTr.innerHTML+=
+              '<td style="padding:5px 8px;font-size:10px;color:#991B1B">原单 '+esc(o.no||'')+'</td>'+
+              '<td style="padding:5px 8px;font-size:10px;color:#B91C1C">'+esc(retRec.reason||'品质问题')+'</td>'+
+              '<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:600;color:#DC2626">-'+retDeductKG.toFixed(1)+'</td>'+
+              '<td style="padding:5px 8px;text-align:center;font-size:10px;color:#991B1B">—</td>'+
+              '<td style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:#DC2626">¥'+retAmtVal.toFixed(2)+'</td>'+
+              '<td style="padding:5px 8px;font-size:10px;color:#991B1B">'+esc(retRec.date||'')+'</td>';
+            tbody.appendChild(retTr);
+          });
+        }
       });
       tbl.appendChild(tbody);outWrap.appendChild(tbl);
       // 绑定表头全选联动
       var allCb2=outWrap.querySelector('#ar-all-cb2');
       if(allCb2){
         allCb2.onchange=function(){
-          outWrap.querySelectorAll('.ar-out-cb').forEach(function(c){c.checked=allCb2.checked;});
+          outWrap.querySelectorAll('.ar-out-cb:not(:disabled)').forEach(function(c){c.checked=allCb2.checked;});
           calcTotal();
         };
       }
       // 单条变化时同步全选状态
-      outWrap.querySelectorAll('.ar-out-cb').forEach(function(c){
+      outWrap.querySelectorAll('.ar-out-cb:not(:disabled)').forEach(function(c){
         var orig=c.onchange;
         c.onchange=function(){
           if(orig)orig.call(this);
-          var all=outWrap.querySelectorAll('.ar-out-cb');
-          var chk=outWrap.querySelectorAll('.ar-out-cb:checked');
+          var all=outWrap.querySelectorAll('.ar-out-cb:not(:disabled)');
+          var chk=outWrap.querySelectorAll('.ar-out-cb:checked:not(:disabled)');
           if(allCb2)allCb2.checked=(all.length>0&&all.length===chk.length);
           calcTotal();
         };
@@ -9294,7 +9334,7 @@ function pgFGStock(){
     }else{
       var rwrap=document.createElement('div');rwrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
       var rtbl=document.createElement('table');rtbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',100],['数量',70],['备注',110]];
+      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',90],['回仓KG',65],['扣损KG',65],['备注',90]];
       var rthead=document.createElement('thead');
       var rthRow=document.createElement('tr');
       rcols.forEach(function(col){
@@ -9319,7 +9359,8 @@ function pgFGStock(){
         tr.appendChild(mkRTd(esc(ret.custNm||''),'font-weight:600'));
         tr.appendChild(mkRTd(esc(ret.ordNo||''),'font-family:monospace'));
         tr.appendChild(mkRTd(esc(ret.reason||''),'color:#B91C1C'));
-        tr.appendChild(mkRTd((ret.rollIds||[]).length+'匹','text-align:center;font-weight:700;color:#D97706'));
+        tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
+        tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
         tr.appendChild(mkRTd(esc(ret.rm||''),'color:var(--t3)'));
         rtbody.appendChild(tr);
       });
@@ -9347,6 +9388,18 @@ function openFGReturn(outId){
     var reasonWrap=document.createElement('div');reasonWrap.style.cssText='margin-bottom:10px';
     reasonWrap.appendChild(fv('退货原因',mkInput('fgret-reason','品质问题','如：品质问题、客户拒收等','text')));
     body.appendChild(reasonWrap);
+    // 协商扣损KG（用于对账自动扣减）
+    var deductWrap=document.createElement('div');deductWrap.style.cssText='margin-bottom:10px;display:flex;align-items:center;gap:8px;background:#FFF8E1;border:1px solid #FDE68A;border-radius:6px;padding:8px 10px';
+    deductWrap.innerHTML='<span style="font-size:11px;font-weight:700;color:#92400E">对账扣损</span>';
+    var deductKGInp=document.createElement('input');deductKGInp.type='number';deductKGInp.step='0.1';deductKGInp.min='0';
+    deductKGInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;color:#92400E;background:#fff;outline:none;text-align:right';
+    var deductUnit=document.createElement('span');deductUnit.style.cssText='font-size:11px;color:#92400E;font-weight:500';
+    deductUnit.textContent='KG';
+    deductWrap.appendChild(deductKGInp);deductWrap.appendChild(deductUnit);
+    var deductTip=document.createElement('span');deductTip.style.cssText='font-size:10.5px;color:#B45309;margin-left:auto';
+    deductTip.textContent='与客户协商的扣减重量，对账时自动抵扣';
+    deductWrap.appendChild(deductTip);
+    body.appendChild(deductWrap);
     // 备注
     var rmWrap=document.createElement('div');rmWrap.style.cssText='margin-bottom:10px';
     rmWrap.appendChild(fv('备注',mkInput('fgret-rm','','可选填退货处理说明','text')));
@@ -9386,15 +9439,19 @@ function openFGReturn(outId){
       rollCbs.forEach(function(cb){if(cb.checked){n++;kg+=parseFloat(cb.dataset.kg||0);}});
       stat.innerHTML='已选 <b>'+n+'</b> 匹，约 <b>'+kg.toFixed(1)+'</b> KG';
       rollCount.textContent='（共 '+outRolls.length+' 匹）';
+      if(deductKGInp&&!deductKGInp._userSet){deductKGInp.value=kg.toFixed(1);}
     }
     updateStat();
     rollCbs.forEach(function(cb){cb.onchange=updateStat;});
     selAllCb.onchange=function(){rollCbs.forEach(function(cb){cb.checked=selAllCb.checked;});updateStat();};
+    // 扣损KG输入框：用户手动修改后标记_userSet，不再自动跟随
+    deductKGInp._userSet=false;
+    deductKGInp.oninput=function(){this._userSet=true;};
     // 提示
     var tip=document.createElement('div');
-    tip.style.cssText='font-size:11px;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px;line-height:1.7;margin-bottom:6px';
-    tip.innerHTML='⚠️ 退货后疋料将恢复为<b>「在库」</b>状态，标记为<b>次品</b>（B级）。<br>'
-      +'如需处理对账扣减，请在对应对账单中添加<b>「扣减」</b>行。';
+    tip.style.cssText='font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:8px 10px;line-height:1.7;margin-bottom:6px';
+    tip.innerHTML='ℹ️ 退货后疋料恢复为<b>「在库」</b>（B级次品）。<br>'
+      +'对账时系统将根据<b>「扣损KG」</b>自动生成红字冲销行，抵扣对应出货金额。';
     body.appendChild(tip);
   },function(){
     // 收集选中的疋
@@ -9405,6 +9462,7 @@ function openFGReturn(outId){
     if(!selRollIds.length)return alert('请至少选择一匹退货');
     var reason=document.getElementById('fgret-reason');
     var rm=document.getElementById('fgret-rm');
+    var deductKG=parseFloat(deductKGInp.value)||0;
     // 创建退货记录
     var ret={
       id:'ret_'+Date.now(),
@@ -9415,6 +9473,7 @@ function openFGReturn(outId){
       reason:reason?reason.value:'品质问题',
       rollIds:selRollIds,
       totalKG:selRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0),
+      deductKG:deductKG,
       status:'completed',
       rm:rm?rm.value:''
     };

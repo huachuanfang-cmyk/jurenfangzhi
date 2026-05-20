@@ -8946,11 +8946,13 @@ function pgFGStock(){
   var lmD=new Date(now.getFullYear(),now.getMonth()-1,1);var lastMonth=lmD.getFullYear()+'-'+(String(lmD.getMonth()+1).padStart(2,'0'));
   var thisYear=String(now.getFullYear());
 
-  var inKG=rolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+  var inRolls=rolls.filter(function(r){return r.status!=='returned';});
+  var inKG=inRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
   var outRolls=rolls.filter(function(r){return r.status==='out';});
   var outKG=outRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
   var stockKG=inKG-outKG;
   var stockCount=rolls.filter(function(r){return r.status==='in';}).length;
+  var returnedRolls=rolls.filter(function(r){return r.status==='returned';});
 
   // 本月统计
   var mInKG=0,mOutKG=0;
@@ -8984,7 +8986,7 @@ function pgFGStock(){
   var _fgTab=window._fgTab||'stock';
   var tabBar=document.createElement('div');
   tabBar.style.cssText='display:flex;gap:0;margin-bottom:14px;border-radius:8px;overflow:hidden;border:1.5px solid #CBD5E1;background:#F8FAFC;box-shadow:0 1px 4px rgba(30,58,138,.06)';
-  [['stock','📦 库存台账'],['out','↑ 出货记录'],['returns','↩ 退货记录']].forEach(function(t){
+  [['stock','📦 库存台账'],['out','↑ 出货记录'],['returned','📋 退货待处理'],['returns','↩ 退货单']].forEach(function(t){
     var tbtn=document.createElement('button');tbtn.type='button';tbtn.textContent=t[1];
     var isAct=_fgTab===t[0];
     tbtn.style.cssText='flex:1;padding:10px 0;font-size:13.5px;font-weight:'+(isAct?'700':'500')+';border:none;cursor:pointer;transition:background .15s,color .15s;background:'+(isAct?'#1E3A8A':'#F8FAFC')+';color:'+(isAct?'#fff':'#64748B')+';letter-spacing:.3px';
@@ -9017,6 +9019,7 @@ function pgFGStock(){
   // 分组：订单+颜色+缸号
   var groupMap={};
   rolls.forEach(function(r){
+    if(r.status==='returned')return;
     var k=(r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'');
     if(!groupMap[k]){
       var ord=orders.find(function(x){return x.id===r.ordId;})||{};
@@ -9318,8 +9321,99 @@ function pgFGStock(){
     oc.appendChild(outInfo);
     pg.appendChild(oc);
   }
+  // ── Tab: 退货待处理 ──
+  if(_fgTab==='returned'){
+    var retRol=document.createElement('div');retRol.className='card';retRol.style.marginTop='12px';
+    var retRolCh=document.createElement('div');retRolCh.className='ch';
+    retRolCh.style.cssText='padding:11px 16px;border-bottom:1px solid var(--bd);background:var(--b3);border-radius:8px 8px 0 0';
+    retRolCh.innerHTML='<span class="ct">📋 退货待处理（'+returnedRolls.length+'匹）</span>';
+    retRol.appendChild(retRolCh);
+    if(!returnedRolls.length){
+      var retRolEmpty=document.createElement('div');retRolEmpty.style.cssText='text-align:center;padding:48px 20px;color:var(--t3)';
+      retRolEmpty.innerHTML='暂无退货待处理疋料';
+      retRol.appendChild(retRolEmpty);
+    }else{
+      // 按订单+颜色+缸号分组
+      var retGroup={};
+      returnedRolls.forEach(function(r){
+        var k=(r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'');
+        if(!retGroup[k]){
+          var ord2=orders.find(function(x){return x.id===r.ordId;})||{};
+          var clrObj2=(ord2.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
+          retGroup[k]={ordNo:r.ordNo,colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',vatNo:r.vatNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',cnt:0,kg:0};
+        }
+        retGroup[k].cnt++;
+        retGroup[k].kg+=(parseFloat(r.kg)||0);
+      });
+      var retKeys=Object.keys(retGroup);
+      var retRolWrap=document.createElement('div');retRolWrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+      var retRolTbl=document.createElement('table');retRolTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
+      var retRolCols=[['订单号',110],['客户',110],['颜色',80],['色号',80],['缸号',90],['退回数量',90],['操作',100]];
+      var retRolThead=document.createElement('thead');
+      var retRolThRow=document.createElement('tr');
+      retRolCols.forEach(function(col){
+        var th=document.createElement('th');
+        th.textContent=col[0];
+        th.style.cssText='position:sticky;top:0;z-index:2;background:#FEF2F2;color:#991B1B;font-weight:700;font-size:10.5px;padding:7px 10px;border:1px solid #FECACA;text-align:left;white-space:nowrap;width:'+col[1]+'px';
+        retRolThRow.appendChild(th);
+      });
+      retRolThead.appendChild(retRolThRow);retRolTbl.appendChild(retRolThead);
+      var retRolTbody=document.createElement('tbody');
+      retKeys.forEach(function(k,idx){
+        var g=retGroup[k];if(!g)return;
+        var bg=idx%2===0?'#FEF2F2':'#FFF';
+        var tr=document.createElement('tr');
+        function mkRetTd(txt,s){
+          var td=document.createElement('td');
+          td.style.cssText='padding:6px 10px;border:1px solid #FECACA;vertical-align:middle;background:'+bg+';'+(s||'');
+          td.innerHTML=txt;return td;
+        }
+        tr.appendChild(mkRetTd(esc(g.ordNo||''),'font-weight:700;color:#991B1B;font-family:monospace'));
+        tr.appendChild(mkRetTd(esc(g.custNm||'—'),'font-size:11px;color:#7F1D1D'));
+        tr.appendChild(mkRetTd(esc(g.colorNm||''),'font-weight:600;font-size:11px;color:#7F1D1D'));
+        tr.appendChild(mkRetTd(esc(g.colorCode||'—'),'color:#991B1B;font-family:monospace'));
+        tr.appendChild(mkRetTd(esc(g.vatNo||'—'),'color:#7F1D1D;font-size:11px'));
+        tr.appendChild(mkRetTd(g.cnt+'匹 / '+g.kg.toFixed(1)+'KG','text-align:center;font-weight:700;color:#DC2626'));
+        var opTd=mkRetTd('','text-align:center');
+        opTd.appendChild(mkBtn('回修入库','btn bsm bs',(function(gk){return function(){
+          // 跳转到正式入库，带入选中的订单+颜色
+          var gdata=retGroup[gk];
+          if(!gdata)return;
+          // 关闭当前tab，打开登记入库
+          // 直接调用登记入库，预设订单
+          window._fgTab='stock';
+          openFGInM(null);
+          // 自动填入订单（延时等待弹窗渲染）
+          setTimeout(function(){
+            var ordSel=document.getElementById('fgi-ord');
+            if(ordSel&&gdata.ordId){
+              // 找到对应订单选项
+              for(var i=0;i<ordSel.options.length;i++){
+                if(ordSel.options[i].value===gdata.ordId){
+                  ordSel.value=gdata.ordId;ordSel.onchange&&ordSel.onchange();break;
+                }
+              }
+            }
+            var clrSel=document.getElementById('fgi-clr');
+            if(clrSel&&gdata.colorNm){
+              for(var i=0;i<clrSel.options.length;i++){
+                if(clrSel.options[i].textContent===gdata.colorNm){
+                  clrSel.value=clrSel.options[i].value;clrSel.onchange&&clrSel.onchange();break;
+                }
+              }
+            }
+          },400);
+        };})(k)));
+        tr.appendChild(opTd);
+        retRolTbody.appendChild(tr);
+      });
+      retRolTbl.appendChild(retRolTbody);retRolWrap.appendChild(retRolTbl);retRol.appendChild(retRolWrap);
+    }
+    pg.appendChild(retRol);
+  }
   if(_fgTab==='returns'){
     var rets=DB.fgreturns||[];
+    var hasReturned=returnedRolls.length;
     // 按日期倒序
     rets=rets.slice().reverse();
     var rc=document.createElement('div');rc.className='card';rc.style.marginTop='12px';
@@ -9485,7 +9579,7 @@ function openFGReturn(outId){
       var allR=fgRolls();
       selRollIds.forEach(function(rlid){
         var rl=allR.find(function(x){return x.id===rlid;});
-        if(rl){rl.status='in';rl.outId='';rl.grade='B';rl.returned=true;rl.retId=ret.id;}
+        if(rl){rl.status='returned';rl.outId='';rl.grade='B';rl.returned=true;rl.retId=ret.id;}
       });
       saveFgRolls(allR);
     }

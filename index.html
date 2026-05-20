@@ -9353,7 +9353,7 @@ function pgFGStock(){
           td.style.cssText='padding:6px 10px;border:1px solid #FEF3C7;vertical-align:middle;background:'+bg+';'+(s||'');
           td.innerHTML=txt;return td;
         }
-        tr.appendChild(mkRTd(esc(ret.no||''),'font-weight:700;color:#B45309;font-family:monospace'));
+        tr.appendChild(mkRTd(esc(ret.no||'')+(ret.status==='deduction_only'?'<br><span style="font-size:9px;background:#FEF3C7;color:#B45309;padding:1px 5px;border-radius:3px">纯扣损</span>':''),'font-weight:700;color:#B45309;font-family:monospace'));
         tr.appendChild(mkRTd(esc(ret.date||''),'color:var(--t2)'));
         tr.appendChild(mkRTd(esc(ret.outNo||''),'color:var(--p);font-family:monospace'));
         tr.appendChild(mkRTd(esc(ret.custNm||''),'font-weight:600'));
@@ -9450,19 +9450,22 @@ function openFGReturn(outId){
     // 提示
     var tip=document.createElement('div');
     tip.style.cssText='font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:8px 10px;line-height:1.7;margin-bottom:6px';
-    tip.innerHTML='ℹ️ 退货后疋料恢复为<b>「在库」</b>（B级次品）。<br>'
-      +'对账时系统将根据<b>「扣损KG」</b>自动生成红字冲销行，抵扣对应出货金额。';
+    tip.innerHTML='<b>两种用法：</b><br>'
+      +'① <b>退货</b>：勾选疋料 → 实物回仓(B级) + 扣损KG自动抵扣对账<br>'
+      +'② <b>纯扣损</b>：不勾疋料，仅填扣损KG → 只抵扣对账，不回仓';
     body.appendChild(tip);
   },function(){
+    // ── 保存逻辑 ──
+    var reason=document.getElementById('fgret-reason');
+    var rm=document.getElementById('fgret-rm');
+    var deductKG=parseFloat(deductKGInp.value)||0;
     // 收集选中的疋
     var selRollIds=[];var selRolls=[];
     outRolls.forEach(function(rl,i){
       if(rollCbs[i]&&rollCbs[i].checked){selRollIds.push(rl.id);selRolls.push(rl);}
     });
-    if(!selRollIds.length)return alert('请至少选择一匹退货');
-    var reason=document.getElementById('fgret-reason');
-    var rm=document.getElementById('fgret-rm');
-    var deductKG=parseFloat(deductKGInp.value)||0;
+    // 允许两种场景：选了疋退货，或纯扣损（不选疋但有扣损KG）
+    if(!selRollIds.length&&deductKG<=0)return alert('请选择退货疋料，或填写扣损KG');
     // 创建退货记录
     var ret={
       id:'ret_'+Date.now(),
@@ -9474,23 +9477,26 @@ function openFGReturn(outId){
       rollIds:selRollIds,
       totalKG:selRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0),
       deductKG:deductKG,
-      status:'completed',
+      status:selRollIds.length?'completed':'deduction_only',
       rm:rm?rm.value:''
     };
-    // 更新疋状态：status→'in'，清除出货引用，标记退货/次品
-    var allR=fgRolls();
-    selRollIds.forEach(function(rlid){
-      var rl=allR.find(function(x){return x.id===rlid;});
-      if(rl){rl.status='in';rl.outId='';rl.grade='B';rl.returned=true;rl.retId=ret.id;}
-    });
-    saveFgRolls(allR);
+    // 有实物退回时更新疋状态
+    if(selRollIds.length){
+      var allR=fgRolls();
+      selRollIds.forEach(function(rlid){
+        var rl=allR.find(function(x){return x.id===rlid;});
+        if(rl){rl.status='in';rl.outId='';rl.grade='B';rl.returned=true;rl.retId=ret.id;}
+      });
+      saveFgRolls(allR);
+    }
     // 保存退货记录
     var list=DB.fgreturns||[];
     list.push(ret);
     DB.fgreturns=list;
+    // 反馈+关闭
     cm();
     pgFGStock();
-    showToast('退货处理完成 — '+ret.no+'，共 '+selRollIds.length+' 匹回仓','success');
+    showToast((selRollIds.length?'退货完成':'扣损已记录')+' — '+ret.no+(selRollIds.length?'，共 '+selRollIds.length+' 匹回仓':''),'success');
   },'确认退货');
   om(modal);
 }

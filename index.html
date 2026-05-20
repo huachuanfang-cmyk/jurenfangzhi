@@ -9297,7 +9297,7 @@ function pgFGStock(){
         var rec=DB.fgouts.find(function(x){return x.id===rid;});
         if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
       };}(r.id)));
-      opTd.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
+      if(!hasRet)opTd.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
       opTd.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
         // 自定义二次确认弹窗（防误删）
         var _ov2=document.createElement('div');

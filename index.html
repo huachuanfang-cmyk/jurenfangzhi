@@ -10293,6 +10293,9 @@ function openFGInM(id){
     if(!colorNm)return alert('请选择颜色');
     var vatNo=(document.getElementById('fgi-vat')||{value:''}).value;
     if(!vatNo)return alert('请填写缸号');
+    // 缸号重复预警
+    var dupRolls=fgRolls().filter(function(r){return r.vatNo===vatNo&&r.status!=='cancelled';});
+    if(dupRolls.length>0&&!confirm('⚠️ 缸号 '+vatNo+' 已有 '+dupRolls.length+' 匹记录（在库/已出货），确认重复入库？\n\n点「确定」继续入库，点「取消」返回修改。'))return;
     var date=(document.getElementById('fgi-date')||{value:''}).value;
     // 色号从订单读
     var clrObj=(o.colors||[]).find(function(c){return c.nm===colorNm;})||{};

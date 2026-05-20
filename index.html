@@ -477,10 +477,25 @@ function shortName(name){
 
 function genNo(){
   var y=new Date().getFullYear();
-  // 读取自定义起始号
   var customNext=DB.load('nextNo');if(Array.isArray(customNext))customNext=null;
+  // 如果设置了完整订单号（fullNo），优先精确使用
+  if(customNext && customNext.fullNo){
+    var no=customNext.fullNo;
+    // 检查此号码是否已被占用（重复保存安全）
+    var exists=DB.orders.some(function(o){return o.no===no;});
+    if(!exists){
+      // 自动推进：数值部分+1，更新fullNo
+      var m=no.match(/^G(\d{4})(\d{3,6})$/);
+      if(m){
+        var nextNum=parseInt(m[2])+1;
+        DB.save('nextNo',{year:parseInt(m[1]),num:nextNum,fullNo:'G'+m[1]+String(nextNum).padStart(4,'0')});
+      }else{
+        DB.save('nextNo',null);
+      }
+      return no;
+    }
+  }
   var customNum=customNext&&customNext.year===y?customNext.num:null;
-  // 取现有订单最大号（包含已存记录）
   var maxN=0;
   DB.orders.forEach(function(o){
     if(o.no&&o.no.startsWith('G'+y)){
@@ -488,18 +503,16 @@ function genNo(){
       if(n>maxN)maxN=n;
     }
   });
-  // 取两者最大值，确保不重复不跳号
   var nextN=Math.max(maxN+1, customNum||672);
-  // 自动推进customNum，防止下次重复
   if(!customNum||nextN>=customNum){
     DB.save('nextNo',{year:y,num:nextN+1});
   }
   return 'G'+y+String(nextN).padStart(4,'0');
 }
-function setNextNo(numStr){
-  var y=new Date().getFullYear();
-  var n=parseInt(numStr)||1;
-  DB.save('nextNo',{year:y,num:n});
+function setNextNo(fullNo){
+  var m=fullNo.match(/^G(\d{4})(\d{3,6})$/);
+  if(!m)return;
+  DB.save('nextNo',{year:parseInt(m[1]),num:parseInt(m[2]),fullNo:fullNo});
 }
 // ── 物料档案搜索弹窗（在新增/编辑订单时使用）──
 function openMatPicker(onSelect){
@@ -1690,7 +1703,7 @@ function pgDash(){
     var v=noSetInp.value.trim();
     var m=v.match(/^G(\d{4})(\d{3,6})$/);
     if(!m)return alert('格式错误，请输入如 G20260673');
-    setNextNo(parseInt(m[2]));
+    setNextNo(v);
     showToast('订单号起始已设置为 '+v,'success');
   });
   noSetWrap.appendChild(noSetLbl);noSetWrap.appendChild(noSetInp);noSetWrap.appendChild(noSetBtn);

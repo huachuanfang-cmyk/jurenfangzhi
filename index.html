@@ -9486,6 +9486,7 @@ function openFGReturn(outId){
     var deductWrap=document.createElement('div');deductWrap.style.cssText='margin-bottom:10px;display:flex;align-items:center;gap:8px;background:#FFF8E1;border:1px solid #FDE68A;border-radius:6px;padding:8px 10px';
     deductWrap.innerHTML='<span style="font-size:11px;font-weight:700;color:#92400E">对账扣损</span>';
     var deductKGInp=document.createElement('input');deductKGInp.type='number';deductKGInp.step='0.1';deductKGInp.min='0';
+    deductKGInp.id='fgret-deduct-kg';
     deductKGInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;color:#92400E;background:#fff;outline:none;text-align:right';
     var deductUnit=document.createElement('span');deductUnit.style.cssText='font-size:11px;color:#92400E;font-weight:500';
     deductUnit.textContent='KG';
@@ -9514,6 +9515,7 @@ function openFGReturn(outId){
       var row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid #F1F5F9;font-size:11.5px'+(idx%2===0?';background:#FAFBFC':'');
       var cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+      cb.className='fgret-roll-cb';
       cb.style.cssText='width:15px;height:15px;accent-color:#DC2626;cursor:pointer';
       cb.dataset.kg=rl.kg||'0';
       rollCbs.push(cb);
@@ -9552,11 +9554,14 @@ function openFGReturn(outId){
     // ── 保存逻辑 ──
     var reason=document.getElementById('fgret-reason');
     var rm=document.getElementById('fgret-rm');
-    var deductKG=parseFloat(deductKGInp.value)||0;
+    var deductKGInp=document.getElementById('fgret-deduct-kg');
+    var deductKG=parseFloat(deductKGInp?deductKGInp.value:0)||0;
     // 收集选中的疋
     var selRollIds=[];var selRolls=[];
     outRolls.forEach(function(rl,i){
-      if(rollCbs[i]&&rollCbs[i].checked){selRollIds.push(rl.id);selRolls.push(rl);}
+      // 通过DOM查找对应checkbox（避免闭包变量作用域问题）
+      var cbs=document.querySelectorAll('.fgret-roll-cb');
+      if(cbs[i]&&cbs[i].checked){selRollIds.push(rl.id);selRolls.push(rl);}
     });
     // 允许两种场景：选了疋退货，或纯扣损（不选疋但有扣损KG）
     if(!selRollIds.length&&deductKG<=0)return alert('请选择退货疋料，或填写扣损KG');

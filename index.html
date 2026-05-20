@@ -9459,7 +9459,7 @@ function pgFGStock(){
     }else{
       var rwrap=document.createElement('div');rwrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
       var rtbl=document.createElement('table');rtbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',90],['回仓KG',65],['扣损KG',65],['备注',90]];
+      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',90],['回仓KG',65],['扣损KG',65],['备注',90],['操作',65]];
       var rthead=document.createElement('thead');
       var rthRow=document.createElement('tr');
       rcols.forEach(function(col){
@@ -9487,6 +9487,9 @@ function pgFGStock(){
         tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
         tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
         tr.appendChild(mkRTd(esc(ret.rm||''),'color:var(--t3)'));
+        var opTd=mkRTd('','text-align:center');
+        opTd.appendChild(mkBtn('打印','btn bsm bs',function(retId){return function(){printFGReturn(retId);};}(ret.id)));
+        tr.appendChild(opTd);
         rtbody.appendChild(tr);
       });
       rtbl.appendChild(rtbody);rwrap.appendChild(rtbl);rc.appendChild(rwrap);
@@ -11054,6 +11057,177 @@ function printFGOut(outId){
       '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">蒋劲松</div></div>'+
       '<div class="sc"><div class="sc-lbl">客户收货确认 / Received by</div><div class="sc-line"></div></div>'+
       '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(out.rm||'')+'</div></div>'+
+    '</div>'+
+    '</body></html>';
+
+  printHTML(html);
+}
+
+// ── 打印退货单 ──
+function printFGReturn(retId){
+  var ret=(DB.fgreturns||[]).find(function(x){return x.id===retId;});
+  if(!ret)return;
+  var allRolls=fgRolls();
+  var rolls=allRolls.filter(function(r){return (ret.rollIds||[]).indexOf(r.id)>=0;});
+  var totKG=rolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+  var hasRolls=rolls.length>0;
+  var rawNo=(ret.no||'').replace(/^[A-Z]*/,'');
+  var shNo=rawNo.length>8?rawNo.slice(-8):rawNo.padStart(8,'0');
+
+  // 找到原出货单的布类、颜色等信息
+  var out=(DB.fgouts||[]).find(function(x){return x.id===ret.outId;})||{};
+  var o=(DB.orders||[]).find(function(x){return x.id===ret.ordId;})||{};
+
+  // 如果有实际退货疋料，取第一匹的颜色/缸号；否则从原出货单取
+  var firstRoll=rolls.length?rolls[0]:null;
+  var colorNm=firstRoll?firstRoll.colorNm:(outRollsFromOut()&&outRollsFromOut()[0]?outRollsFromOut()[0].colorNm:'');
+  // 辅助：找出货单的疋列表
+  function outRollsFromOut(){
+    return allRolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
+  }
+  var outFirst=outRollsFromOut()[0]||{};
+
+  // 三列布局
+  var colArr=[[],[],[]];
+  rolls.forEach(function(r,i){
+    var ci=i<25?0:(i<50?1:2);
+    colArr[ci].push({r:r,idx:i+1});
+  });
+  var dataRows=Math.max(colArr[0].length,colArr[1].length,colArr[2].length);
+  var minRows=dataRows>=15?25:(dataRows+4);
+  var maxRows=Math.max(dataRows,minRows);
+
+  var th='<thead><tr>';
+  for(var c=0;c<3;c++){
+    th+='<th style="width:38px">编号</th><th>疋号</th><th style="width:66px">重量(KG)</th>';
+    if(c<2)th+='<th class="gap"></th>';
+  }
+  th+='</tr></thead>';
+
+  var tb='<tbody>';
+  for(var ri=0;ri<maxRows;ri++){
+    tb+='<tr>';
+    for(var c=0;c<3;c++){
+      var cell=colArr[c][ri];
+      if(cell){
+        tb+='<td>'+cell.idx+'</td>'
+          +'<td style="font-family:monospace">'+esc(cell.r.rollNo||'')+'</td>'
+          +'<td style="font-weight:600;text-align:right;padding-right:6px">'+(parseFloat(cell.r.kg).toFixed(1)||'')+'</td>';
+      }else{
+        tb+='<td></td><td></td><td></td>';
+      }
+      if(c<2)tb+='<td class="gap"></td>';
+    }
+    tb+='</tr>';
+  }
+  tb+='</tbody>';
+  var rollsTable=hasRolls?'<table class="rolls">'+th+tb+'</table>':'<div style="text-align:center;padding:24px;color:#999;font-size:11px">（纯扣损，无实物退回）</div>';
+
+  var totParts=['合计：<strong>'+rolls.length+'</strong> 匹'];
+  if(hasRolls)totParts.push('<strong>'+totKG.toFixed(1)+'</strong> KG');
+  totParts.push('扣损：<strong style="color:#DC2626">'+parseFloat(ret.deductKG||0).toFixed(1)+'</strong> KG');
+  var totBar='<div class="tot-bar"><span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+totParts.join('　')+'</div>';
+
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+    '<title>退货单 '+esc(shNo)+'</title>'+
+    '<style>'+
+    'body{font-family:"Noto Sans SC","Microsoft YaHei",sans-serif;margin:0;padding:6mm 9mm;width:210mm;box-sizing:border-box;font-size:10.5px;color:#1a1a1a;background:#fff}'+
+    '.tb{position:sticky;top:0;background:#991B1B;color:#fff;padding:7px 14px;margin:-6mm -9mm 10px;display:flex;align-items:center;z-index:100;font-size:9.5px;letter-spacing:.3px}'+
+    '.tb-btn{margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;padding:4px 16px;border-radius:2px;cursor:pointer;font-size:9.5px;font-family:inherit;letter-spacing:.8px;transition:background .2s}'+
+    '.tb-btn:hover{background:rgba(255,255,255,.15)}'+
+    '.hdr{display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:8px;margin-bottom:7px;border-bottom:2px solid #991B1B}'+
+    '.hdr-l{display:flex;align-items:flex-start;gap:11px}'+
+    '.co-name{font-size:15px;font-weight:800;color:#991B1B;letter-spacing:.5px;margin-bottom:3px}'+
+    '.co-info{font-size:8px;color:#999;line-height:1.6;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+    '.sep{margin:0 5px;color:#ccc;font-weight:300}'+
+    '.hdr-r{text-align:right;flex-shrink:0;padding-top:2px}'+
+    '.sh-lbl{font-size:7px;color:#bbb;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}'+
+    '.sh-no{font-size:13px;font-weight:800;color:#991B1B;font-family:monospace;letter-spacing:2px}'+
+    '.doc-title{text-align:center;font-size:15px;font-weight:700;letter-spacing:10px;color:#1a1a1a;padding:5px 0 7px;border-bottom:1px solid #e8e8e8;margin-bottom:8px}'+
+    '.info-wrap{margin-bottom:8px}'+
+    '.info-row{display:grid;grid-template-columns:1fr 1fr}'+
+    '.info-f{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px solid #f4f4f4}'+
+    '.info-f:nth-child(odd){padding-right:16px}'+
+    '.info-f:nth-child(even){padding-left:16px;border-left:1px solid #f0f0f0}'+
+    '.lbl{font-size:8.5px;color:#bbb;white-space:nowrap;width:44px;flex-shrink:0;letter-spacing:.3px}'+
+    '.val{font-size:10.5px;color:#1a1a1a;font-weight:500;flex:1;word-break:break-all;min-width:0}'+
+    '.val-blue{color:#991B1B;font-weight:700;word-break:break-all}'+
+    '.val-red{color:#C2410C;font-weight:700;word-break:break-all}'+
+    'table.rolls{width:100%;border-collapse:collapse;font-size:10px;margin-top:2px}'+
+    'table.rolls thead tr{border-top:1.5px solid #991B1B;border-bottom:1.5px solid #991B1B}'+
+    'table.rolls th{background:#991B1B;color:#fff;padding:5px 3px;text-align:center;font-weight:600;font-size:9px;letter-spacing:.5px}'+
+    'table.rolls th.gap{background:#fff;border:none;width:10px;padding:0}'+
+    'table.rolls td{padding:2.5px 3px;text-align:center;border-bottom:1px solid #f0f0f0;height:16px;line-height:16px;color:#333}'+
+    'table.rolls td.gap{border:none;background:#fff;width:10px;padding:0}'+
+    'table.rolls tbody tr:nth-child(even) td:not(.gap){background:#FFF5F5}'+
+    'table.rolls tbody tr:last-child td{border-bottom:1.5px solid #991B1B}'+
+    '.tot-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:6px 0;margin-top:2px}'+
+    '.disc{font-size:8px;color:#ccc;text-align:center;padding:5px 0 3px;letter-spacing:.3px}'+
+    '.sign{display:grid;grid-template-columns:1fr 1fr;border-top:1.5px solid #991B1B;margin-top:6px}'+
+    '.sc{padding:10px 12px 8px;border-right:1px solid #eeeeee}'+
+    '.sc:last-child{border-right:none}'+
+    '.sc-lbl{font-size:7.5px;color:#bbb;letter-spacing:.8px;text-transform:uppercase;margin-bottom:5px}'+
+    '.sc-val{font-size:10.5px;font-weight:600;color:#1a1a1a}'+
+    '.sc-line{height:22px;border-bottom:1px solid #aaa;margin-top:4px}'+
+    '@media print{.tb{display:none!important}body{padding:4mm 7mm}@page{size:A4 portrait;margin:4mm 7mm}}'+
+    '</style></head><body>'+
+
+    '<img src="'+LOGO+'" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:.04;pointer-events:none;z-index:0;filter:grayscale(100%);width:200px;height:200px;object-fit:contain">'+
+    '<div class="tb">'+
+      '<span style="opacity:.6;letter-spacing:.5px">RETURN NOTE &nbsp;·&nbsp; '+rolls.length+' PCS</span>'+
+      '<button class="tb-btn" onclick="window.print()">🖨 PRINT / PDF</button>'+
+    '</div>'+
+
+    '<div class="hdr">'+
+      '<div class="hdr-l">'+
+        '<img src="'+LOGO+'" style="width:46px;height:46px;object-fit:contain">'+
+        '<div>'+
+          '<div class="co-name">'+esc(CO.nm)+'</div>'+
+          '<div class="co-info">'+esc(CO.addr)+'<span class="sep">|</span>电话：'+esc(CO.tel)+'<span class="sep">|</span>传真：'+esc(CO.fax)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="hdr-r">'+
+        '<div class="sh-lbl">Return No.</div>'+
+        '<div class="sh-no">'+esc(shNo)+'</div>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="doc-title">退 货 单</div>'+
+
+    '<div class="info-wrap">'+
+      '<div class="info-row">'+
+        '<div class="info-f"><span class="lbl">客　　户</span><span class="val">'+esc(ret.custNm||'')+'</span></div>'+
+        '<div class="info-f"><span class="lbl">合同编号</span><span class="val val-blue">'+esc(ret.ordNo||'')+'</span></div>'+
+      '</div>'+
+      '<div class="info-row">'+
+        '<div class="info-f"><span class="lbl">原送货单</span><span class="val">'+esc(ret.outNo||'')+'</span></div>'+
+        '<div class="info-f"><span class="lbl">退货日期</span><span class="val">'+esc(ret.date||'')+'</span></div>'+
+      '</div>'+
+      '<div class="info-row">'+
+        '<div class="info-f"><span class="lbl">布　　类</span><span class="val">'+esc(o.fab||'')+'</span></div>'+
+        '<div class="info-f"><span class="lbl">颜　　色</span><span class="val">'+esc(colorNm||'')+'</span></div>'+
+      '</div>'+
+      '<div class="info-row">'+
+        '<div class="info-f"><span class="lbl">缸　　号</span><span class="val">'+esc(firstRoll?firstRoll.vatNo:(outFirst.vatNo||''))+'</span></div>'+
+        '<div class="info-f"><span class="lbl">退货原因</span><span class="val val-red">'+esc(ret.reason||'')+'</span></div>'+
+      '</div>'+
+    '</div>'+
+
+    rollsTable+
+
+    '<div class="tot-bar">'+
+      '<span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+
+      '<span>合计：<strong>'+rolls.length+'</strong> 匹'+
+      (hasRolls?'　<strong>'+totKG.toFixed(1)+'</strong> KG':'')+
+      '　扣损：<strong style="color:#DC2626">'+parseFloat(ret.deductKG||0).toFixed(1)+'</strong> KG'+
+      '</span>'+
+    '</div>'+
+
+    '<div class="disc">退货回仓布匹标注为 B 级（二等品），如有品质争议请于七日内提出。</div>'+
+
+    '<div class="sign">'+
+      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">蒋劲松</div></div>'+
+      '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(ret.rm||'')+'</div></div>'+
     '</div>'+
     '</body></html>';
 

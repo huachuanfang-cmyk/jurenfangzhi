@@ -9587,10 +9587,11 @@ function openFGReturn(outId){
     var list=DB.fgreturns||[];
     list.push(ret);
     DB.fgreturns=list;
-    // 反馈+关闭
-    cm();
-    pgFGStock();
-    showToast((selRollIds.length?'退货完成':'扣损已记录')+' — '+ret.no+(selRollIds.length?'，共 '+selRollIds.length+' 匹回仓':''),'success');
+    // 反馈：先显示Toast，延迟关闭确保用户看到
+    showToast((selRollIds.length?'✅ 退货完成':'✅ 扣损已记录')+' — '+ret.no+(selRollIds.length?'，共 '+selRollIds.length+' 匹回仓':''),'success');
+    var saveBtn=document.querySelector('.mo .btn.bp');
+    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='✓ 已完成';}
+    setTimeout(function(){cm();pgFGStock();},800);
   },'确认退货');
   om(modal);
 }

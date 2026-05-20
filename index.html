@@ -9369,11 +9369,11 @@ function pgFGStock(){
       var retReasonMap={};(DB.fgreturns||[]).forEach(function(ret){if(ret.id&&ret.reason)retReasonMap[ret.id]=ret.reason;});
       var retGroup={};
       returnedRolls.forEach(function(r){
-        var vk=r.vatNo||'—';
+        var vk=(r.vatNo||'—')+'|'+(r.retId||'');
         if(!retGroup[vk]){
           var ord2=orders.find(function(x){return x.id===r.ordId;})||{};
           var clrObj2=(ord2.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
-          retGroup[vk]={vatNo:vk,ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,rollIds:[],reason:retReasonMap[r.retId]||''};
+          retGroup[vk]={vatNo:r.vatNo||'—',ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,rollIds:[],reason:retReasonMap[r.retId]||''};
         }
         if(!retGroup[vk].reason&&r.retId)retGroup[vk].reason=retReasonMap[r.retId]||'';
         retGroup[vk].cnt++;

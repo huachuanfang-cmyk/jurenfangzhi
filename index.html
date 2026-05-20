@@ -41,6 +41,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:13px;di
 .bgn{background:var(--g);color:#fff}
 .boo{background:var(--o);color:#fff}
 .brd{background:var(--r);color:#fff}
+.by{background:#D97706;color:#fff}.by:hover{background:#B45309}
 .bq{background:transparent;color:var(--p);border:1px solid var(--p)}.bq:hover{background:var(--pl)}
 .bsm{padding:3px 8px;font-size:11px}
 .bg2{display:flex;gap:5px;flex-wrap:wrap}
@@ -715,6 +716,7 @@ var DB={
   get fgins(){return this.load('fgi')||[];}, set fgins(v){this.save('fgi',v);},
   get greyfabs(){return this.load('gfy')||[];}, set greyfabs(v){this.save('gfy',v);},
   get fgouts(){return this.load('fgo')||[];}, set fgouts(v){this.save('fgo',v);},
+  get fgreturns(){return this.load('ret')||[];}, set fgreturns(v){this.save('ret',v);},
   // ── 导出完整数据快照 ──
   snapshot:function(){
     return {
@@ -722,6 +724,7 @@ var DB={
       orders:this.orders,trks:this.trks,fabMem:this.fabMem,
       yarns:this.yarns,yarnouts:this.yarnouts,greyfabs:this.greyfabs,
       fgins:this.fgins,fgouts:this.fgouts,
+      fgreturns:this.fgreturns,
       fgrolls:this.load('fgr')||[],
       quots:this.quots,arecs:this.arecs,recons:this.recons,
       wdocs:this.wdocs,ddocs:this.ddocs,
@@ -784,7 +787,7 @@ var TABLE_MAP = {
   t:'trackings', wd:'weaving_docs', qt:'quotations',
   ar:'ar_records', rc:'ap_records', dd:'dyeing_docs', yn:'yarns',
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
-  fgr:'fg_rolls', cnotices:'color_notices'
+  fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns'
 };
 
 function isOnline(){return navigator.onLine!==false;}
@@ -8941,7 +8944,7 @@ function pgFGStock(){
   var _fgTab=window._fgTab||'stock';
   var tabBar=document.createElement('div');
   tabBar.style.cssText='display:flex;gap:0;margin-bottom:14px;border-radius:8px;overflow:hidden;border:1.5px solid #CBD5E1;background:#F8FAFC;box-shadow:0 1px 4px rgba(30,58,138,.06)';
-  [['stock','📦 库存台账'],['out','↑ 出货记录']].forEach(function(t){
+  [['stock','📦 库存台账'],['out','↑ 出货记录'],['returns','↩ 退货记录']].forEach(function(t){
     var tbtn=document.createElement('button');tbtn.type='button';tbtn.textContent=t[1];
     var isAct=_fgTab===t[0];
     tbtn.style.cssText='flex:1;padding:10px 0;font-size:13.5px;font-weight:'+(isAct?'700':'500')+';border:none;cursor:pointer;transition:background .15s,color .15s;background:'+(isAct?'#1E3A8A':'#F8FAFC')+';color:'+(isAct?'#fff':'#64748B')+';letter-spacing:.3px';
@@ -9220,6 +9223,7 @@ function pgFGStock(){
         var rec=DB.fgouts.find(function(x){return x.id===rid;});
         if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
       };}(r.id)));
+      opTd.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
       opTd.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
         // 自定义二次确认弹窗（防误删）
         var _ov2=document.createElement('div');
@@ -9274,6 +9278,162 @@ function pgFGStock(){
     oc.appendChild(outInfo);
     pg.appendChild(oc);
   }
+  if(_fgTab==='returns'){
+    var rets=DB.fgreturns||[];
+    // 按日期倒序
+    rets=rets.slice().reverse();
+    var rc=document.createElement('div');rc.className='card';rc.style.marginTop='12px';
+    var rch=document.createElement('div');rch.className='ch';
+    rch.style.cssText='padding:11px 16px;border-bottom:1px solid var(--bd);background:var(--b3);border-radius:8px 8px 0 0';
+    rch.innerHTML='<span class="ct">↩ 退货记录（'+rets.length+'条）</span>';
+    rc.appendChild(rch);
+    if(!rets.length){
+      var rem=document.createElement('div');rem.style.cssText='text-align:center;padding:48px 20px;color:var(--t3)';
+      rem.innerHTML='暂无退货记录';
+      rc.appendChild(rem);
+    }else{
+      var rwrap=document.createElement('div');rwrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+      var rtbl=document.createElement('table');rtbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
+      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',100],['数量',70],['备注',110]];
+      var rthead=document.createElement('thead');
+      var rthRow=document.createElement('tr');
+      rcols.forEach(function(col){
+        var th=document.createElement('th');
+        th.textContent=col[0];
+        th.style.cssText='position:sticky;top:0;z-index:2;background:#FFFBEB;color:#92400E;font-weight:700;font-size:10.5px;padding:7px 10px;border:1px solid #FDE68A;text-align:left;white-space:nowrap;width:'+col[1]+'px';
+        rthRow.appendChild(th);
+      });
+      rthead.appendChild(rthRow);rtbl.appendChild(rthead);
+      var rtbody=document.createElement('tbody');
+      rets.forEach(function(ret,idx){
+        var bg=idx%2===0?'#FFFBEB':'#FFF';
+        var tr=document.createElement('tr');
+        function mkRTd(txt,s){
+          var td=document.createElement('td');
+          td.style.cssText='padding:6px 10px;border:1px solid #FEF3C7;vertical-align:middle;background:'+bg+';'+(s||'');
+          td.innerHTML=txt;return td;
+        }
+        tr.appendChild(mkRTd(esc(ret.no||''),'font-weight:700;color:#B45309;font-family:monospace'));
+        tr.appendChild(mkRTd(esc(ret.date||''),'color:var(--t2)'));
+        tr.appendChild(mkRTd(esc(ret.outNo||''),'color:var(--p);font-family:monospace'));
+        tr.appendChild(mkRTd(esc(ret.custNm||''),'font-weight:600'));
+        tr.appendChild(mkRTd(esc(ret.ordNo||''),'font-family:monospace'));
+        tr.appendChild(mkRTd(esc(ret.reason||''),'color:#B91C1C'));
+        tr.appendChild(mkRTd((ret.rollIds||[]).length+'匹','text-align:center;font-weight:700;color:#D97706'));
+        tr.appendChild(mkRTd(esc(ret.rm||''),'color:var(--t3)'));
+        rtbody.appendChild(tr);
+      });
+      rtbl.appendChild(rtbody);rwrap.appendChild(rtbl);rc.appendChild(rwrap);
+    }
+    pg.appendChild(rc);
+  }
+}
+
+// ── 退货处理 ──
+function openFGReturn(outId){
+  var r=DB.fgouts.find(function(x){return x.id===outId;});
+  if(!r)return alert('找不到出货记录');
+  var allRolls=fgRolls();
+  var outRolls=allRolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
+  if(!outRolls.length)return alert('该出货记录没有疋数据');
+  var totKG=outRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+  var modal=buildModal('退货处理 — '+(r.no||''),'mxl',function(body){
+    // 出货摘要
+    var sum=document.createElement('div');
+    sum.style.cssText='background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.8;color:#92400E';
+    sum.innerHTML='<b>送货单：</b>'+esc(r.no||'')+'　<b>日期：</b>'+esc(r.date||'')+'<br><b>客户：</b>'+esc(r.custNm||'')+'　<b>订单：</b>'+esc(r.ordNo||'');
+    body.appendChild(sum);
+    // 退货原因
+    var reasonWrap=document.createElement('div');reasonWrap.style.cssText='margin-bottom:10px';
+    reasonWrap.appendChild(fv('退货原因',mkInput('fgret-reason','品质问题','如：品质问题、客户拒收等','text')));
+    body.appendChild(reasonWrap);
+    // 备注
+    var rmWrap=document.createElement('div');rmWrap.style.cssText='margin-bottom:10px';
+    rmWrap.appendChild(fv('备注',mkInput('fgret-rm','','可选填退货处理说明','text')));
+    body.appendChild(rmWrap);
+    // 疋列表（全选 + 逐条勾选）
+    var selAllWrap=document.createElement('div');selAllWrap.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 10px;background:#F8FAFC;border-radius:6px;border:1px solid #E2E8F0';
+    var selAllCb=document.createElement('input');selAllCb.type='checkbox';selAllCb.checked=true;
+    selAllCb.style.cssText='width:16px;height:16px;accent-color:#DC2626;cursor:pointer';
+    selAllWrap.appendChild(selAllCb);
+    selAllWrap.appendChild(document.createTextNode('全选 — 退回以下疋料'));
+    body.appendChild(selAllWrap);
+    var rollCount=document.createElement('span');rollCount.style.cssText='font-size:11px;color:#666';
+    selAllWrap.appendChild(rollCount);
+    var listWrap=document.createElement('div');
+    listWrap.style.cssText='max-height:320px;overflow-y:auto;border:1px solid #E2E8F0;border-radius:6px;margin-bottom:10px';
+    var rollCbs=[];
+    outRolls.forEach(function(rl,idx){
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid #F1F5F9;font-size:11.5px'+(idx%2===0?';background:#FAFBFC':'');
+      var cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+      cb.style.cssText='width:15px;height:15px;accent-color:#DC2626;cursor:pointer';
+      cb.dataset.kg=rl.kg||'0';
+      rollCbs.push(cb);
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(
+        (rl.rollNo||'')+' | '+(rl.colorNm||'')+' '+(rl.colorCode||'')+' | 缸号:'+(rl.vatNo||'')+' | '+(rl.kg||'0')+'KG'
+      ));
+      listWrap.appendChild(row);
+    });
+    body.appendChild(listWrap);
+    // 统计
+    var stat=document.createElement('div');
+    stat.style.cssText='font-size:11.5px;color:#374151;margin-bottom:8px;padding:0 4px';
+    body.appendChild(stat);
+    function updateStat(){
+      var n=0,kg=0;
+      rollCbs.forEach(function(cb){if(cb.checked){n++;kg+=parseFloat(cb.dataset.kg||0);}});
+      stat.innerHTML='已选 <b>'+n+'</b> 匹，约 <b>'+kg.toFixed(1)+'</b> KG';
+      rollCount.textContent='（共 '+outRolls.length+' 匹）';
+    }
+    updateStat();
+    rollCbs.forEach(function(cb){cb.onchange=updateStat;});
+    selAllCb.onchange=function(){rollCbs.forEach(function(cb){cb.checked=selAllCb.checked;});updateStat();};
+    // 提示
+    var tip=document.createElement('div');
+    tip.style.cssText='font-size:11px;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:8px 10px;line-height:1.7;margin-bottom:6px';
+    tip.innerHTML='⚠️ 退货后疋料将恢复为<b>「在库」</b>状态，标记为<b>次品</b>（B级）。<br>'
+      +'如需处理对账扣减，请在对应对账单中添加<b>「扣减」</b>行。';
+    body.appendChild(tip);
+  },function(){
+    // 收集选中的疋
+    var selRollIds=[];var selRolls=[];
+    outRolls.forEach(function(rl,i){
+      if(rollCbs[i]&&rollCbs[i].checked){selRollIds.push(rl.id);selRolls.push(rl);}
+    });
+    if(!selRollIds.length)return alert('请至少选择一匹退货');
+    var reason=document.getElementById('fgret-reason');
+    var rm=document.getElementById('fgret-rm');
+    // 创建退货记录
+    var ret={
+      id:'ret_'+Date.now(),
+      no:fgReturnNo(),
+      date:new Date().toISOString().slice(0,10),
+      outId:r.id,outNo:r.no,
+      ordId:r.ordId,ordNo:r.ordNo,custNm:r.custNm,
+      reason:reason?reason.value:'品质问题',
+      rollIds:selRollIds,
+      totalKG:selRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0),
+      status:'completed',
+      rm:rm?rm.value:''
+    };
+    // 更新疋状态：status→'in'，清除出货引用，标记退货/次品
+    var allR=fgRolls();
+    selRollIds.forEach(function(rlid){
+      var rl=allR.find(function(x){return x.id===rlid;});
+      if(rl){rl.status='in';rl.outId='';rl.grade='B';rl.returned=true;rl.retId=ret.id;}
+    });
+    saveFgRolls(allR);
+    // 保存退货记录
+    var list=DB.fgreturns||[];
+    list.push(ret);
+    DB.fgreturns=list;
+    cm();
+    pgFGStock();
+    showToast('退货处理完成 — '+ret.no+'，共 '+selRollIds.length+' 匹回仓','success');
+  },'确认退货');
+  om(modal);
 }
 
 // ── 编辑出货记录（补填字段 + 撤回/补勾疋，不改单号）──
@@ -10496,6 +10656,12 @@ function fgOutNo(){
   var y=new Date().getFullYear(),max=0;
   (DB.fgouts||[]).forEach(function(r){if(r.no&&r.no.startsWith('DH'+y)){var n=parseInt(r.no.slice(6))||0;if(n>max)max=n;}});
   return 'DH'+y+String(max+1).padStart(4,'0');
+}
+
+function fgReturnNo(){
+  var y=String(new Date().getFullYear());var max=0;
+  (DB.fgreturns||[]).forEach(function(r){if(r.no&&r.no.startsWith('TH'+y)){var n=parseInt(r.no.slice(6))||0;if(n>max)max=n;}});
+  return 'TH'+y+String(max+1).padStart(4,'0');
 }
 
 function printFGOut(outId){

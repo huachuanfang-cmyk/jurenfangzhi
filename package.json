@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4"
+    "@supabase/supabase-js": "^2.105.4",
+    "acorn": "^8.16.0"
   }
 }

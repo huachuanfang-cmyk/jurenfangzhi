@@ -8982,14 +8982,40 @@ function pgFGStock(){
   qc.appendChild(mkBtn('📋 多色合并送货单','btn',function(){openMultiColorSheet();},));
   pg.appendChild(qc);
 
-  // ── Tab 切换栏 ──
+  // ── Tab 切换栏（胶囊风格）──
   var _fgTab=window._fgTab||'stock';
   var tabBar=document.createElement('div');
-  tabBar.style.cssText='display:flex;gap:0;margin-bottom:14px;border-radius:8px;overflow:hidden;border:1.5px solid #CBD5E1;background:#F8FAFC;box-shadow:0 1px 4px rgba(30,58,138,.06)';
-  [['stock','📦 库存台账'],['out','↑ 出货记录'],['returned','📋 退货待处理'],['returns','↩ 退货单']].forEach(function(t){
-    var tbtn=document.createElement('button');tbtn.type='button';tbtn.textContent=t[1];
+  tabBar.style.cssText='display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap';
+  function _fgIco(n){
+    var s='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+    if(n==='pkg')s+='<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>';
+    else if(n==='out')s+='<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>';
+    else if(n==='undo')s+='<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>';
+    else if(n==='file')s+='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="18" x2="9" y2="15"/><line x1="15" y1="18" x2="15" y2="15"/>';
+    s+='</svg>';return s;
+  }
+  [['stock','库存台账','#1E3A8A','#EEF2FF','pkg'],
+   ['out','出货记录','#1E3A8A','#EEF2FF','out'],
+   ['returned','退货待处理','#B45309','#FFFBEB','undo'],
+   ['returns','退货单','#B45309','#FFFBEB','file']
+  ].forEach(function(t){
+    var tbtn=document.createElement('button');tbtn.type='button';
     var isAct=_fgTab===t[0];
-    tbtn.style.cssText='flex:1;padding:10px 0;font-size:13.5px;font-weight:'+(isAct?'700':'500')+';border:none;cursor:pointer;transition:background .15s,color .15s;background:'+(isAct?'#1E3A8A':'#F8FAFC')+';color:'+(isAct?'#fff':'#64748B')+';letter-spacing:.3px';
+    var actBg=t[2],inactBg=t[3];
+    tbtn.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:8px 18px;font-size:13px;font-weight:'+(isAct?'700':'500')+';border:none;cursor:pointer;transition:all .2s;background:'+(isAct?actBg:inactBg)+';color:'+(isAct?'#fff':t[2])+';border-radius:99px;box-shadow:'+(isAct?'0 2px 8px '+(t[0].startsWith('ret')?'rgba(180,83,9,.25)':'rgba(30,58,138,.25)'):'none');
+    tbtn.onmouseover=function(){if(!isAct)this.style.background=t[0].startsWith('ret')?'#FEF3C7':'#E0E7FF';};
+    tbtn.onmouseout=function(){if(!isAct)this.style.background=inactBg;};
+    var iw=document.createElement('span');
+    iw.innerHTML=_fgIco(t[4]);
+    iw.style.cssText='display:inline-flex;align-items:center;width:16px;height:16px';
+    tbtn.appendChild(iw);
+    tbtn.appendChild(document.createTextNode(t[1]));
+    if(t[0]==='returned'&&returnedRolls.length>0){
+      var bd=document.createElement('span');
+      bd.style.cssText='margin-left:2px;background:#DC2626;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:99px;line-height:1.4';
+      bd.textContent=returnedRolls.length;
+      tbtn.appendChild(bd);
+    }
     tbtn.onclick=function(){window._fgTab=t[0];pgFGStock();};
     tabBar.appendChild(tbtn);
   });

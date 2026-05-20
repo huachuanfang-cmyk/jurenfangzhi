@@ -8955,18 +8955,20 @@ function pgFGStock(){
   var returnedRolls=rolls.filter(function(r){return r.status==='returned';});
 
   // 本月统计
-  var mInKG=0,mOutKG=0;
+  var mInKG=0,mOutKG=0,mRetKG=0;
   fgins.forEach(function(r){if((r.date||'').startsWith(thisMonth)){var rs=rolls.filter(function(x){return x.inId===r.id;});rs.forEach(function(x){mInKG+=(parseFloat(x.kg)||0);});}});
   fgouts.forEach(function(r){if((r.date||'').startsWith(thisMonth)){var rs=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});rs.forEach(function(x){mOutKG+=(parseFloat(x.kg)||0);});}});
+  (DB.fgreturns||[]).forEach(function(r){if((r.date||'').startsWith(thisMonth))mRetKG+=(parseFloat(r.totalKG)||0);});
 
-  // ── 汇总卡（6格）──
+  // ── 汇总卡（7格）──
   var sr=document.createElement('div');sr.className='sr';
   [[stockCount+'匹','当前库存',''+stockKG.toFixed(1)+'KG在库','sg'],
    [inKG.toFixed(1)+' KG','累计入库','历史合计','sb'],
    [outKG.toFixed(1)+' KG','累计出货','已出货','so'],
    [fgins.length+'批','入库批次','累计','sb2'],
    [mInKG.toFixed(1)+' KG','本月入库','当月','sb'],
-   [mOutKG.toFixed(1)+' KG','本月出货','当月','so']
+   [mOutKG.toFixed(1)+' KG','本月出货','当月','so'],
+   [mRetKG.toFixed(1)+' KG','本月退货','当月退货','sr2']
   ].forEach(function(s){
     var st=document.createElement('div');st.className='st '+s[3];
     st.innerHTML='<div class="sl">'+s[1]+'</div><div class="sv">'+s[0]+'</div><div class="ss">'+s[2]+'</div>';

@@ -4163,36 +4163,41 @@ function printSalesContract(ordId){
   var payClause=getPayClause(payTm);
   var needDeposit=payTm&&(payTm.indexOf('定金')>=0||payTm.indexOf('订金')>=0);
   var signDate=o.ordDate||(new Date().toISOString().slice(0,10));
-  // ② 构建颜色行（米数自动换算KG）
+  // ② 构建颜色行（根据单价单位选择KG或米显示）
   var colors=o.colors||[];
   var baseUnitPr=parseFloat(o.unitPr)||0;
-  var totalQtyKG=0,totalAmt=0,hasConvert=false;
+  var _isPricePerM=(o.prUnit||'元/KG').indexOf('M')>=0||(o.prUnit||'').indexOf('米')>=0;
+  var totalQty=0,totalAmt=0,hasConvert=false;
   var colorRows='';
   colors.forEach(function(c){
     var unitPr=baseUnitPr+(parseFloat(c.extraPr)||0);
     var rawQty=parseFloat(c.qty)||0;
     var isMeter=(c.unit||'公斤')==='米';
-    var contractKG,convHint='';
-    if(isMeter){
-      var kg=metersToKG(rawQty,o.width,o.widthUnit,o.weight);
-      if(kg!==null){
-        contractKG=kg;
-        convHint='<div style="font-size:8px;color:#888">('+rawQty+'米)</div>';
-        hasConvert=true;
-      } else {
-        contractKG=null;
-        convHint='<div style="font-size:8px;color:#c00">'+rawQty+'米（缺规格）</div>';
-      }
+    var displayQty,convHint='';
+    if(_isPricePerM){
+      displayQty=rawQty;
     } else {
-      contractKG=rawQty;
+      if(isMeter){
+        var kg=metersToKG(rawQty,o.width,o.widthUnit,o.weight);
+        if(kg!==null){
+          displayQty=kg;
+          convHint='<div style="font-size:8px;color:#888">('+rawQty+'米)</div>';
+          hasConvert=true;
+        } else {
+          displayQty=null;
+          convHint='<div style="font-size:8px;color:#c00">'+rawQty+'米（缺规格）</div>';
+        }
+      } else {
+        displayQty=rawQty;
+      }
     }
-    var amt=(contractKG!==null)?(contractKG*unitPr):null;
-    totalQtyKG+=(contractKG||0);
+    var amt=(displayQty!==null)?(displayQty*unitPr):null;
+    totalQty+=(displayQty||0);
     if(amt!==null)totalAmt+=amt;
     var clrCell=esc(c.nm||'')+(c.code?'<div style="font-size:8px;color:#888;margin-top:1px">('+esc(c.code)+')</div>':'')+convHint;
     colorRows+='<tr>'
       +'<td style="text-align:left;padding:4px 8px">'+clrCell+'</td>'
-      +'<td style="text-align:center">'+(contractKG!==null?contractKG:'')+'</td>'
+      +'<td style="text-align:center">'+(displayQty!==null?displayQty:'')+'</td>'
       +'<td style="text-align:center">'+(unitPr?unitPr.toFixed(2):'')+'</td>'
       +'<td style="text-align:right;padding-right:10px">'+(amt!==null&&amt?amt.toFixed(2):'')+'</td>'
       +'<td style="padding:4px 6px;font-size:9px;color:#555">'+esc(c.rm||'')+'</td>'
@@ -4203,16 +4208,22 @@ function printSalesContract(ordId){
   for(var i=colors.length;i<targetRows;i++){
     colorRows+='<tr style="height:26px"><td></td><td></td><td></td><td></td><td></td></tr>';
   }
-  // 智能溢短装公差：取订单中最大单色KG数量定档
-  var maxColorKG=0;
+  // 智能溢短装公差：取订单中最大单色数量定档
+  var maxColorQty=0;
   colors.forEach(function(c){
     var rawQty=parseFloat(c.qty)||0;
-    var isMeter=(c.unit||'公斤')==='米';
-    var kg=isMeter?(metersToKG(rawQty,o.width,o.widthUnit,o.weight)||0):rawQty;
-    if(kg>maxColorKG)maxColorKG=kg;
+    if(_isPricePerM){
+      if(rawQty>maxColorQty)maxColorQty=rawQty;
+    }else{
+      var isMeter=(c.unit||'公斤')==='米';
+      var kg=isMeter?(metersToKG(rawQty,o.width,o.widthUnit,o.weight)||0):rawQty;
+      if(kg>maxColorQty)maxColorQty=kg;
+    }
   });
-  var tolPct=maxColorKG>1000?'±3%':(maxColorKG>=50?'±5%':'±10%');
-  var totQtyDisp=totalQtyKG?totalQtyKG.toFixed(0)+' KG':'';
+  var tolPct=maxColorQty>1000?'±3%':(maxColorQty>=50?'±5%':'±10%');
+  var qtyUnitLabel=_isPricePerM?'米':'KG';
+  var prUnitLabel=_isPricePerM?'元/米':'元/KG';
+  var totQtyDisp=totalQty?totalQty.toFixed(_isPricePerM?1:0)+' '+qtyUnitLabel:'';
   var totalAmtStr=totalAmt?totalAmt.toFixed(2):'';
   var body='<div>'
     +docHeader('销&nbsp;&nbsp;售&nbsp;&nbsp;合&nbsp;&nbsp;同')
@@ -4248,8 +4259,8 @@ function printSalesContract(ordId){
     +'<table class="dt" style="border-top:none">'
     +'<thead><tr>'
     +'<th style="width:22%;text-align:left;padding:5px 8px">颜&nbsp;&nbsp;&nbsp;&nbsp;色</th>'
-    +'<th style="width:15%">数量（KG）</th>'
-    +'<th style="width:17%">单价（元/KG）<br><span style="font-size:8px;font-weight:400">'+taxLbl+'</span></th>'
+    +'<th style="width:15%">数量（'+qtyUnitLabel+'）</th>'
+    +'<th style="width:17%">单价（'+prUnitLabel+'）<br><span style="font-size:8px;font-weight:400">'+taxLbl+'</span></th>'
     +'<th style="width:18%;text-align:right;padding-right:10px">金额（元）</th>'
     +'<th style="text-align:left;padding:5px 8px">备&nbsp;&nbsp;&nbsp;&nbsp;注</th>'
     +'</tr></thead>'

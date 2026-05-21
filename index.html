@@ -466,6 +466,39 @@ function esc(s){if(s===null||s===undefined)s='';return String(s).replace(/&/g,'&
 function normSearch(v){return String(v==null?'':v).replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-0xFEE0);}).toLowerCase().replace(/[\s\-_\/.#]+/g,'').trim();}
 function searchHit(hay,q){q=normSearch(q);return !q||normSearch(hay).includes(q);}
 function sameCode(a,b){a=normSearch(a);b=normSearch(b);return !!a&&!!b&&a===b;}
+function matCode(m){return String((m&&(m.mid||m.prodNo||m.prod_no||m.materialNo||m.material_no||m.code||m.no))||'');}
+function matSearchText(m){
+  var cs=Array.isArray(m&&m.comps)?m.comps.map(function(c){return (c.nm||'')+' '+(c.pct||'');}).join(' '):((m&&m.comp)||(m&&m.comps)||'');
+  return [matCode(m),(m&&m.fab),(m&&m.alias),(m&&m.origCo),(m&&m.orig_co),(m&&m.origNo),(m&&m.orig_no),(m&&m.contact),(m&&m.weaver),(m&&m.dyer),cs].join(' ');
+}
+function matMatches(m,q){return searchHit(matSearchText(m),q);}
+function mergeMatResults(local,remote,q){
+  var seen={},out=[];
+  function add(m){
+    if(!m||!matMatches(m,q))return;
+    var k=normSearch(matCode(m))||(m.id||'');
+    if(k&&seen[k])return;
+    if(k)seen[k]=1;
+    out.push(m);
+  }
+  (local||[]).forEach(add);(remote||[]).forEach(add);return out;
+}
+async function fetchRemoteMaterialMatches(q){
+  if(_testMode||!q||!isOnline())return [];
+  initSupabase();
+  if(!_supabaseData)return [];
+  try{
+    var res=await _supabaseData.from('materials').select('*').limit(1000);
+    if(res.error||!res.data)return [];
+    return res.data.map(snakeToCamel).filter(function(m){return matMatches(m,q);});
+  }catch(e){console.warn('云端物料搜索失败:',e.message);return [];}
+}
+async function findMaterialByCode(mid){
+  var local=(DB.mats||[]).find(function(m){return sameCode(matCode(m),mid);});
+  if(local)return local;
+  var remote=await fetchRemoteMaterialMatches(mid);
+  return remote.find(function(m){return sameCode(matCode(m),mid);})||null;
+}
 function shortName(name){
   if(!name)return '';
   var s=name;
@@ -540,16 +573,12 @@ function openMatPicker(onSelect){
   sw.appendChild(srch);
   // 结果区
   var tw=document.createElement('div');tw.style.cssText='flex:1;overflow:auto';
-  function renderPicker(q){
+  var pickerSeq=0;
+  function paintPicker(list,q,tip){
     tw.innerHTML='';
-    var mats=DB.mats||[];
-    var list=q?mats.filter(function(m){
-      var cs=(m.comps||[]).map(function(c){return c.nm||'';}).join(' ');
-      return searchHit([(m.mid||''),(m.fab||''),(m.alias||''),(m.origCo||''),(m.origNo||''),(m.contact||''),(m.weaver||''),(m.dyer||''),cs].join(' '),q);
-    }):mats;
     if(!list.length){
       var emp=document.createElement('div');emp.style.cssText='text-align:center;padding:32px;color:var(--t3);font-size:13px';
-      emp.textContent='没有找到匹配的物料，换个关键词试试';tw.appendChild(emp);return;
+      emp.textContent=tip||'没有找到匹配的物料，换个关键词试试';tw.appendChild(emp);return;
     }
     var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
     var thead=document.createElement('thead');
@@ -561,17 +590,31 @@ function openMatPicker(onSelect){
       tr.style.cssText='cursor:pointer;background:'+(idx%2===0?'#fff':'#F8FAFF');
       tr.onmouseover=function(){this.style.background='#DBEAFE';};
       tr.onmouseout=function(){this.style.background=idx%2===0?'#fff':'#F8FAFF';};
-      tr.onclick=function(){onSelect(m.mid||'');document.body.removeChild(ov);};
+      tr.onclick=function(){onSelect(matCode(m),m);document.body.removeChild(ov);};
       function mkptd(txt,s){var td=document.createElement('td');td.style.cssText='padding:8px 12px;border-bottom:1px solid #EEF2F7;'+(s||'');td.textContent=txt||'—';return td;}
-      tr.appendChild(mkptd(m.mid,'font-family:monospace;font-weight:700;color:var(--p)'));
+      tr.appendChild(mkptd(matCode(m),'font-family:monospace;font-weight:700;color:var(--p)'));
       tr.appendChild(mkptd(m.fab,'color:#1e3a8a'));
       tr.appendChild(mkptd(m.alias,'color:#555'));
-      tr.appendChild(mkptd(m.origCo,'color:var(--t3);font-size:11px'));
+      tr.appendChild(mkptd(m.origCo||m.orig_co,'color:var(--t3);font-size:11px'));
       tbody.appendChild(tr);
     });
     tbl.appendChild(tbody);tw.appendChild(tbl);
     var inf=document.createElement('div');inf.style.cssText='font-size:10.5px;color:var(--t3);padding:6px 12px;border-top:1px solid var(--bd)';
-    inf.textContent='共 '+list.length+' 条 · 点击任意行填入编号';tw.appendChild(inf);
+    inf.textContent='共 '+list.length+' 条 · 点击任意行填入编号'+(tip?' · '+tip:'');tw.appendChild(inf);
+  }
+  async function renderPicker(q){
+    var seq=++pickerSeq;
+    var mats=DB.mats||[];
+    var list=q?mats.filter(function(m){return matMatches(m,q);}):mats;
+    if(q&&list.length===0&&isOnline()&&!_testMode){
+      paintPicker([],q,'本地未找到，正在查云端物料档案...');
+      var remote=await fetchRemoteMaterialMatches(q);
+      if(seq!==pickerSeq)return;
+      list=mergeMatResults(mats,remote,q);
+      paintPicker(list,q,remote.length?'已包含云端物料结果':'云端也没有找到匹配物料');
+      return;
+    }
+    paintPicker(list,q,'');
   }
   srch.oninput=function(){renderPicker(this.value);};
   renderPicker('');
@@ -2824,7 +2867,7 @@ function pgMat(){
   // 列表容器
   var wrap=document.createElement('div');wrap.id='mat-list';pg.appendChild(wrap);
 
-  function renderMatList(){
+  async function renderMatList(){
     var q=(document.getElementById('mat-search')||{value:''}).value;
     var sf=(document.getElementById('mat-src')||{value:''}).value;
     var mats=DB.mats;
@@ -2840,6 +2883,12 @@ function pgMat(){
     });
     var w=document.getElementById('mat-list');if(!w)return;
     w.innerHTML='';
+    if(q&&!sf&&!filtered.length&&isOnline()&&!_testMode){
+      w.innerHTML='<div style="text-align:center;padding:32px;color:var(--t3)">本地未找到，正在查云端物料档案...</div>';
+      var remote=await fetchRemoteMaterialMatches(q);
+      filtered=mergeMatResults(mats,remote,q);
+      w.innerHTML='';
+    }
     // 待确认提醒横幅
     var pendingAll=(DB.mats||[]).filter(function(m){return m.status==='pending';});
     if(pendingAll.length){
@@ -3837,9 +3886,9 @@ function openOM(id){
     var r1b=dGrid(4);
     r1b.appendChild(dFld('客户订单号',dInp('o-cno',o.custNo||'','客户方单号'),1,'#3B82F6'));
     // 物料编号 + 搜索按钮 + 自动匹配布类/成份/规格
-    function fillFromMat(mid){
+    async function fillFromMat(mid,knownMat){
       if(!mid)return;
-      var mat=(DB.mats||[]).find(function(m){return sameCode(m.mid,mid);});
+      var mat=knownMat||await findMaterialByCode(mid);
       if(!mat)return; // 未找到，静默，不报错
       // 填布类A（保持可编辑）
       var fabEl=document.getElementById('o-fab');
@@ -3886,7 +3935,7 @@ function openOM(id){
     pnoSearchBtn.onmouseover=function(){this.style.background='#DBEAFE';};
     pnoSearchBtn.onmouseout=function(){this.style.background='#EFF6FF';};
     // 搜索选中后也触发自动匹配
-    pnoSearchBtn.onclick=function(){openMatPicker(function(mid){pnoInp.value=mid;fillFromMat(mid);});};
+    pnoSearchBtn.onclick=function(){openMatPicker(function(mid,mat){pnoInp.value=matCode(mat)||mid;fillFromMat(pnoInp.value,mat);});};
     var pnoRow=document.createElement('div');pnoRow.style.cssText='display:flex;gap:4px;align-items:center';
     pnoRow.appendChild(pnoInp);pnoRow.appendChild(pnoSearchBtn);
     r1b.appendChild(dFld('物料编号',pnoRow,1,'#3B82F6'));

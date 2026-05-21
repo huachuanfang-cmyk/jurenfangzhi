@@ -903,7 +903,8 @@ async function pullFromSupabase(){
   if(_testMode) return;
   initSupabase();
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
-  // 先推送离线期间修改过的脏数据到云端，防止本地更新被云端旧数据覆盖
+  // Step 1 — 推送脏数据：只记录成功推送的表，不清除 dirty flag（防止 Step 2 拉回旧数据覆盖本地）
+  var pushedKeys = [];
   for(var key in TABLE_MAP){
     if(localStorage.getItem('gjr5_dirty_'+key) === '1'){
       var table = TABLE_MAP[key];
@@ -911,16 +912,18 @@ async function pullFromSupabase(){
       if(localData && localData.length > 0){
         try{
           var {error} = await _supabaseData.from(table).upsert(localData.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
-          if(!error) localStorage.removeItem('gjr5_dirty_'+key);
-        }catch(e){}
+          if(!error) pushedKeys.push(key);
+          else console.warn('推送失败['+key+']:', error.message);
+        }catch(e){ console.warn('推送异常['+key+']:', e.message); }
       }
     }
   }
-  // 从云端拉取全部数据（跳过推送失败的表，防止旧数据覆盖本地新数据）
+  // Step 2 — 拉取云端数据（跳过脏表 以及 刚推送成功的表——后者本地已是最新，拉取可能带回旧数据）
   var loaded = 0;
   var fails = [];
   for(var key in TABLE_MAP){
     if(localStorage.getItem('gjr5_dirty_'+key) === '1') continue;
+    if(pushedKeys.indexOf(key) >= 0) continue;
     try{
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
@@ -935,6 +938,10 @@ async function pullFromSupabase(){
         loaded += data.length;
       }
     }catch(e){ fails.push(TABLE_MAP[key]); }
+  }
+  // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（此时云端已确认最新，下次登录可拉回）
+  for(var i=0;i<pushedKeys.length;i++){
+    localStorage.removeItem('gjr5_dirty_'+pushedKeys[i]);
   }
   // 处理离线删除队列
   var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');

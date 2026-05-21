@@ -463,6 +463,9 @@ function fmt(v){return v||'—';}
 function fmtM(n){return n?'¥'+(+n).toLocaleString('zh-CN',{minimumFractionDigits:2}):'—';}
 function fmtN(n){return n?(+n).toLocaleString('zh-CN',{maximumFractionDigits:0}):'0';}
 function esc(s){if(s===null||s===undefined)s='';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function normSearch(v){return String(v==null?'':v).replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-0xFEE0);}).toLowerCase().replace(/[\s\-_\/.#]+/g,'').trim();}
+function searchHit(hay,q){q=normSearch(q);return !q||normSearch(hay).includes(q);}
+function sameCode(a,b){a=normSearch(a);b=normSearch(b);return !!a&&!!b&&a===b;}
 function shortName(name){
   if(!name)return '';
   var s=name;
@@ -540,10 +543,9 @@ function openMatPicker(onSelect){
   function renderPicker(q){
     tw.innerHTML='';
     var mats=DB.mats||[];
-    q=(q||'').toLowerCase().trim();
     var list=q?mats.filter(function(m){
       var cs=(m.comps||[]).map(function(c){return c.nm||'';}).join(' ');
-      return [(m.mid||''),(m.fab||''),(m.alias||''),(m.origCo||''),(m.origNo||''),cs].join(' ').toLowerCase().includes(q);
+      return searchHit([(m.mid||''),(m.fab||''),(m.alias||''),(m.origCo||''),(m.origNo||''),(m.contact||''),(m.weaver||''),(m.dyer||''),cs].join(' '),q);
     }):mats;
     if(!list.length){
       var emp=document.createElement('div');emp.style.cssText='text-align:center;padding:32px;color:var(--t3);font-size:13px';
@@ -2771,7 +2773,7 @@ function pgMat(){
   var wrap=document.createElement('div');wrap.id='mat-list';pg.appendChild(wrap);
 
   function renderMatList(){
-    var q=(document.getElementById('mat-search')||{value:''}).value.toLowerCase();
+    var q=(document.getElementById('mat-search')||{value:''}).value;
     var sf=(document.getElementById('mat-src')||{value:''}).value;
     var mats=DB.mats;
     var filtered=mats.filter(function(m){
@@ -2779,8 +2781,8 @@ function pgMat(){
       else if(sf&&m.src!==sf)return false;
       if(q){
         var compStr=Array.isArray(m.comps)?m.comps.map(function(c){return c.nm+' '+c.pct+'%';}).join(' '):( m.comp||'');
-        var hay=(m.mid||'')+' '+(m.fab||'')+' '+(m.alias||'')+' '+compStr+' '+(m.origCo||'');
-        if(!hay.toLowerCase().includes(q))return false;
+        var hay=(m.mid||'')+' '+(m.fab||'')+' '+(m.alias||'')+' '+compStr+' '+(m.origCo||'')+' '+(m.origNo||'')+' '+(m.contact||'')+' '+(m.weaver||'')+' '+(m.dyer||'');
+        if(!searchHit(hay,q))return false;
       }
       return true;
     });
@@ -3148,7 +3150,7 @@ function openMatModal(id){
     };
     if(!data.mid){showToast('请填写物料编号','error');return;}
     // 检查编号重复（编辑时允许保持原编号）
-    var dupCheck=(DB.mats||[]).find(function(x){return x.mid===data.mid&&x.id!==data.id;});
+    var dupCheck=(DB.mats||[]).find(function(x){return sameCode(x.mid,data.mid)&&x.id!==data.id;});
     if(dupCheck){showToast('编号 '+data.mid+' 已存在，请修改','error');return;}
     data.status='confirmed';data.pendingFrom=undefined;
     var list=DB.mats;
@@ -3549,7 +3551,7 @@ function renderOrds(list){
   cb.appendChild(info);
 }
 function fOrd(){
-  var q=(document.getElementById('oq').value||'').toLowerCase();
+  var q=(document.getElementById('oq').value||'');
   var s=(document.getElementById('os').value||'');
   var hideCompleted=window._ordHideCompleted||false;
   var _wf=window._ordWarnFilter||'';
@@ -3562,7 +3564,7 @@ function fOrd(){
       if(_wf==='noArec'&&!(lc2.hasShip&&!lc2.hasArec&&o.status!=='cancelled'&&o.status!=='draft'))return false;
       if(_wf==='noPaid'&&!(lc2.hasArec&&!lc2.hasPaid&&o.status!=='cancelled'&&o.status!=='draft'))return false;
     }
-    if(!q||o.no.toLowerCase().includes(q)||o.custNm.toLowerCase().includes(q)||(o.custNo||'').toLowerCase().includes(q)){
+    if(searchHit([(o.no||''),(o.prodNo||''),(o.custNm||''),(o.custNo||''),(o.fab||''),(o.fabB||''),(o.sty||''),(o.follower||''),(o.colors||[]).map(function(c){return (c.nm||'')+' '+(c.code||'');}).join(' ')].join(' '),q)){
       if(s&&o.status!==s)return false;
       if(hideCompleted&&(o.status==='completed'||o.status==='cancelled'||calcShipStatus(o.id)==='fully_out'))return false;
       return true;
@@ -3785,7 +3787,7 @@ function openOM(id){
     // 物料编号 + 搜索按钮 + 自动匹配布类/成份/规格
     function fillFromMat(mid){
       if(!mid)return;
-      var mat=(DB.mats||[]).find(function(m){return m.mid===mid.trim();});
+      var mat=(DB.mats||[]).find(function(m){return sameCode(m.mid,mid);});
       if(!mat)return; // 未找到，静默，不报错
       // 填布类A（保持可编辑）
       var fabEl=document.getElementById('o-fab');
@@ -4244,7 +4246,7 @@ function printSalesContract(ordId){
     var goOn=confirm('⚠️ 提示：客户【'+esc(o.custNm||'')+'】档案中未填写公司地址。\n\n合同签字栏"单位地址"将为空，建议先到客户档案补全地址。\n\n是否仍要继续打印合同？');
     if(!goOn)return;
   }
-  var mat=(DB.mats||[]).find(function(m){return m.mid===o.prodNo;})||{};
+  var mat=(DB.mats||[]).find(function(m){return sameCode(m.mid,o.prodNo);})||{};
   // 品名取值优先级：①订单手填覆盖 → ②客户档案设"完整布类" → ③默认保密别名
   var prodAlias;
   if(o.cpnm){
@@ -6080,7 +6082,7 @@ function pgQuot(){
       if(q){
         var haystack=(r.no||'')+' '+(r.custNm||'')+' '+(r.contact||'')+' '+
           (r.items||[]).map(function(i){return (i.fab||'')+' '+(i.no||'');}).join(' ');
-        if(!haystack.toLowerCase().includes(q))return false;
+        if(!searchHit(haystack,q))return false;
       }
       return true;
     });
@@ -6320,7 +6322,7 @@ function openQuotModal(id){
       // ── 物料档案联动 ──
       noI.addEventListener('blur',function(){
         var mid=this.value.trim();if(!mid)return;
-        var mat=(DB.mats||[]).find(function(m){return m.mid===mid;});
+        var mat=(DB.mats||[]).find(function(m){return sameCode(m.mid,mid);});
         if(mat){
           // 找到物料 → 自动填入可编辑字段
           var fab=row.querySelector('.qt-item-fab');
@@ -6541,7 +6543,7 @@ function openQuotModal(id){
     (data.items||[]).forEach(function(item){
       var mid=(item.no||'').trim();if(!mid)return;
       var mats=DB.mats||[];
-      var exists=mats.find(function(m){return m.mid===mid;});
+      var exists=mats.find(function(m){return sameCode(m.mid,mid);});
       if(!exists){
         var newMat={
           id:'mt_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),

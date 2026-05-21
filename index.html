@@ -730,6 +730,25 @@ var DB={
   get greyfabs(){return this.load('gfy')||[];}, set greyfabs(v){this.save('gfy',v);},
   get fgouts(){return this.load('fgo')||[];}, set fgouts(v){this.save('fgo',v);},
   get fgreturns(){return this.load('ret')||[];}, set fgreturns(v){this.save('ret',v);},
+  // ── 统一删除：本地过滤 + 云端同步 ──
+  remove:function(key,id){
+    var list=this.load(key);
+    var item=list.find(function(x){return x.id===id;});
+    if(!item)return false;
+    this.save(key,list.filter(function(x){return x.id!==id;}));
+    var table=TABLE_MAP[key];
+    if(table&&_supabaseData&&isOnline()){
+      (async function(){
+        var{error}=await _supabaseData.from(table).delete().eq('id',id);
+        if(error)console.warn('Supabase删除失败['+key+']:',error.message);
+      })();
+    }else if(table){
+      var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
+      dq.push({key:key,id:id,table:table});
+      localStorage.setItem('gjr5_delq',JSON.stringify(dq));
+    }
+    return true;
+  },
   // ── 导出完整数据快照 ──
   snapshot:function(){
     return {
@@ -870,6 +889,17 @@ async function pullFromSupabase(){
         loaded += data.length;
       }
     }catch(e){ fails.push(TABLE_MAP[key]); }
+  }
+  // 处理离线删除队列
+  var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
+  if(dq.length){
+    for(var i=dq.length-1;i>=0;i--){
+      try{
+        var{error}=await _supabaseData.from(dq[i].table).delete().eq('id',dq[i].id);
+        if(!error)dq.splice(i,1);
+      }catch(e){}
+    }
+    localStorage.setItem('gjr5_delq',JSON.stringify(dq));
   }
   if(fails.length) showToast('加载失败: '+fails.join(', '), 'error');
   else if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
@@ -2255,7 +2285,7 @@ function openCM(id){
   });
   om(modal);
 }
-function delC(id){if(!confirm('删除客户？'))return;DB.custs=DB.custs.filter(function(x){return x.id!==id;});pgCusts();}
+function delC(id){if(!confirm('删除客户？'))return;DB.remove('c',id);pgCusts();}
 function viewC(id){var c=DB.custs.find(function(x){return x.id===id;});if(!c)return;var modal=buildModal('客户详情','',function(body){var info='<div style=\"padding:8px;\"><table style=\"width:100%;line-height:1.8;\"><tr><td style=\"color:var(--t3);width:100px;\">客户名称</td><td><strong>'+esc(c.nm)+'</strong></td></tr><tr><td style=\"color:var(--t3);\">联系人</td><td>'+esc(c.ct||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">电话</td><td>'+esc(c.ph||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">微信</td><td>'+esc(c.wx||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">客户类型</td><td><span class=\"bx '+(c.tp==='外贸'?'bxb':'bxg')+'\">'+esc(c.tp||'内贸')+'</span></td></tr><tr><td style=\"color:var(--t3);\">账期</td><td>'+esc(c.tm||30)+'天</td></tr><tr><td style=\"color:var(--t3);\">付款方式</td><td>'+esc(c.pm||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">公司地址</td><td>'+esc(c.ad||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">备注</td><td>'+esc(c.rm||'—')+'</td></tr></table></div>';body.innerHTML=info;},function(){cm();openCM(id);},'编辑');om(modal);}
 
 // ═══ FACTORIES ═══
@@ -2379,7 +2409,7 @@ function openFM(id){
   });
   om(modal);
 }
-function delF(id){if(!confirm('删除工厂？'))return;DB.facts=DB.facts.filter(function(x){return x.id!==id;});pgFacts();}
+function delF(id){if(!confirm('删除工厂？'))return;DB.remove('f',id);pgFacts();}
 
 // ═══ 物料档案 ═══
 // 幅宽单位选项
@@ -2448,7 +2478,7 @@ function pgColorNotice(){
       opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
         if(!confirm('确认删除此打办通知单？'))return;
         var l=DB.load('cnotices')||[];
-        DB.save('cnotices',l.filter(function(x){return x.id!==id;}));
+        DB.remove('cnotices',id);
         pgColorNotice();showToast('已删除','success');
       };}(n.id)));
       tr.appendChild(opTd);tbody.appendChild(tr);
@@ -2811,7 +2841,7 @@ function pgMat(){
       delB.style.cssText='padding:2px 8px;border-radius:5px;font-size:10.5px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;cursor:pointer;font-weight:600';
       delB.onclick=(function(id){return function(){
         if(!confirm('确认删除物料「'+((DB.mats||[]).find(function(x){return x.id===id;})||{}).mid+'」？\n删除后无法恢复！'))return;
-        DB.mats=(DB.mats||[]).filter(function(x){return x.id!==id;});
+        DB.remove('mat',id);
         renderMatList();showToast('已删除','success');
       };})(m.id);
       opTd.appendChild(delB);
@@ -4114,7 +4144,7 @@ function openOD(id,readonly){
   },cm,'关闭');
   om(modal);
 }
-function delO(id){if(!confirm('删除订单？'))return;DB.orders=DB.orders.filter(function(x){return x.id!==id;});pgOrders();}
+function delO(id){if(!confirm('删除订单？'))return;DB.remove('o',id);pgOrders();}
 
 // ── 销售合同打印 ──
 // 米数转KG：幅宽×克重换算，取整（去小数保留到个位）
@@ -4418,7 +4448,7 @@ function saveT(id){
     DB.trks=l;cm();pgTrk();
   } catch(err){ alert("保存失败: " + err.message); }
 }
-function delT(id){if(!confirm('删除？'))return;DB.trks=DB.trks.filter(function(x){return x.id!==id;});pgTrk();}
+function delT(id){if(!confirm('删除？'))return;DB.remove('t',id);pgTrk();}
 
 // ═══ DOC PRINT SHARED ═══
 var DOC_CSS=[
@@ -6021,7 +6051,7 @@ function pgQuot(){
         addBtn('复制','btn bsm bgn',function(){copyQuot(id);});
         addBtn('删除','btn bsm br',function(){
           if(!confirm('确认删除此报价单？'))return;
-          DB.quots=(DB.quots||[]).filter(function(x){return x.id!==id;});
+          DB.remove('qt',id);
           renderQuotList();showToast('已删除','success');
         });
         td.appendChild(wrap2);return td;
@@ -7032,7 +7062,7 @@ function pgARec(){
           });
           DB.fgouts=fgoutsDB;
         }
-        DB.arecs=(DB.arecs||[]).filter(function(x){return x.id!==id;});
+        DB.remove('ar',id);
         pgARec();showToast('已删除，出货记录已恢复为未对账状态','success');
       };}(r.id)));
       arTbody.appendChild(tr);
@@ -8023,7 +8053,7 @@ function pgRecon(){
       }
       opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
         if(!confirm('确认删除此对账单？'))return;
-        DB.recons=(DB.recons||[]).filter(function(x){return x.id!==id;});
+        DB.remove('rc',id);
         pgRecon();showToast('已删除','success');
       };}(r.id)));
       tr.appendChild(opTd);
@@ -9388,7 +9418,7 @@ function pgFGStock(){
             var allR=fgRolls();var rl=allR.find(function(x){return x.id===rlid;});
             if(rl){rl.status='in';rl.outId='';saveFgRolls(allR);}
           });
-          DB.fgouts=(DB.fgouts||[]).filter(function(x){return x.id!==rid;});
+          DB.remove('fgo',rid);
           pgFGStock();showToast('已删除，库存已恢复','success');
         };
       };}(r.id, r, rls.length, totKG))));
@@ -9539,7 +9569,7 @@ function pgFGStock(){
         opTd.appendChild(mkBtn('打印','btn bsm bs',function(retId){return function(){printFGReturn(retId);};}(ret.id)));
         opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
           if(!confirm('确认删除退货单 '+esc(retId)+'？'))return;
-          DB.fgreturns=(DB.fgreturns||[]).filter(function(x){return x.id!==retId;});
+          DB.remove('ret',retId);
           pgFGStock();showToast('已删除','success');
         };}(ret.id)));
         tr.appendChild(opTd);
@@ -11466,7 +11496,7 @@ function pgGreyFab(){
     opTd.appendChild(mkBtn('打印','btn bsm boo',function(rid){return function(){prtGreyFab(rid);};}(r.id)));
     opTd.appendChild(mkBtn('删除','btn bsm br',function(rid){return function(){
       if(!confirm('确认删除此胚布采购合同？'))return;
-      DB.greyfabs=(DB.greyfabs||[]).filter(function(x){return x.id!==rid;});
+      DB.remove('gfy',rid);
       pgGreyFab();showToast('已删除','success');
     };}(r.id)));
     tr.appendChild(opTd);gfTbody.appendChild(tr);

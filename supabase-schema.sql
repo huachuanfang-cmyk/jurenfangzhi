@@ -232,10 +232,50 @@ CREATE TABLE fg_rolls (
   rm TEXT DEFAULT '',
   status TEXT DEFAULT 'in',
   out_id TEXT DEFAULT '',
+  grade TEXT DEFAULT '',
+  returned BOOLEAN DEFAULT FALSE,
+  ret_id TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 12. 报价单
+-- 12. 成品退货
+CREATE TABLE fg_returns (
+  id TEXT PRIMARY KEY,
+  no TEXT DEFAULT '',
+  date TEXT DEFAULT '',
+  out_id TEXT DEFAULT '',
+  out_no TEXT DEFAULT '',
+  ord_id TEXT DEFAULT '',
+  ord_no TEXT DEFAULT '',
+  cust_nm TEXT DEFAULT '',
+  reason TEXT DEFAULT '',
+  roll_ids JSONB DEFAULT '[]',
+  total_kg NUMERIC DEFAULT 0,
+  deduct_kg NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'pending',
+  rm TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 13. 打办通知单
+CREATE TABLE color_notices (
+  id TEXT PRIMARY KEY,
+  ref_no TEXT DEFAULT '',
+  "to" TEXT DEFAULT '',
+  attn TEXT DEFAULT '',
+  "from" TEXT DEFAULT '',
+  date TEXT DEFAULT '',
+  qty TEXT DEFAULT '',
+  fab TEXT DEFAULT '',
+  usage TEXT DEFAULT '',
+  colors JSONB DEFAULT '[]',
+  lights JSONB DEFAULT '[]',
+  rm TEXT DEFAULT '',
+  saved_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 14. 报价单
 CREATE TABLE quotations (
   id TEXT PRIMARY KEY,
   no TEXT DEFAULT '',
@@ -252,7 +292,7 @@ CREATE TABLE quotations (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 13. 应收对账
+-- 15. 应收对账
 CREATE TABLE ar_records (
   id TEXT PRIMARY KEY,
   no TEXT DEFAULT '',
@@ -273,7 +313,7 @@ CREATE TABLE ar_records (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 14. 应付对账
+-- 16. 应付对账
 CREATE TABLE ap_records (
   id TEXT PRIMARY KEY,
   no TEXT DEFAULT '',
@@ -295,7 +335,7 @@ CREATE TABLE ap_records (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 15. 织厂加工单配置
+-- 17. 织厂加工单配置
 CREATE TABLE weaving_docs (
   id SERIAL PRIMARY KEY,
   ord_id TEXT NOT NULL,
@@ -323,7 +363,7 @@ CREATE TABLE weaving_docs (
   UNIQUE(ord_id)
 );
 
--- 16. 染整加工单配置
+-- 18. 染整加工单配置
 CREATE TABLE dyeing_docs (
   id SERIAL PRIMARY KEY,
   ord_id TEXT NOT NULL,
@@ -372,6 +412,8 @@ ALTER TABLE grey_fabrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fg_ins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fg_outs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fg_rolls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fg_returns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE color_notices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ar_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ap_records ENABLE ROW LEVEL SECURITY;
@@ -390,6 +432,8 @@ CREATE POLICY "允许已登录用户所有操作" ON grey_fabrics FOR ALL USING 
 CREATE POLICY "允许已登录用户所有操作" ON fg_ins FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON fg_outs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON fg_rolls FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON fg_returns FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON color_notices FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON quotations FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON ar_records FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON ap_records FOR ALL USING (auth.role() = 'authenticated');
@@ -405,6 +449,8 @@ CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_trackings_ord_id ON trackings(ord_id);
 CREATE INDEX idx_fg_rolls_ord_id ON fg_rolls(ord_id);
 CREATE INDEX idx_fg_rolls_status ON fg_rolls(status);
+CREATE INDEX idx_fg_returns_out_id ON fg_returns(out_id);
+CREATE INDEX idx_fg_returns_status ON fg_returns(status);
 CREATE INDEX idx_fg_ins_ord_id ON fg_ins(ord_id);
 CREATE INDEX idx_fg_outs_ord_id ON fg_outs(ord_id);
 CREATE INDEX idx_quotations_cust_nm ON quotations(cust_nm);

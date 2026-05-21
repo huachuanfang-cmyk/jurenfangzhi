@@ -1306,6 +1306,7 @@ setTimeout(autoSnapshot, 2000);
 // ── 统一打印函数（隐藏iframe原地打印，零多余窗口） ──
 function printHTML(html){
   try{
+    html = applyPrintPolish(html);
     var iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
     document.body.appendChild(iframe);
@@ -1323,6 +1324,57 @@ function printHTML(html){
     setTimeout(doPrint, 3000);
     setTimeout(function(){ if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 61000);
   }catch(e){ alert('打印失败：'+e.message); }
+}
+
+function printPolishCSS(){
+  return [
+    'html{background:#fff}',
+    'body{font-size:9.2pt!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
+    '.docn,.co-name{font-size:14pt!important;font-weight:800!important}',
+    '.doci,.co-info{font-size:8.2pt!important;line-height:1.6!important;color:#555!important}',
+    '.doct,.doc-title,.title{font-size:15.5pt!important;font-weight:800!important}',
+    '.dt td,.dt th{font-size:9pt!important;line-height:1.45!important}',
+    '.dt th{font-size:8.8pt!important}',
+    '.dlb{font-size:8.8pt!important}',
+    '.sec-label,.party-lbl{font-size:7.8pt!important}',
+    '.sec-val,.party-name{font-size:11pt!important}',
+    '.party-info,.sec-sub{font-size:8.3pt!important}',
+    '.terms-box{padding:7px 10px!important;margin:5px 0!important}',
+    '.terms-title{font-size:9pt!important;margin-bottom:4px!important}',
+    '.terms-body{font-size:8pt!important;line-height:1.72!important}',
+    '.rmkb{font-size:8pt!important;line-height:1.65!important}',
+    '.sgc{font-size:9pt!important;padding:16px 12px 6px!important}',
+    '.info-lbl,.lbl{font-size:8.6pt!important;color:#666!important}',
+    '.info-val,.val{font-size:9.5pt!important;color:#111!important}',
+    '.sh-lbl,.no-lbl{font-size:8pt!important;color:#777!important}',
+    '.sh-no,.no-val{font-size:11pt!important}',
+    'table.rolls td{font-size:9pt!important;height:17px!important;line-height:17px!important}',
+    'table.rolls th{font-size:8.3pt!important;padding:4px 3px!important}',
+    '.tot-lbl{font-size:7.8pt!important;color:#777!important}',
+    '.tot-data{font-size:9.5pt!important}',
+    '.tot-data strong{font-size:11pt!important}',
+    '.disc{font-size:7.8pt!important;color:#777!important}',
+    '.sc{padding:9px 12px 7px!important}',
+    '.sc-lbl{font-size:8pt!important;color:#777!important}',
+    '.sc-val{font-size:9.5pt!important}',
+    '.notes-item{font-size:8.8pt!important;line-height:1.75!important}',
+    '.qt{font-size:9pt!important}',
+    '.qt th{font-size:8.6pt!important;padding:6px 8px!important}',
+    '.qt td{font-size:9pt!important;padding:7px 8px!important}',
+    '.td-price{font-size:10pt!important}',
+    '.footer{font-size:9pt!important}',
+    '.maker-name{font-size:10pt!important}',
+    '@media print{body{box-shadow:none!important;padding:5mm 8mm!important}.tb{display:none!important}}',
+    '@page{margin:5mm 8mm}'
+  ].join('');
+}
+
+function applyPrintPolish(html){
+  if(!html||/@page\s*\{\s*size\s*:\s*80mm/i.test(html))return html;
+  var css='<style id="gjr-print-polish">'+printPolishCSS()+'</style>';
+  if(html.indexOf('id="gjr-print-polish"')>=0)return html;
+  if(/<\/head>/i.test(html))return html.replace(/<\/head>/i,css+'</head>');
+  return css+html;
 }
 
 var CLR_STATUS_LIST=[

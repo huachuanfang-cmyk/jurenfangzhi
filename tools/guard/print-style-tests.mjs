@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 const html = readFileSync('index.html', 'utf8');
+const polish = html.slice(html.indexOf('function printPolishCSS'), html.indexOf('function applyPrintPolish'));
 
 const tests = [];
 
@@ -28,7 +29,13 @@ test('print polish improves customer-facing delivery typography', () => {
 test('print polish preserves compact one-page contracts', () => {
   assert(/\.terms-body\{[^}]*font-size:8pt!important/.test(html), 'contract terms should stay compact at 8pt');
   assert(/\.dt td,\s*\.dt th\{[^}]*font-size:9pt!important/.test(html), 'shared contract tables should use readable 9pt text');
-  assert(/margin:5mm 8mm/.test(html), 'A4 print page should keep compact margins');
+});
+
+test('print polish changes typography only, not grids, backgrounds, or page geometry', () => {
+  assert(!/print-color-adjust|-webkit-print-color-adjust/.test(polish), 'must not force browsers to print solid color blocks');
+  assert(!/@page/.test(polish), 'must not override original page setup');
+  assert(!/background\s*:/.test(polish), 'must not add or force print backgrounds');
+  assert(!/padding\s*:/.test(polish), 'must not change original grid spacing');
 });
 
 let passed = 0;

@@ -698,6 +698,7 @@ document.addEventListener('keydown',function(e){
 
 // ═══ DATA ═══
 var _testMode=window.location.search.indexOf('test=1')>=0;
+var _auditIssues=null;
 var DB={
   _c: {},
   k:function(n){return _testMode?'gjr5_test_'+n:'gjr5_'+n;},
@@ -733,6 +734,7 @@ var DB={
     var keys=['c','f','mat','o','t','wd','qt','ar','rc','dd','yn','yo','fgi','gfy','fgo','ret','fgr','cnotices'];
     keys.forEach(function(k){
       localStorage.removeItem('gjr5_test_'+k);
+      localStorage.removeItem('gjr5_test_dirty_'+k);
       DB._c[k]=null;
     });
     localStorage.removeItem('gjr5_test_delq');
@@ -773,7 +775,12 @@ var DB={
     var item=list.find(function(x){return x.id===id;});
     if(!item)return false;
     this.save(key,list.filter(function(x){return x.id!==id;}));
-    if(_testMode) return true;
+    if(_testMode){
+      var dq=JSON.parse(localStorage.getItem('gjr5_test_delq')||'[]');
+      dq.push({key:key,id:id});
+      localStorage.setItem('gjr5_test_delq',JSON.stringify(dq));
+      return true;
+    }
     var table=TABLE_MAP[key];
     if(table&&_supabaseData&&isOnline()){
       (async function(){
@@ -948,7 +955,10 @@ async function pullFromSupabase(){
 var _origSave = DB.save.bind(DB);
 DB.save = function(n, v){
   _origSave(n, v);
-  if(_testMode) return;
+  if(_testMode){
+    if(TABLE_MAP[n]) localStorage.setItem('gjr5_test_dirty_'+n, '1');
+    return;
+  }
   // 标记为未同步（离线期间修改过）
   if(TABLE_MAP[n]) localStorage.setItem('gjr5_dirty_'+n, '1');
   if(_supabaseData && isOnline()){
@@ -1097,24 +1107,8 @@ async function onAuthSuccess(){
     }
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
-    go('dash');
-  // 登录后自动数据巡检（在页面渲染完成后插入）
-  try{
-    var auditIssues=DB.audit();
-    if(auditIssues.length){
-      setTimeout(function(){
-        var pgEl=document.getElementById('pg');
-        if(pgEl && pgEl.children.length){
-          var banner=document.createElement('div');
-          banner.style.cssText='background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#E65100;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-          banner.innerHTML='<span style="font-size:16px;flex-shrink:0">⚠️</span><span style="font-weight:600;flex-shrink:0">数据巡检发现 '+auditIssues.length+' 项异常：</span>'
-            +'<span style="color:#BF360C;font-size:11px">'+auditIssues.slice(0,3).join('；')+'</span>'
-            +(auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+auditIssues.length+'项</span>':'');
-          pgEl.insertBefore(banner, pgEl.firstChild);
-        }
-      }, 50);
-    }
-  }catch(e){console.warn('巡检失败',e);}
+  _auditIssues = DB.audit();
+  go('dash');
 }
 
 function showLogin(){
@@ -1774,6 +1768,17 @@ function pgDash(){
     banner.appendChild(icon);banner.appendChild(txt);
     pg.appendChild(banner);
   })();
+
+  // 数据巡检横幅
+  if(_auditIssues && _auditIssues.length){
+    var ab=document.createElement('div');
+    ab.style.cssText='background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#E65100;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    ab.innerHTML='<span style="font-size:16px;flex-shrink:0">\u26A0\uFE0F</span><span style="font-weight:600;flex-shrink:0">数据巡检发现 '+_auditIssues.length+' 项异常：</span>'
+      +'<span style="color:#BF360C;font-size:11px">'+_auditIssues.slice(0,3).join('；')+'</span>'
+      +(_auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+_auditIssues.length+'项</span>':'')+'</span>';
+    pg.appendChild(ab);
+    _auditIssues = null;
+  }
 
   // Stats
   // 订单号设置区

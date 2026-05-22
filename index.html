@@ -965,8 +965,10 @@ async function pullFromSupabase(){
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
   // Step 1 — 推送脏数据：只记录成功推送的表，不清除 dirty flag（防止 Step 2 拉回旧数据覆盖本地）
   var pushedKeys = [];
+  var prePushVers = {};
   for(var key in TABLE_MAP){
     if(localStorage.getItem('gjr5_dirty_'+key) === '1'){
+      prePushVers[key] = _syncVersions[key] || 0;
       var table = TABLE_MAP[key];
       var localData = DB.load(key);
       if(localData && localData.length > 0){
@@ -999,9 +1001,12 @@ async function pullFromSupabase(){
       }
     }catch(e){ fails.push(TABLE_MAP[key]); }
   }
-  // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（此时云端已确认最新，下次登录可拉回）
+  // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（带版本保险：推送期间版本未变才清除）
   for(var i=0;i<pushedKeys.length;i++){
-    localStorage.removeItem('gjr5_dirty_'+pushedKeys[i]);
+    var key = pushedKeys[i];
+    if((_syncVersions[key] || 0) === (prePushVers[key] || 0)){
+      localStorage.removeItem('gjr5_dirty_'+key);
+    }
   }
   // 处理离线删除队列
   var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
@@ -1073,13 +1078,13 @@ window.addEventListener('online', function(){
         var v = DB.load(key);
         if(v && v.length){
           var table = TABLE_MAP[key];
-          (async function(){
+          (async function(key, ver){
             var {error} = await _supabaseData.from(table).upsert(v.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
-            if(!error){
+            if(!error && (_syncVersions[key] || 0) === ver){
               localStorage.removeItem('gjr5_dirty_'+key);
               console.log('上线重推成功['+key+']');
             }
-          })();
+          })(key, _syncVersions[key] || 0);
         }
       });
     }, 1000);

@@ -251,6 +251,51 @@ test('version guard: mixed scenario — some tables changed, some stable', () =>
   );
 });
 
+// ══ pullFromSupabase 路径：推送期间版本变化不清 dirty ══
+test('pullFromSupabase step3: 推送期间版本变化则不清 dirty', () => {
+  // 模拟 pullFromSupabase 流程：
+  // Step 1 推送时捕获版本 prePushVers={o:1}
+  // Step 2 拉取期间用户又保存了一次 → _syncVersions[o] 变成 2
+  // Step 3 检查版本发现不匹配 → 不清 dirty
+  var dirtyKeys = ['o'];
+  var pushedKeys = ['o'];         // 'o' 推送成功
+  var preSyncVers = { o: 1 };     // Step 1 捕获的版本
+  var postSyncVers = { o: 2 };    // Step 2 完成后版本变了（Step 2 拉取期间有新保存）
+
+  var result = computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers);
+
+  // 'o' 版本变了 → dirty flag 应保留
+  if (!result.remainingDirty.includes('o')) throw new Error(
+    'pullFromSupabase: version changed during pull, dirty for "o" should remain'
+  );
+  if (!result.versionBlocked.includes('o')) throw new Error(
+    '"o" should be versionBlocked'
+  );
+  // 'c' 不脏应正常拉取
+  if (!result.pullKeys.includes('c')) throw new Error(
+    'clean table "c" should be pulled'
+  );
+});
+
+// ══ online 重推路径：重推期间版本变化不清 dirty ══
+test('online retry: 重推期间版本变化则不清 dirty', () => {
+  // 模拟上线重推：单表重推，但重推过程中用户又保存了
+  var dirtyKeys = ['fgr'];
+  var pushedKeys = ['fgr'];
+  var preSyncVers = { fgr: 5 };    // 发起重推时版本为 5
+  var postSyncVers = { fgr: 6 };   // upsert 返回时版本已变（期间有新保存）
+
+  var result = computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers);
+
+  // dirty flag 应保留，不让旧数据覆盖
+  if (!result.remainingDirty.includes('fgr')) throw new Error(
+    'online retry: version changed during retry, dirty for "fgr" should remain'
+  );
+  if (result.clearedDirty.length !== 0) throw new Error(
+    'no dirty should be cleared when version changed during retry'
+  );
+});
+
 // ══ 运行 ══
 let passed = 0;
 for (const { name, fn } of tests) {

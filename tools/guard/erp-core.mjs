@@ -139,6 +139,38 @@ export function createGuardStore() {
       return clone(data.fgr.filter((roll) => roll.status === 'return_pending'));
     },
 
+    getRollsByOrder(ordId) {
+      return clone(data.fgr.filter((r) => r.ordId === ordId));
+    },
+
+    groupRollsByColorVat(ordId) {
+      var rolls = data.fgr.filter(function(r){ return r.ordId === ordId && r.status === 'in'; });
+      var groups = {};
+      rolls.forEach(function(r){
+        var key = (r.colorNm || '') + '|' + (r.vatNo || '');
+        if (!groups[key]) groups[key] = { key: key, colorNm: r.colorNm || '', vatNo: r.vatNo || '', rollIds: [] };
+        groups[key].rollIds.push(r.id);
+      });
+      return Object.keys(groups).map(function(k){ return {
+        key: k,
+        colorNm: groups[k].colorNm,
+        vatNo: groups[k].vatNo,
+        rollIds: groups[k].rollIds,
+        count: groups[k].rollIds.length,
+      }; });
+    },
+
+    deleteShipment(shipmentId) {
+      var shipment = requireRecord('fgo', shipmentId, 'shipment');
+      (shipment.rollIds || []).forEach(function(rid){
+        var roll = byId(data.fgr, rid);
+        if (roll) { roll.status = 'in'; roll.outId = ''; }
+      });
+      data.fgo = data.fgo.filter(function(s){ return s.id !== shipmentId; });
+      deleteIntents.push({ key: 'fgo', id: shipmentId });
+      return true;
+    },
+
     createReceivable(receivable) {
       for (const outId of receivable.outIds || []) {
         const shipment = requireRecord('fgo', outId, 'shipment');

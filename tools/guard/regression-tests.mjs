@@ -304,6 +304,98 @@ test('receivable details show pending status when partially paid', () => {
   assert.equal(details.status, 'pending');
 });
 
+// ══ 真实业务流程：多颜色入库 ══
+
+test('同一订单多颜色入库后各色布卷独立管理', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-030', no: 'G20260030', colors: [
+    { nm: 'Red', code: 'R-001' },
+    { nm: 'Blue', code: 'B-001' },
+  ]});
+  store.receiveFinishedGoods({ id: 'in-030', ordId: 'ord-030', rolls: [
+    { id: 'roll-030a', kg: '50', colorNm: 'Red', colorCode: 'R-001' },
+    { id: 'roll-030b', kg: '30', colorNm: 'Blue', colorCode: 'B-001' },
+  ]});
+  var rolls = store.getRollsByOrder('ord-030');
+  assert.equal(rolls.length, 2, '应生成 2 匹布');
+  assert.equal(rolls[0].colorNm, 'Red');
+  assert.equal(rolls[1].colorNm, 'Blue');
+  assert.equal(store.getInventoryRolls().length, 2, '两匹布均在库存中');
+});
+
+// ══ 真实业务流程：多色出货按颜色缸号拆分 ══
+
+test('同一订单多颜色出货时按颜色缸号自动分组', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-031', no: 'G20260031', colors: [
+    { nm: 'Red', code: 'R-001' },
+    { nm: 'Blue', code: 'B-001' },
+    { nm: 'Red', code: 'R-001' },
+  ]});
+  store.receiveFinishedGoods({ id: 'in-031', ordId: 'ord-031',
+    vatNo: 'VAT-A', rolls: [
+    { id: 'roll-031a', colorNm: 'Red', vatNo: 'VAT-A' },
+    { id: 'roll-031b', colorNm: 'Red', vatNo: 'VAT-A' },
+  ]});
+  store.receiveFinishedGoods({ id: 'in-032', ordId: 'ord-031',
+    vatNo: 'VAT-B', rolls: [
+    { id: 'roll-031c', colorNm: 'Blue', vatNo: 'VAT-B' },
+  ]});
+
+  var groups = store.groupRollsByColorVat('ord-031');
+  assert.equal(groups.length, 2, '应按颜色+缸号拆为 2 组');
+  var redGroup = groups.find(function(g){ return g.colorNm === 'Red'; });
+  var blueGroup = groups.find(function(g){ return g.colorNm === 'Blue'; });
+  assert.equal(redGroup.count, 2, '红色 2 匹在同一组');
+  assert.equal(redGroup.vatNo, 'VAT-A');
+  assert.equal(blueGroup.count, 1, '蓝色 1 匹单独一组');
+  assert.equal(blueGroup.vatNo, 'VAT-B');
+});
+
+// ══ 真实业务流程：删除出货后布卷状态恢复 ══
+
+test('删除出货记录后布卷状态恢复为在库', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-032', no: 'G20260032' });
+  store.receiveFinishedGoods({ id: 'in-032', ordId: 'ord-032',
+    rolls: [{ id: 'roll-032a', kg: '50' }] });
+  store.shipFinishedGoods({ id: 'out-032', ordId: 'ord-032', rollIds: ['roll-032a'] });
+
+  // 出货后状态为 out
+  assert.equal(store.getRoll('roll-032a').status, 'out');
+  assert.equal(store.getRoll('roll-032a').outId, 'out-032');
+
+  // 删除出货
+  store.deleteShipment('out-032');
+
+  // 布卷恢复为在库
+  assert.equal(store.getRoll('roll-032a').status, 'in', '删除出货后布卷应恢复为 in');
+  assert.equal(store.getRoll('roll-032a').outId, '', 'outId 应清空');
+  assert.equal(store.getInventoryRolls().length, 1, '布卷应回到可用库存');
+  assert.equal(store.getShipment('out-032'), null, '出货记录应已删除');
+});
+
+// ══ 真实业务流程：退货后不回普通库存 ══
+
+test('退货后布卷不回到普通可用库存', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-033', no: 'G20260033' });
+  store.receiveFinishedGoods({ id: 'in-033', ordId: 'ord-033',
+    rolls: [{ id: 'roll-033a', kg: '50' }] });
+  store.shipFinishedGoods({ id: 'out-033', ordId: 'ord-033', rollIds: ['roll-033a'] });
+  store.returnFinishedGoods({ id: 'ret-033', outId: 'out-033', rollIds: ['roll-033a'], reason: '质量问题' });
+
+  // 退货后不在普通库存
+  var inv = store.getInventoryRolls();
+  assert.equal(inv.filter(function(r){ return r.id === 'roll-033a'; }).length, 0, '退货布卷不在可出货库存中');
+  assert.equal(inv.length, 0);
+
+  // 退货后在待处理列表
+  var pending = store.getReturnPendingRolls();
+  assert.equal(pending.length, 1, '退货布卷在待处理列表中');
+  assert.equal(pending[0].id, 'roll-033a');
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

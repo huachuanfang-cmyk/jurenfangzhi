@@ -66,3 +66,38 @@ export function simulateSyncFlow(dirtyKeys, pushResults, allKeys) {
   // Step 2 & 3: 计算同步计划
   return computeSyncPlan(dirtyKeys, pushedKeys, allKeys);
 }
+
+/**
+ * 带版本保险的同步计划。
+ * 在 computeSyncPlan 基础上增加版本检查：
+ * 如果某个表在推送期间版本发生变化（有新本地保存），则不清理其 dirty flag。
+ *
+ * @param {string[]} dirtyKeys     — dirty flag 已设置的键
+ * @param {string[]} pushedKeys    — 成功推送的键
+ * @param {object}   preSyncVers   — { key: version } 推送发起前的版本号
+ * @param {object}   postSyncVers  — { key: version } 推送完成后的版本号
+ * @param {string[]} allKeys       — 所有可能的键
+ */
+export function computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers, allKeys) {
+  var plan = computeSyncPlan(dirtyKeys, pushedKeys, allKeys);
+
+  // 版本检查：推送期间版本变了 → 不清除 dirty flag
+  var versionedDirty = plan.clearedDirty.filter(function(k){
+    var pre = preSyncVers[k] || 0;
+    var post = postSyncVers[k] || 0;
+    return post === pre; // 版本未变 → 允许清除
+  });
+  var versionBlocked = plan.clearedDirty.filter(function(k){
+    var pre = preSyncVers[k] || 0;
+    var post = postSyncVers[k] || 0;
+    return post !== pre; // 版本变了 → 保留 dirty
+  });
+
+  return {
+    skipPull: plan.skipPull,
+    pullKeys: plan.pullKeys,
+    clearedDirty: versionedDirty,
+    remainingDirty: plan.remainingDirty.concat(versionBlocked),
+    versionBlocked: versionBlocked,
+  };
+}

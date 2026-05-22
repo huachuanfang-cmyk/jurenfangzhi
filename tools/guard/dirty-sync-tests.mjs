@@ -5,7 +5,7 @@
 //   3. 测试模式不触发云同步
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
-import { simulateSyncFlow, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -175,6 +175,79 @@ test('no dirty tables: all keys pulled from cloud', () => {
   );
   if (result.remainingDirty.length !== 0) throw new Error(
     'no remaining dirty flags expected'
+  );
+});
+
+// ══ 版本保险：同步期间有新保存 → 不清除 dirty ══
+
+test('version guard: late async does not clear dirty when version changed during sync', () => {
+  // 模拟场景：DB.save 发起 upsert（preSyncVer=1），期间又有一次新保存（postSyncVer=2）
+  var dirtyKeys = ['o'];
+  var pushedKeys = ['o'];
+  var preSyncVers = { o: 1 };
+  var postSyncVers = { o: 2 }; // 推送期间版本变化了！
+
+  var result = computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers);
+
+  // 'o' 推送成功但版本变了 → dirty flag 应保留
+  if (!result.remainingDirty.includes('o')) throw new Error(
+    'version changed during sync: dirty flag for "o" should remain'
+  );
+  if (result.clearedDirty.includes('o')) throw new Error(
+    'version changed: "o" should NOT be in clearedDirty'
+  );
+  if (!result.versionBlocked.includes('o')) throw new Error(
+    '"o" should be in versionBlocked list'
+  );
+});
+
+test('version guard: stable version allows dirty clear', () => {
+  // 模拟场景：DB.save 发起 upsert 到完成期间没有新保存
+  var dirtyKeys = ['o', 'ar'];
+  var pushedKeys = ['o', 'ar'];
+  var preSyncVers = { o: 3, ar: 1 };
+  var postSyncVers = { o: 3, ar: 1 }; // 版本没变
+
+  var result = computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers);
+
+  // 两个表版本没变 → dirty 应正常清除
+  if (result.clearedDirty.length !== 2) throw new Error(
+    'both tables should have dirty cleared when version stable'
+  );
+  if (result.remainingDirty.length !== 0) throw new Error(
+    'no remaining dirty expected when all versions stable'
+  );
+  if (result.versionBlocked.length !== 0) throw new Error(
+    'no versionBlocked expected when all versions stable'
+  );
+});
+
+test('version guard: mixed scenario — some tables changed, some stable', () => {
+  // 'o' 版本变了，'ar' 版本没变
+  var dirtyKeys = ['o', 'ar', 'c'];
+  var pushedKeys = ['o', 'ar']; // 'c' failed to push
+  var preSyncVers = { o: 1, ar: 1 };
+  var postSyncVers = { o: 2, ar: 1 }; // 'o' changed during sync
+
+  var result = computeSyncPlanWithVersion(dirtyKeys, pushedKeys, preSyncVers, postSyncVers);
+
+  // 'ar' 版本没变 → 清除
+  if (!result.clearedDirty.includes('ar')) throw new Error(
+    '"ar" version stable: should be cleared'
+  );
+  // 'o' 版本变了 → 保留 dirty
+  if (!result.remainingDirty.includes('o')) throw new Error(
+    '"o" version changed: dirty should remain'
+  );
+  // 'c' push 失败 → dirty 保留
+  if (!result.remainingDirty.includes('c')) throw new Error(
+    '"c" push failed: dirty should remain'
+  );
+  if (!result.versionBlocked.includes('o')) throw new Error(
+    '"o" should be in versionBlocked'
+  );
+  if (result.versionBlocked.includes('ar')) throw new Error(
+    '"ar" should NOT be in versionBlocked'
   );
 });
 

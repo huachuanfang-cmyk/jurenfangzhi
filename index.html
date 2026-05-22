@@ -744,6 +744,7 @@ document.addEventListener('keydown',function(e){
 // ═══ DATA ═══
 var _testMode=window.location.search.indexOf('test=1')>=0;
 var _auditIssues=null;
+var _syncVersions={};
 var DB={
   _c: {},
   k:function(n){return _testMode?'gjr5_test_'+n:'gjr5_'+n;},
@@ -1017,13 +1018,19 @@ DB.save = function(n, v){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
     var snakeData = v.map(camelToSnake);
+    // 版本保险：记录当前版本，同步完成后只有版本未变才清理 dirty flag
+    _syncVersions[n] = (_syncVersions[n] || 0) + 1;
+    var preSyncVer = _syncVersions[n];
     (async function(){
       var maxRetries = 3;
       for(var attempt = 0; attempt < maxRetries; attempt++){
         try{
           var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
           if(!error){
-            localStorage.removeItem('gjr5_dirty_'+n);
+            // 只有版本未变（期间没有新的本地保存）才清理 dirty flag
+            if(_syncVersions[n] === preSyncVer){
+              localStorage.removeItem('gjr5_dirty_'+n);
+            }
             return;
           }
           if(attempt < maxRetries - 1) console.warn('同步重试['+n+']('+(attempt+1)+'):', error.message);

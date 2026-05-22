@@ -11222,6 +11222,26 @@ function printFGOut(outId){
   var hasKG=totKG>0, hasM=totM>0;
   if(!hasKG&&!hasM)hasKG=true; // 两者都空时仍打印 KG 列占位
 
+  var fgOutGroups=[];
+  rolls.forEach(function(r){
+    var k=(r.colorNm||'')+'|'+(r.vatNo||'');
+    var g=fgOutGroups.find(function(x){return x.key===k;});
+    if(!g){
+      g={key:k,colorNm:r.colorNm||'',vatNo:r.vatNo||'',rolls:[],groupKG:0,groupM:0};
+      fgOutGroups.push(g);
+    }
+    g.rolls.push(r);
+    g.groupKG+=(parseFloat(r.kg)||0);
+    g.groupM+=(parseFloat(r.m)||0);
+  });
+  var multiGroups=fgOutGroups.length>1;
+  var colorLabel=multiGroups
+    ? '多色（'+fgOutGroups.length+'组）：'+fgOutGroups.map(function(g){return g.colorNm||'—';}).join('、')
+    : (rolls[0]&&rolls[0].colorNm||'');
+  var vatLabel=multiGroups
+    ? '多缸（'+fgOutGroups.length+'组）：'+fgOutGroups.map(function(g){return g.vatNo||'—';}).join('、')
+    : (rolls[0]&&rolls[0].vatNo||'');
+
   // 送货单号：DH转SH前缀显示
   var rawNo=(out.no||'').replace(/^[A-Z]*/,'');
   var shNo=rawNo.length>8?rawNo.slice(-8):rawNo.padStart(8,'0');
@@ -11239,53 +11259,93 @@ function printFGOut(outId){
     '</div>';
   }
 
-  // ── 三列固定布局（左:1-25 / 中:26-50 / 右:51-75）──
-  // 列分配：column-first，每列最多 25 行；只渲染有数据的行，空列仅显示抬头
-  var colArr=[[],[],[]];
-  rolls.forEach(function(r,i){
-    var ci=i<25?0:(i<50?1:2);
-    colArr[ci].push({r:r,idx:i+1});
-  });
-  var dataRows=Math.max(colArr[0].length,colArr[1].length,colArr[2].length);
-  var minRows=dataRows>=15?25:(dataRows+4);
-  var maxRows=Math.max(dataRows,minRows);
+  var rollsTable='';
+  if(!multiGroups){
+    // ── 三列固定布局（左:1-25 / 中:26-50 / 右:51-75）──
+    // 列分配：column-first，每列最多 25 行；只渲染有数据的行，空列仅显示抬头
+    var colArr=[[],[],[]];
+    rolls.forEach(function(r,i){
+      var ci=i<25?0:(i<50?1:2);
+      colArr[ci].push({r:r,idx:i+1});
+    });
+    var dataRows=Math.max(colArr[0].length,colArr[1].length,colArr[2].length);
+    var minRows=dataRows>=15?25:(dataRows+4);
+    var maxRows=Math.max(dataRows,minRows);
 
-  // 表头：三组抬头永远显示（即使该列无数据）
-  var th='<thead><tr>';
-  for(var c=0;c<3;c++){
-    th+='<th style="width:38px">编号</th><th>疋号</th>'
-      +(hasKG?'<th style="width:66px">重量(KG)</th>':'')
-      +(hasM?'<th style="width:58px">长度(米)</th>':'');
-    if(c<2)th+='<th class="gap"></th>';
-  }
-  th+='</tr></thead>';
-
-  // 表体：高度 = maxRows，空列的格子留空
-  var tb='<tbody>';
-  for(var ri=0;ri<maxRows;ri++){
-    tb+='<tr>';
+    // 表头：三组抬头永远显示（即使该列无数据）
+    var th='<thead><tr>';
     for(var c=0;c<3;c++){
-      var cell=colArr[c][ri];
-      if(cell){
-        tb+='<td>'+cell.idx+'</td>'
-          +'<td style="font-family:monospace">'+esc(cell.r.rollNo||'')+'</td>';
+      th+='<th style="width:38px">编号</th><th>疋号</th>'
+        +(hasKG?'<th style="width:66px">重量(KG)</th>':'')
+        +(hasM?'<th style="width:58px">长度(米)</th>':'');
+      if(c<2)th+='<th class="gap"></th>';
+    }
+    th+='</tr></thead>';
+
+    // 表体：高度 = maxRows，空列的格子留空
+    var tb='<tbody>';
+    for(var ri=0;ri<maxRows;ri++){
+      tb+='<tr>';
+      for(var c=0;c<3;c++){
+        var cell=colArr[c][ri];
+        if(cell){
+          tb+='<td>'+cell.idx+'</td>'
+            +'<td style="font-family:monospace">'+esc(cell.r.rollNo||'')+'</td>';
+          if(hasKG){
+            var kv=parseFloat(cell.r.kg)||0;
+            tb+='<td style="font-weight:600;text-align:right;padding-right:6px">'+(kv>0?kv.toFixed(1):'')+'</td>';
+          }
+          if(hasM){
+            var mv=parseFloat(cell.r.m)||0;
+            tb+='<td style="text-align:right;padding-right:6px">'+(mv>0?(mv%1===0?mv.toFixed(0):mv.toFixed(1)):'')+'</td>';
+          }
+        }else{
+          tb+='<td></td><td></td>'+(hasKG?'<td></td>':'')+(hasM?'<td></td>':'');
+        }
+        if(c<2)tb+='<td class="gap"></td>';
+      }
+      tb+='</tr>';
+    }
+    tb+='</tbody>';
+    rollsTable='<table class="rolls">'+th+tb+'</table>';
+  }else{
+    var groupColspan=4+(hasKG?1:0)+(hasM?1:0);
+    var gth='<thead><tr>'
+      +'<th style="width:42px">编号</th>'
+      +'<th style="width:110px">颜色</th>'
+      +'<th style="width:110px">缸号</th>'
+      +'<th>疋号</th>'
+      +(hasKG?'<th style="width:74px">重量(KG)</th>':'')
+      +(hasM?'<th style="width:68px">长度(米)</th>':'')
+      +'</tr></thead>';
+    var gtb='<tbody>';
+    var rowNo=1;
+    fgOutGroups.forEach(function(g){
+      var groupParts=[esc(g.colorNm||'—'),'缸：'+esc(g.vatNo||'—'),g.rolls.length+'匹'];
+      if(hasKG)groupParts.push('小计 '+g.groupKG.toFixed(1)+'KG');
+      if(hasM)groupParts.push('小计 '+g.groupM.toFixed(1)+'米');
+      gtb+='<tr class="grp-row"><td colspan="'+groupColspan+'">'+groupParts.join('　')+'</td></tr>';
+      g.rolls.forEach(function(r){
+        gtb+='<tr>'
+          +'<td>'+rowNo+'</td>'
+          +'<td>'+esc(g.colorNm||'')+'</td>'
+          +'<td>'+esc(g.vatNo||'')+'</td>'
+          +'<td style="font-family:monospace">'+esc(r.rollNo||'')+'</td>';
         if(hasKG){
-          var kv=parseFloat(cell.r.kg)||0;
-          tb+='<td style="font-weight:600;text-align:right;padding-right:6px">'+(kv>0?kv.toFixed(1):'')+'</td>';
+          var gkv=parseFloat(r.kg)||0;
+          gtb+='<td style="font-weight:600;text-align:right;padding-right:6px">'+(gkv>0?gkv.toFixed(1):'')+'</td>';
         }
         if(hasM){
-          var mv=parseFloat(cell.r.m)||0;
-          tb+='<td style="text-align:right;padding-right:6px">'+(mv>0?(mv%1===0?mv.toFixed(0):mv.toFixed(1)):'')+'</td>';
+          var gmv=parseFloat(r.m)||0;
+          gtb+='<td style="text-align:right;padding-right:6px">'+(gmv>0?(gmv%1===0?gmv.toFixed(0):gmv.toFixed(1)):'')+'</td>';
         }
-      }else{
-        tb+='<td></td><td></td>'+(hasKG?'<td></td>':'')+(hasM?'<td></td>':'');
-      }
-      if(c<2)tb+='<td class="gap"></td>';
-    }
-    tb+='</tr>';
+        gtb+='</tr>';
+        rowNo++;
+      });
+    });
+    gtb+='</tbody>';
+    rollsTable='<table class="rolls rolls-grouped">'+gth+gtb+'</table>';
   }
-  tb+='</tbody>';
-  var rollsTable='<table class="rolls">'+th+tb+'</table>';
 
   // 合计栏（智能显示）：匹数永远显示；有 KG 显示 KG；有米显示米；可选 约米数 / 客户单号
   var totParts=['合计：<strong>'+rolls.length+'</strong> 匹'];
@@ -11328,6 +11388,10 @@ function printFGOut(outId){
     'table.rolls td.gap{border:none;background:#fff;width:10px;padding:0}'+
     'table.rolls tbody tr:nth-child(even) td:not(.gap){background:#f7f9ff}'+
     'table.rolls tbody tr:last-child td{border-bottom:1.5px solid #1e3a8a}'+
+    'table.rolls-grouped th{background:#fff;color:#1e3a8a;border-top:1.5px solid #1e3a8a;border-bottom:1.5px solid #1e3a8a}'+
+    'table.rolls-grouped tbody tr:nth-child(even) td{background:#fff}'+
+    'table.rolls-grouped .grp-row td{text-align:left;font-weight:700;color:#1e3a8a;border-top:1.5px solid #1e3a8a;border-bottom:1px solid #dbeafe;height:18px;line-height:18px;padding:3px 6px}'+
+    'table.rolls-grouped tr{break-inside:avoid;page-break-inside:avoid}'+
     '.tot-wrap{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:6px 0;margin-top:2px}'+
     '.tot-lbl{font-size:7px;color:#ccc;letter-spacing:2px;text-transform:uppercase}'+
     '.tot-data{font-size:11px;color:#444}'+
@@ -11375,11 +11439,11 @@ function printFGOut(outId){
         '<div class="info-f"><span class="lbl">客户款号</span><span class="val val-red">'+esc(custNo||'—')+'</span></div>'+
       '</div>'+
       '<div class="info-row">'+
-        '<div class="info-f"><span class="lbl">颜　　色</span><span class="val">'+esc(rolls[0]&&rolls[0].colorNm||'')+'</span></div>'+
+        '<div class="info-f"><span class="lbl">颜　　色</span><span class="val">'+esc(colorLabel)+'</span></div>'+
         '<div class="info-f"><span class="lbl">规　　格</span><span class="val">'+(o.width&&o.weight?o.width+(o.widthUnit||'cm')+'×'+o.weight+'g/m²':'—')+'</span></div>'+
       '</div>'+
       '<div class="info-row">'+
-        '<div class="info-f"><span class="lbl">缸　　号</span><span class="val">'+esc(rolls[0]&&rolls[0].vatNo||'')+'</span></div>'+
+        '<div class="info-f"><span class="lbl">缸　　号</span><span class="val">'+esc(vatLabel)+'</span></div>'+
         '<div class="info-f"><span class="lbl">日　　期</span><span class="val">'+esc(out.date||'')+'</span></div>'+
       '</div>'+
     '</div>'+

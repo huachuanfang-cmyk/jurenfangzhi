@@ -11199,8 +11199,12 @@ function printQuickOut(id){
 // ── 登记出货弹窗 ──
 
 function fgOutNo(){
+  return fgOutNoFromList(DB.fgouts||[]);
+}
+
+function fgOutNoFromList(list){
   var y=new Date().getFullYear(),max=0;
-  (DB.fgouts||[]).forEach(function(r){if(r.no&&r.no.startsWith('DH'+y)){var n=parseInt(r.no.slice(6))||0;if(n>max)max=n;}});
+  (list||[]).forEach(function(r){if(r.no&&r.no.startsWith('DH'+y)){var n=parseInt(r.no.slice(6))||0;if(n>max)max=n;}});
   return 'DH'+y+String(max+1).padStart(4,'0');
 }
 
@@ -11472,6 +11476,12 @@ function printFGOut(outId){
     '</body></html>';
 
   printHTML(html);
+}
+
+function printFGOutMany(outIds){
+  (outIds||[]).forEach(function(outId,idx){
+    setTimeout(function(){printFGOut(outId);},idx*900);
+  });
 }
 
 // ── 打印退货单 ──
@@ -11746,26 +11756,45 @@ function openFGOutM(id){
     var feeNm=(document.getElementById('fgo-feeNm')||{value:''}).value;
     var feeAmt=(document.getElementById('fgo-feeAmt')||{value:''}).value;
     var rm=(document.getElementById('fgo-rm')||{value:''}).value;
-    var rollIds=[];selCbs.forEach(function(cb){rollIds.push(cb.value);});
-
-    // Create 出货单
-    var outNo=fgOutNo();
-    var outRec={id:'fgo_'+Date.now(),no:outNo,date:date,ordId:ordId,ordNo:o.no,custNm:o.custNm||'',dlvNo:dlvNo,approxM:approxM,feeNm:feeNm,feeAmt:feeAmt,rm:rm,rollIds:rollIds};
-    var list=DB.fgouts||[];list.push(outRec);DB.fgouts=list;
-
-    // Update roll status
     var allRolls=fgRolls();
-    rollIds.forEach(function(rid){
-      var r=allRolls.find(function(x){return x.id===rid;});
-      if(r){r.status='out';r.outId=outRec.id;}
+    var fgoGroupsByKey=[];
+    selCbs.forEach(function(cb){
+      var r=allRolls.find(function(x){return x.id===cb.value;});
+      if(!r)return;
+      var k=(r.colorNm||'')+'|'+(r.vatNo||'');
+      var g=fgoGroupsByKey.find(function(x){return x.key===k;});
+      if(!g){
+        g={key:k,colorNm:r.colorNm||'',vatNo:r.vatNo||'',rolls:[]};
+        fgoGroupsByKey.push(g);
+      }
+      g.rolls.push(r);
     });
+    if(!fgoGroupsByKey.length)return alert('未找到可出货的疋');
+
+    // Create 出货单：批量入口也按颜色+缸号拆成多张正式送货单
+    var list=DB.fgouts||[];
+    var createdOutIds=[];
+    var createdNos=[];
+    fgoGroupsByKey.forEach(function(g,idx){
+      var outNo=fgOutNoFromList(list);
+      var groupRollIds=g.rolls.map(function(r){return r.id;});
+      var outRec={id:'fgo_'+Date.now()+'_'+idx,no:outNo,date:date,ordId:ordId,ordNo:o.no,custNm:o.custNm||'',dlvNo:dlvNo,approxM:approxM,feeNm:feeNm,feeAmt:feeAmt,rm:rm,rollIds:groupRollIds};
+      list.push(outRec);
+      createdOutIds.push(outRec.id);
+      createdNos.push(outNo);
+      groupRollIds.forEach(function(rid){
+        var r=allRolls.find(function(x){return x.id===rid;});
+        if(r){r.status='out';r.outId=outRec.id;}
+      });
+    });
+    DB.fgouts=list;
     saveFgRolls(allRolls);
 
     // Print prompt
     cm();pgFGStock();
-    showToast('出货登记完成！'+outNo,'success');
-    if(confirm('出货登记完成！是否立即打印送货单？')){
-      printFGOut(outRec.id);
+    showToast('出货登记完成！'+createdNos.join('、'),'success');
+    if(confirm('出货登记完成！共 '+createdOutIds.length+' 张送货单，是否立即打印？')){
+      printFGOutMany(createdOutIds);
     }
   });
   om(modal);

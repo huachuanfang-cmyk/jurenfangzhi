@@ -1204,6 +1204,9 @@ function showRestoreConfirm(backupData, backupTimeStr, cb){
   var cur={
     orders:(DB.orders||[]).length,
     custs:(DB.custs||[]).length,
+    mats:(DB.mats||[]).length,
+    trks:(DB.trks||[]).length,
+    fgr:(DB.load('fgr')||[]).length,
     fgouts:(DB.fgouts||[]).length,
     quots:(DB.quots||[]).length,
     arecs:(DB.arecs||[]).length
@@ -1211,30 +1214,66 @@ function showRestoreConfirm(backupData, backupTimeStr, cb){
   var bak={
     orders:(backupData.orders||[]).length,
     custs:(backupData.custs||[]).length,
+    mats:(backupData.mats||[]).length,
+    trks:(backupData.trks||[]).length,
+    fgr:(backupData.fgrolls||backupData.fgr||[]).length,
     fgouts:(backupData.fgouts||[]).length,
     quots:(backupData.quots||[]).length,
     arecs:(backupData.arecs||[]).length
   };
+  // 计算订单级差异
+  var curOrds=backupData.orders||[];
+  var myOrds=DB.orders||[];
+  var newOrds=curOrds.filter(function(o){return !myOrds.some(function(m){return m.id===o.id;});});
+  var removedOrds=myOrds.filter(function(m){return !curOrds.some(function(o){return o.id===m.id;});});
+
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
   var box=document.createElement('div');
-  box.style.cssText='background:#fff;border-radius:10px;padding:24px 28px;width:480px;box-shadow:0 8px 32px rgba(0,0,0,.25);max-height:90vh;overflow-y:auto';
+  box.style.cssText='background:#fff;border-radius:10px;padding:24px 28px;width:520px;box-shadow:0 8px 32px rgba(0,0,0,.25);max-height:90vh;overflow-y:auto';
   // 标题
   var title=document.createElement('div');title.style.cssText='font-size:14px;font-weight:700;color:#dc2626;margin-bottom:4px';
-  title.innerHTML='&#9888; 恢复确认 — 请仔细核对';
+  title.innerHTML='\u26A0\uFE0F 恢复确认 — 请仔细核对';
   box.appendChild(title);
   var sub=document.createElement('div');sub.style.cssText='font-size:11.5px;color:#666;margin-bottom:14px';
   sub.textContent='备份时间：'+backupTimeStr;
   box.appendChild(sub);
+
+  // 订单级差异摘要
+  if(newOrds.length||removedOrds.length){
+    var ordDiffDiv=document.createElement('div');
+    ordDiffDiv.style.cssText='background:#f0f7ff;border:1px solid #b3d4f7;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:11.5px;line-height:1.8';
+    var ordHtml='';
+    if(newOrds.length){
+      var sampleNew=newOrds.slice(0,5).map(function(o){return o.no||o.id;}).join(', ');
+      ordHtml+='<span style="color:#16a34a;font-weight:600">+ '+newOrds.length+' 张新增订单</span>：'+sampleNew;
+      if(newOrds.length>5)ordHtml+=' 等'+newOrds.length+'张';
+      ordHtml+='<br>';
+    }
+    if(removedOrds.length){
+      var sampleRm=removedOrds.slice(0,5).map(function(o){return o.no||o.id;}).join(', ');
+      ordHtml+='<span style="color:#dc2626;font-weight:600">- '+removedOrds.length+' 张将被覆盖的订单</span>：'+sampleRm;
+      if(removedOrds.length>5)ordHtml+=' 等'+removedOrds.length+'张';
+      ordHtml+='<br>';
+    }
+    ordDiffDiv.innerHTML=ordHtml;
+    box.appendChild(ordDiffDiv);
+  }
+
   // 数据对比表
   var compTitle=document.createElement('div');compTitle.style.cssText='font-size:11px;font-weight:700;color:#1e3a8a;margin-bottom:6px;letter-spacing:.3px';
-  compTitle.textContent='数据变化预览';box.appendChild(compTitle);
+  compTitle.textContent='全部数据变化预览';box.appendChild(compTitle);
   var compTbl=document.createElement('table');compTbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px';
   var thead=document.createElement('thead');
   thead.innerHTML='<tr style="background:#f0f0ff"><th style="padding:6px 10px;text-align:left;border:1px solid #e0dff5;font-weight:600;color:#3730a3">项目</th><th style="padding:6px 10px;text-align:center;border:1px solid #e0dff5;font-weight:600;color:#3730a3">当前数据</th><th style="padding:6px 10px;text-align:center;border:1px solid #e0dff5;font-weight:600;color:#3730a3">恢复后</th><th style="padding:6px 10px;text-align:center;border:1px solid #e0dff5;font-weight:600;color:#3730a3">变化</th></tr>';
   compTbl.appendChild(thead);
   var tbody=document.createElement('tbody');
-  [['销售订单','orders'],['客户档案','custs'],['出货记录','fgouts'],['报价单','quots'],['应收对账','arecs']].forEach(function(row,idx){
+  var rows=[
+    ['销售订单','orders'],['客户档案','custs'],['物料档案','mats'],
+    ['染整加工单','trks'],['坯布卷','fgr'],
+    ['出货记录','fgouts'],['报价单','quots'],['应收对账','arecs']
+  ];
+  rows.forEach(function(row,idx){
     var key=row[1];var diff=bak[key]-cur[key];
     var diffStr=diff===0?'不变':(diff>0?'+'+diff:''+diff);
     var diffColor=diff===0?'#888':diff>0?'#16a34a':'#dc2626';
@@ -1247,11 +1286,13 @@ function showRestoreConfirm(backupData, backupTimeStr, cb){
     tbody.appendChild(tr);
   });
   compTbl.appendChild(tbody);box.appendChild(compTbl);
-  // 警告
+
+  // 风险提示
   var warn=document.createElement('div');
   warn.style.cssText='background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;font-size:11.5px;color:#991b1b;margin-bottom:14px;line-height:1.7';
-  warn.innerHTML='&#128308; <b>恢复前已自动保存当前数据快照</b>，万一恢复错了可以再回滚回来。<br>&#128308; 恢复后页面将自动刷新，请确认上方数据变化无误。';
+  warn.innerHTML='\uD83D\uDD34 <b>恢复前已自动保存当前数据快照</b>（在历史快照列表顶部可找到"恢复前"记录）。<br>\uD83D\uDD34 确认恢复后页面将自动刷新，请仔细核对上方数据变化。';
   box.appendChild(warn);
+
   // 填写原因
   var reasonLbl=document.createElement('div');reasonLbl.style.cssText='font-size:11px;font-weight:600;color:#444;margin-bottom:4px';
   reasonLbl.textContent='恢复原因（必填）';box.appendChild(reasonLbl);
@@ -1259,12 +1300,13 @@ function showRestoreConfirm(backupData, backupTimeStr, cb){
   reasonInp.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #ddd;border-radius:5px;font-size:12px;margin-bottom:14px;box-sizing:border-box;outline:none';
   var errTip=document.createElement('div');errTip.style.cssText='font-size:11px;color:#dc2626;min-height:14px;margin-top:-10px;margin-bottom:8px';
   box.appendChild(reasonInp);box.appendChild(errTip);
+
   // 按钮
   var btnRow=document.createElement('div');btnRow.style.cssText='display:flex;gap:8px;justify-content:flex-end';
   var cancelB=document.createElement('button');cancelB.textContent='取消，不恢复';
   cancelB.style.cssText='padding:7px 18px;border:1px solid #ddd;border-radius:5px;background:#f5f5f5;cursor:pointer;font-size:12px';
   cancelB.onclick=function(){document.body.removeChild(overlay);};
-  var okB=document.createElement('button');okB.innerHTML='&#9888; 确认恢复（覆盖当前数据）';
+  var okB=document.createElement('button');okB.innerHTML='\u26A0\uFE0F 确认恢复（覆盖当前数据）';
   okB.style.cssText='padding:7px 18px;border:none;border-radius:5px;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-weight:700';
   okB.onclick=function(){
     var reason=reasonInp.value.trim();

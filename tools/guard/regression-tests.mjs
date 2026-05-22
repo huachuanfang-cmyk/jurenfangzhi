@@ -133,6 +133,64 @@ test('delete operations produce delete intents instead of only local filtering',
   assert.deepEqual(store.getDeleteIntents(), [{ key: 'o', id: 'ord-001' }]);
 });
 
+// ══ 订单核心字段护栏 ══
+
+test('order core fields are preserved: fabric code, price unit, delivery date', () => {
+  const store = createGuardStore();
+  const order = store.createOrder({
+    id: 'ord-010',
+    no: 'G20260010',
+    custNm: 'Field Test Customer',
+    fab: 'JC60x60 143x120 67"',
+    prUnit: 'M',
+    delDate: '2026-06-15',
+    colors: [{ nm: 'White', code: 'W-001', qty: '1000' }],
+  });
+
+  const loaded = store.getOrder('ord-010');
+  assert.equal(loaded.fab, 'JC60x60 143x120 67"', 'fabric code preserved');
+  assert.equal(loaded.prUnit, 'M', 'price unit preserved');
+  assert.equal(loaded.delDate, '2026-06-15', 'delivery date preserved');
+  assert.equal(loaded.colors[0].qty, '1000', 'color quantity preserved');
+});
+
+test('order core fields survive color update without corruption', () => {
+  const store = createGuardStore();
+  store.createOrder({
+    id: 'ord-011',
+    no: 'G20260011',
+    fab: 'T/C65/35 45x45 133x72',
+    prUnit: 'KG',
+    delDate: '2026-07-01',
+  });
+
+  store.updateOrderColors('ord-011', [
+    { nm: 'Red', code: 'R-001', qty: '500' },
+    { nm: 'Blue', code: 'B-001', qty: '300' },
+  ]);
+
+  const loaded = store.getOrder('ord-011');
+  assert.equal(loaded.fab, 'T/C65/35 45x45 133x72', 'fabric code intact after color update');
+  assert.equal(loaded.prUnit, 'KG', 'price unit intact after color update');
+  assert.equal(loaded.delDate, '2026-07-01', 'delivery date intact after color update');
+  assert.equal(loaded.colors.length, 2, 'both colors present');
+  assert.equal(loaded.colors[0].qty, '500', 'first color quantity preserved');
+});
+
+test('order field defaults are safe when optional fields omitted', () => {
+  const store = createGuardStore();
+  const order = store.createOrder({
+    id: 'ord-012',
+    no: 'G20260012',
+    // omitting fab, prUnit, delDate, colors
+  });
+
+  assert.equal(order.fab, '', 'fabric code defaults to empty string');
+  assert.equal(order.prUnit, '', 'price unit defaults to empty string');
+  assert.equal(order.delDate, '', 'delivery date defaults to empty string');
+  assert.deepEqual(order.colors, [], 'colors defaults to empty array');
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

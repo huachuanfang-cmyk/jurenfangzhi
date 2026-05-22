@@ -29,6 +29,9 @@ export function createGuardStore() {
         id: order.id,
         no: order.no || '',
         custNm: order.custNm || '',
+        fab: order.fab || '',
+        prUnit: order.prUnit || '',
+        delDate: order.delDate || '',
         colors: clone(order.colors || []),
       };
       data.o = data.o.filter((item) => item.id !== record.id).concat(record);

@@ -6,6 +6,7 @@ const commands = [
   [process.execPath, ['tools/guard/search-tests.mjs'], 'search guard'],
   [process.execPath, ['tools/guard/material-search-tests.mjs'], 'material search guard'],
   [process.execPath, ['tools/guard/print-style-tests.mjs'], 'print style guard'],
+  [process.execPath, ['tools/guard/print-content-tests.mjs'], 'print content guard'],
   [process.execPath, ['tools/guard/data-audit.mjs'], 'data audit'],
 ];
 

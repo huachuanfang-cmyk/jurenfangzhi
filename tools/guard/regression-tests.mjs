@@ -191,6 +191,119 @@ test('order field defaults are safe when optional fields omitted', () => {
   assert.deepEqual(order.colors, [], 'colors defaults to empty array');
 });
 
+// ══ 出货状态计算 calcShipStatus ══
+
+test('calcShipStatus returns null when no rolls exist for order', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-020', no: 'G20260020' });
+  assert.equal(store.calcShipStatus('ord-020'), null);
+});
+
+test('calcShipStatus returns stocked when all rolls are in stock', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-021', no: 'G20260021' });
+  store.receiveFinishedGoods({ id: 'in-021', ordId: 'ord-021', rolls: [{ id: 'roll-021', kg: '20' }] });
+  assert.equal(store.calcShipStatus('ord-021'), 'stocked');
+});
+
+test('calcShipStatus returns fully_out when all rolls are shipped', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-022', no: 'G20260022' });
+  store.receiveFinishedGoods({ id: 'in-022', ordId: 'ord-022', rolls: [{ id: 'roll-022', kg: '20' }] });
+  store.shipFinishedGoods({ id: 'out-022', ordId: 'ord-022', rollIds: ['roll-022'] });
+  assert.equal(store.calcShipStatus('ord-022'), 'fully_out');
+});
+
+test('calcShipStatus returns partial_out when some rolls shipped', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-023', no: 'G20260023' });
+  store.receiveFinishedGoods({ id: 'in-023', ordId: 'ord-023', rolls: [
+    { id: 'roll-023a', kg: '20' },
+    { id: 'roll-023b', kg: '30' },
+  ]});
+  store.shipFinishedGoods({ id: 'out-023', ordId: 'ord-023', rollIds: ['roll-023a'] });
+  assert.equal(store.calcShipStatus('ord-023'), 'partial_out');
+});
+
+// ══ 库存汇总 getStockSummary ══
+
+test('stockKG equals total in-stock rolls minus shipped rolls', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-024', no: 'G20260024' });
+  store.receiveFinishedGoods({ id: 'in-024', ordId: 'ord-024', rolls: [
+    { id: 'roll-024a', kg: '50' },
+    { id: 'roll-024b', kg: '30' },
+  ]});
+  store.shipFinishedGoods({ id: 'out-024', ordId: 'ord-024', rollIds: ['roll-024a'] });
+  const s = store.getStockSummary();
+  assert.equal(s.totalKG, 80);
+  assert.equal(s.outKG, 50);
+  assert.equal(s.stockKG, 30);
+  assert.equal(s.totalRolls, 2);
+  assert.equal(s.outRolls, 1);
+  assert.equal(s.inStockRolls, 1);
+});
+
+// ══ 应收金额计算 calcShipmentAmount ══
+
+test('AR shipment amount computed by KG when prUnit is KG', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-025', no: 'G20260025', prUnit: 'KG', unitPr: 10,
+    colors: [{ nm: 'Red', code: 'R-001' }] });
+  store.receiveFinishedGoods({ id: 'in-025', ordId: 'ord-025',
+    rolls: [{ id: 'roll-025a', kg: '20.5', m: '100', colorNm: 'Red' }] });
+  store.shipFinishedGoods({ id: 'out-025', ordId: 'ord-025', rollIds: ['roll-025a'] });
+  const info = store.calcShipmentAmount('out-025');
+  assert.equal(info.kg, 20.5);
+  assert.equal(info.amt, 205);  // 20.5 * 10
+  assert.equal(info.byM, false);
+});
+
+test('AR shipment amount computed by M with extraPr when prUnit is M', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-026', no: 'G20260026', prUnit: 'M', unitPr: 8,
+    colors: [{ nm: 'Blue', code: 'B-001', extraPr: '2' }] });
+  store.receiveFinishedGoods({ id: 'in-026', ordId: 'ord-026',
+    rolls: [{ id: 'roll-026a', kg: '30', m: '150', colorNm: 'Blue' }] });
+  store.shipFinishedGoods({ id: 'out-026', ordId: 'ord-026', rollIds: ['roll-026a'] });
+  const info = store.calcShipmentAmount('out-026');
+  assert.equal(info.m, 150);
+  assert.equal(info.amt, 1500);  // 150 * (8 + 2) = 1500
+  assert.equal(info.byM, true);
+});
+
+// ══ 应收对账详情 getReceivableDetails ══
+
+test('receivable details show balance and auto-settle when paid in full', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-027', no: 'G20260027', prUnit: 'KG', unitPr: 10 });
+  store.receiveFinishedGoods({ id: 'in-027', ordId: 'ord-027',
+    rolls: [{ id: 'roll-027a', kg: '100', colorNm: 'White' }] });
+  store.shipFinishedGoods({ id: 'out-027', ordId: 'ord-027', rollIds: ['roll-027a'] });
+  store.createReceivable({ id: 'ar-027', no: 'AR20260027', outIds: ['out-027'], paidTotal: 1000 });
+
+  const details = store.getReceivableDetails('ar-027');
+  assert.equal(details.totalAmt, 1000);
+  assert.equal(details.paidTotal, 1000);
+  assert.equal(details.balanceAmt, 0);
+  assert.equal(details.status, 'settled');
+});
+
+test('receivable details show pending status when partially paid', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-028', no: 'G20260028', prUnit: 'KG', unitPr: 10 });
+  store.receiveFinishedGoods({ id: 'in-028', ordId: 'ord-028',
+    rolls: [{ id: 'roll-028a', kg: '100', colorNm: 'White' }] });
+  store.shipFinishedGoods({ id: 'out-028', ordId: 'ord-028', rollIds: ['roll-028a'] });
+  store.createReceivable({ id: 'ar-028', no: 'AR20260028', outIds: ['out-028'], paidTotal: 600 });
+
+  const details = store.getReceivableDetails('ar-028');
+  assert.equal(details.totalAmt, 1000);
+  assert.equal(details.paidTotal, 600);
+  assert.equal(details.balanceAmt, 400);
+  assert.equal(details.status, 'pending');
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

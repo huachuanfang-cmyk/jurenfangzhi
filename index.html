@@ -1018,16 +1018,68 @@ DB.save = function(n, v){
     if(!table || !Array.isArray(v)) return;
     var snakeData = v.map(camelToSnake);
     (async function(){
-      var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
-      if(error){
-        console.warn('Supabase同步失败['+n+']:', error.message);
-        showToast(table+' 同步失败', 'error');
-      } else {
-        localStorage.removeItem('gjr5_dirty_'+n);
+      var maxRetries = 3;
+      for(var attempt = 0; attempt < maxRetries; attempt++){
+        try{
+          var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
+          if(!error){
+            localStorage.removeItem('gjr5_dirty_'+n);
+            return;
+          }
+          if(attempt < maxRetries - 1) console.warn('同步重试['+n+']('+(attempt+1)+'):', error.message);
+        }catch(e){
+          if(attempt < maxRetries - 1) console.warn('同步异常重试['+n+']('+(attempt+1)+'):', e.message);
+          else throw e;
+        }
+        await new Promise(function(r){ setTimeout(r, 2000 * (attempt + 1)); });
       }
+      console.warn('Supabase同步失败['+n+']: 已重试'+maxRetries+'次');
+      showToast(TABLE_MAP[n]+' 同步失败', 'error');
     })();
   }
 };
+
+// ── 上线时自动重试未同步的脏数据和删除队列 ──
+window.addEventListener('online', function(){
+  if(_testMode || !_supabaseData) return;
+  var pending = [];
+  for(var key in TABLE_MAP){
+    if(localStorage.getItem('gjr5_dirty_'+key) === '1') pending.push(key);
+  }
+  if(pending.length){
+    setTimeout(function(){
+      pending.forEach(function(key){
+        var v = DB.load(key);
+        if(v && v.length){
+          var table = TABLE_MAP[key];
+          (async function(){
+            var {error} = await _supabaseData.from(table).upsert(v.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
+            if(!error){
+              localStorage.removeItem('gjr5_dirty_'+key);
+              console.log('上线重推成功['+key+']');
+            }
+          })();
+        }
+      });
+    }, 1000);
+  }
+  // 重试离线删除队列
+  var dq = JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
+  if(dq.length){
+    setTimeout(function(){
+      dq.slice().reverse().forEach(function(item){
+        (async function(){
+          var {error} = await _supabaseData.from(item.table).delete().eq('id', item.id);
+          if(!error){
+            var idx = dq.findIndex(function(x){ return x.key === item.key && x.id === item.id; });
+            if(idx >= 0) dq.splice(idx, 1);
+            localStorage.setItem('gjr5_delq', JSON.stringify(dq));
+          }
+        })();
+      });
+    }, 2000);
+  }
+});
 
 async function authLogin(email, pwd){
   initSupabase();

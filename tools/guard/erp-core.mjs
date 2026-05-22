@@ -31,6 +31,7 @@ export function createGuardStore() {
         custNm: order.custNm || '',
         fab: order.fab || '',
         prUnit: order.prUnit || '',
+        unitPr: order.unitPr || 0,
         delDate: order.delDate || '',
         colors: clone(order.colors || []),
       };
@@ -64,6 +65,8 @@ export function createGuardStore() {
           ordId: receipt.ordId,
           rollNo: inputRoll.rollNo || '',
           vatNo: receipt.vatNo || '',
+          colorNm: inputRoll.colorNm || '',
+          colorCode: inputRoll.colorCode || '',
           kg: inputRoll.kg || '',
           m: inputRoll.m || '',
           status: 'in',
@@ -145,6 +148,7 @@ export function createGuardStore() {
         id: receivable.id,
         no: receivable.no || '',
         outIds: clone(receivable.outIds || []),
+        paidTotal: receivable.paidTotal || 0,
       };
       data.ar = data.ar.filter((item) => item.id !== record.id).concat(record);
       return clone(record);
@@ -158,6 +162,90 @@ export function createGuardStore() {
 
     getDeleteIntents() {
       return clone(deleteIntents);
+    },
+
+    calcShipStatus(ordId) {
+      const ordRolls = data.fgr.filter((r) => r.ordId === ordId);
+      if (!ordRolls.length) return null;
+      const outRolls = ordRolls.filter((r) => r.status === 'out');
+      if (!outRolls.length) return 'stocked';
+      if (outRolls.length >= ordRolls.length) return 'fully_out';
+      return 'partial_out';
+    },
+
+    getStockSummary() {
+      var inRolls = data.fgr.filter((r) => r.status !== 'returned');
+      var outRolls = data.fgr.filter((r) => r.status === 'out');
+      var totalKG = inRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
+      var outKG = outRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
+      return {
+        totalKG: Math.round(totalKG * 10) / 10,
+        outKG: Math.round(outKG * 10) / 10,
+        stockKG: Math.round((totalKG - outKG) * 10) / 10,
+        totalRolls: inRolls.length,
+        outRolls: outRolls.length,
+        inStockRolls: inRolls.length - outRolls.length,
+      };
+    },
+
+    calcShipmentAmount(shipmentId) {
+      const shipment = byId(data.fgo, shipmentId);
+      if (!shipment) return null;
+      const order = byId(data.o, shipment.ordId);
+      if (!order) return { kg: 0, m: 0, amt: 0, byM: false };
+
+      const rolls = shipment.rollIds
+        .map((rid) => byId(data.fgr, rid))
+        .filter(Boolean);
+      if (!rolls.length) return { kg: 0, m: 0, amt: 0, byM: false };
+
+      var kg = rolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
+      var mTot = rolls.reduce(function(s, r){ return s + (parseFloat(r.m)||0); }, 0);
+      var byM = order.prUnit === 'M' || order.prUnit === '米';
+      var basePr = parseFloat(order.unitPr) || 0;
+      var amt = 0;
+
+      if (basePr > 0) {
+        amt = rolls.reduce(function(s, r){
+          var clr = (order.colors || []).find(function(c){ return c.nm === r.colorNm || c.code === r.colorCode; });
+          var extraPr = parseFloat(clr ? (clr.extraPr || 0) : 0);
+          var qty = byM ? (parseFloat(r.m)||0) : (parseFloat(r.kg)||0);
+          return s + qty * (basePr + extraPr);
+        }, 0);
+      }
+
+      return {
+        kg: Math.round(kg * 10) / 10,
+        m: Math.round(mTot * 10) / 10,
+        amt: Math.round(amt * 100) / 100,
+        byM: byM,
+      };
+    },
+
+    getReceivableDetails(arId) {
+      const ar = byId(data.ar, arId);
+      if (!ar) return null;
+
+      var shipments = (ar.outIds || []).map(function(outId){
+        var s = byId(data.fgo, outId);
+        if (!s) return null;
+        var amtInfo = this.calcShipmentAmount(s.id);
+        return { id: s.id, ordId: s.ordId, rollIds: s.rollIds, ...amtInfo };
+      }, this).filter(Boolean);
+
+      var totalAmt = shipments.reduce(function(s, sh){ return s + sh.amt; }, 0);
+      var balance = Math.max(0, totalAmt - (parseFloat(ar.paidTotal) || 0));
+
+      return {
+        id: ar.id,
+        no: ar.no,
+        outIds: ar.outIds,
+        shipments: shipments,
+        totalAmt: Math.round(totalAmt * 100) / 100,
+        paidTotal: parseFloat(ar.paidTotal) || 0,
+        balanceAmt: Math.round(balance * 100) / 100,
+        status: balance <= 0 ? 'settled' : 'pending',
+      };
     },
   };
 }

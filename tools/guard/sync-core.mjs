@@ -1,0 +1,68 @@
+// sync-core.mjs
+// 纯函数：复现 pullFromSupabase 的脏表处理核心算法
+// 无网络、无 side effect，可直接用于单元测试
+
+export const TABLE_MAP = {
+  o: 'orders', c: 'customers', f: 'factories', mat: 'materials',
+  t: 'trks', wd: 'weave', qt: 'quots', ar: 'arecs', rc: 'recons',
+  dd: 'ddocs', yn: 'yarns', yo: 'yarnouts', fgi: 'fgins', gfy: 'greyfabs',
+  fgo: 'fgouts', ret: 'fgreturns', fgr: 'fabric_rolls', cnotices: 'color_notices',
+};
+
+export const ALL_KEYS = Object.keys(TABLE_MAP);
+
+/**
+ * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
+ * 哪些 dirty flag 应清除、哪些应保留。
+ *
+ * 对应 index.html 中 pullFromSupabase() 的 push → skip dirty → pull → clear 流程。
+ *
+ * @param {string[]} dirtyKeys  — 同步开始前 dirty flag 已设置的键
+ * @param {string[]} pushedKeys — 成功推送的键
+ * @param {string[]} allKeys    — 所有可能的键（默认 ALL_KEYS）
+ * @returns {{ skipPull: string[], pullKeys: string[], clearedDirty: string[], remainingDirty: string[] }}
+ */
+export function computeSyncPlan(dirtyKeys, pushedKeys, allKeys) {
+  allKeys = allKeys || ALL_KEYS;
+  var dirtySet = {};
+  dirtyKeys.forEach(function(k){ dirtySet[k] = true; });
+
+  var skipPull = [];
+  var pullKeys = [];
+
+  allKeys.forEach(function(key){
+    if (dirtySet[key] || pushedKeys.indexOf(key) >= 0) {
+      skipPull.push(key);
+    } else {
+      pullKeys.push(key);
+    }
+  });
+
+  var clearedDirty = pushedKeys.filter(function(k){ return dirtySet[k]; });
+  var remainingDirty = dirtyKeys.filter(function(k){ return pushedKeys.indexOf(k) < 0; });
+
+  return {
+    skipPull: skipPull,
+    pullKeys: pullKeys,
+    clearedDirty: clearedDirty,
+    remainingDirty: remainingDirty,
+  };
+}
+
+/**
+ * 模拟完整 pullFromSupabase 决策流。
+ * 纯函数：无 I/O、无 side effect。
+ *
+ * @param {string[]}          dirtyKeys   — dirty flag 已设置的键
+ * @param {object}            pushResults — { key: true/false } 模拟 push 结果
+ * @param {string[]}          allKeys     — 所有可能的键
+ * @returns {{ pushedKeys, skipPull, pullKeys, clearedDirty, remainingDirty }}
+ */
+export function simulateSyncFlow(dirtyKeys, pushResults, allKeys) {
+  allKeys = allKeys || ALL_KEYS;
+  // Step 1: 根据 push 结果确定成功推送的表
+  var pushedKeys = dirtyKeys.filter(function(k){ return pushResults[k] === true; });
+
+  // Step 2 & 3: 计算同步计划
+  return computeSyncPlan(dirtyKeys, pushedKeys, allKeys);
+}

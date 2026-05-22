@@ -3,7 +3,9 @@
 //   1. dirty flag 阻止云端旧数据覆盖本地
 //   2. push 失败后保留 dirty flag
 //   3. 测试模式不触发云同步
-// 注：不涉及真实 Supabase 调用，只验证核心算法。
+// 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
+
+import { simulateSyncFlow, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -11,120 +13,66 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-// ── 模拟 localStorage ──
-function createMockLocalStorage() {
-  const store = {};
-  return {
-    getItem: (k) => store[k] !== undefined ? store[k] : null,
-    setItem: (k, v) => { store[k] = String(v); },
-    removeItem: (k) => { delete store[k]; },
-    _keys: () => Object.keys(store),
-  };
-}
-
-// ── 模拟 TABLE_MAP ──
-const TABLE_MAP = {
-  o: 'orders', c: 'customers', f: 'factories', mat: 'materials',
-  t: 'trks', wd: 'weave', qt: 'quots', ar: 'arecs', rc: 'recons',
-  dd: 'ddocs', yn: 'yarns', yo: 'yarnouts', fgi: 'fgins', gfy: 'greyfabs',
-  fgo: 'fgouts', ret: 'fgreturns', fgr: 'fabric_rolls', cnotices: 'color_notices',
-};
-
-// ── 模拟 pullFromSupabase 的脏表处理算法（不涉及真实网络） ──
-// 这是一个纯函数测试：给定 dirty flag 集合和假设的 push 结果，验证跳过/保留行为
-function simulateSyncP1(simulatedLocal, existingDirtyKeys, pushResults) {
-  // pushResults: { key: true/false } — 模拟 push 成功/失败
-  // 返回值: { pulled: string[], dirtyAfter: string[], dbAfter: object }
-
-  const pushedKeys = [];
-  const dbAfter = { ...simulatedLocal };
-
-  // Step 1: push dirty tables
-  for (const key of Object.keys(TABLE_MAP)) {
-    if (existingDirtyKeys.includes(key)) {
-      const success = pushResults[key] === true;
-      if (success) {
-        pushedKeys.push(key);
-        // 模拟本地数据已推送成功
-      }
-    }
-  }
-
-  // Step 2: pull non-dirty, non-pushed tables
-  const pulled = [];
-  for (const key of Object.keys(TABLE_MAP)) {
-    const isDirty = existingDirtyKeys.includes(key);
-    const wasPushed = pushedKeys.includes(key);
-    if (isDirty || wasPushed) {
-      dbAfter[key] = dbAfter[key] || `local_${key}`; // keep local
-      continue; // skip pull
-    }
-    // Simulate cloud data
-    dbAfter[key] = `cloud_${key}`;
-    pulled.push(key);
-  }
-
-  // Step 3: clear dirty flags for pushed keys (after pull)
-  const dirtyAfter = existingDirtyKeys.filter(k => !pushedKeys.includes(k));
-
-  return { pulled, dirtyAfter, dbAfter };
-}
-
-// ── 测试 1：dirty flag 阻止云端覆盖 ──
+// ══ 测试 1：dirty flag 阻止云端覆盖 ══
 test('dirty flag prevents cloud pull from overwriting local data', () => {
-  const localData = { o: 'local_o_modified', c: 'local_c' };
   const dirtyKeys = ['o'];
   const pushResults = { o: true };
 
-  const result = simulateSyncP1(localData, dirtyKeys, pushResults);
+  const result = simulateSyncFlow(dirtyKeys, pushResults);
 
   // 'o' was dirty + pushed → should be skipped in pull
-  if (result.dbAfter.o !== 'local_o_modified') throw new Error(
-    `Expected local 'o' preserved, got: ${result.dbAfter.o}`
+  if (!result.skipPull.includes('o')) throw new Error(
+    'dirty/pushed table "o" should be skipped from pull'
   );
-  // 'o' should not appear in pulled list
-  if (result.pulled.includes('o')) throw new Error(
-    'dirty/pushed table "o" should not have been pulled'
+  // 'o' should not appear in pull list
+  if (result.pullKeys.includes('o')) throw new Error(
+    'dirty/pushed table "o" should not be in pull list'
   );
-  // non-dirty tables should be pulled (get cloud data)
-  if (result.dbAfter.c !== 'cloud_c') throw new Error(
-    `Non-dirty table "c" should show cloud data, got: ${result.dbAfter.c}`
+  // Non-dirty tables should be pulled
+  if (!result.pullKeys.includes('c')) throw new Error(
+    'non-dirty table "c" should be in pull list'
   );
   // dirty flag should be cleared after successful push+pull
-  if (result.dirtyAfter.includes('o')) throw new Error(
+  if (result.remainingDirty.includes('o')) throw new Error(
     'dirty flag for "o" should have been cleared after successful push'
   );
+  if (!result.clearedDirty.includes('o')) throw new Error(
+    '"o" should be in clearedDirty list'
+  );
 });
 
-// ── 测试 2：push 失败后保留 dirty flag ──
+// ══ 测试 2：push 失败后保留 dirty flag ══
 test('failed push preserves dirty flag and local data', () => {
-  const localData = { o: 'local_o_modified', fgr: 'local_fgr' };
   const dirtyKeys = ['o', 'fgr'];
-  // 'o' push fails, 'fgr' hasn't been pushed yet
+  // 'o' push fails, 'fgr' hasn't been attempted
   const pushResults = { o: false };
 
-  const result = simulateSyncP1(localData, dirtyKeys, pushResults);
+  const result = simulateSyncFlow(dirtyKeys, pushResults);
 
   // 'o' push failed → dirty flag should remain
-  if (!result.dirtyAfter.includes('o')) throw new Error(
+  if (!result.remainingDirty.includes('o')) throw new Error(
     'dirty flag for "o" should remain after failed push'
   );
-  // 'fgr' wasn't pushed (not in pushResults) → dirty flag remains
-  if (!result.dirtyAfter.includes('fgr')) throw new Error(
+  // 'fgr' wasn't in pushResults → never attempted → dirty remains
+  if (!result.remainingDirty.includes('fgr')) throw new Error(
     'dirty flag for "fgr" should remain when not pushed'
   );
-  // Both tables should keep local data
-  if (result.dbAfter.o !== 'local_o_modified') throw new Error(
-    `Local data for "o" should be preserved after failed push, got: ${result.dbAfter.o}`
+  // Both should be skipped from pull (still dirty)
+  if (!result.skipPull.includes('o')) throw new Error(
+    'failed table "o" should be skipped from pull'
   );
-  if (result.dbAfter.fgr !== 'local_fgr') throw new Error(
-    `Local data for "fgr" should be preserved, got: ${result.dbAfter.fgr}`
+  if (!result.skipPull.includes('fgr')) throw new Error(
+    'unattempted table "fgr" should be skipped from pull'
+  );
+  // Neither should have dirty cleared
+  if (result.clearedDirty.length !== 0) throw new Error(
+    'no dirty flags should be cleared when all pushes fail'
   );
 });
 
-// ── 测试 3：测试模式不触发云同步 ──
+// ══ 测试 3：测试模式不触发云同步 ══
 test('test mode does not trigger any cloud sync', () => {
-  // This simulates the `if(_testMode) return;` at line 903
+  // This simulates the `if(_testMode) return;` guard at line 949
   const testModeActive = true;
   let syncAttempted = false;
 
@@ -142,66 +90,95 @@ test('test mode does not trigger any cloud sync', () => {
   );
 });
 
-// ── 测试 4：推送成功的表在 pull 后被清除 dirty flag（完整流程验证） ──
+// ══ 测试 4：推送成功的表在 pull 后被清除 dirty flag ══
 test('successfully pushed tables have dirty flag cleared after pull completes', () => {
-  const localData = { o: 'local_o', ar: 'local_ar', c: 'local_c' };
   const dirtyKeys = ['o', 'ar'];
   const pushResults = { o: true, ar: true };
 
-  const result = simulateSyncP1(localData, dirtyKeys, pushResults);
+  const result = simulateSyncFlow(dirtyKeys, pushResults);
 
   // Both pushed tables should have dirty flags cleared
-  if (result.dirtyAfter.length !== 0) throw new Error(
-    `All dirty flags should be cleared, remaining: ${result.dirtyAfter.join(', ')}`
+  if (result.remainingDirty.length !== 0) throw new Error(
+    `All dirty flags should be cleared, remaining: ${result.remainingDirty.join(', ')}`
   );
-  // Pushed tables should keep local data (not pulled from cloud)
-  if (result.dbAfter.o !== 'local_o') throw new Error(
-    `Pushed table 'o' should keep local data, got: ${result.dbAfter.o}`
+  if (result.clearedDirty.length !== 2) throw new Error(
+    'Both "o" and "ar" should have dirty cleared'
   );
-  if (result.dbAfter.ar !== 'local_ar') throw new Error(
-    `Pushed table 'ar' should keep local data, got: ${result.dbAfter.ar}`
+  // Pushed tables should keep local data (skip pull)
+  if (!result.skipPull.includes('o')) throw new Error(
+    'pushed table "o" should skip pull'
   );
-  // Non-dirty table should get cloud data
-  if (result.dbAfter.c !== 'cloud_c') throw new Error(
-    `Non-dirty table 'c' should get cloud data, got: ${result.dbAfter.c}`
+  if (!result.skipPull.includes('ar')) throw new Error(
+    'pushed table "ar" should skip pull'
+  );
+  // Non-dirty table should be pulled from cloud
+  if (!result.pullKeys.includes('c')) throw new Error(
+    'non-dirty table "c" should be in pull list'
   );
 });
 
-// ── 测试 5：部分 push 成功时仅成功表跳过 pull ──
+// ══ 测试 5：部分 push 成功时仅成功表跳过 pull ══
 test('mixed push results: only successful pushes skip pull, failed keep dirty', () => {
-  const localData = { o: 'local_o', fgr: 'local_fgr', ret: 'local_ret' };
   const dirtyKeys = ['o', 'fgr', 'ret'];
   const pushResults = { o: true, fgr: false };
 
-  const result = simulateSyncP1(localData, dirtyKeys, pushResults);
+  const result = simulateSyncFlow(dirtyKeys, pushResults);
 
   // 'o' pushed successfully → dirty cleared
-  if (result.dirtyAfter.includes('o')) throw new Error(
+  if (result.remainingDirty.includes('o')) throw new Error(
     'successfully pushed table "o" should have dirty cleared'
   );
+  if (!result.clearedDirty.includes('o')) throw new Error(
+    '"o" should be in clearedDirty'
+  );
   // 'fgr' push failed → dirty remains
-  if (!result.dirtyAfter.includes('fgr')) throw new Error(
+  if (!result.remainingDirty.includes('fgr')) throw new Error(
     'failed push table "fgr" should keep dirty flag'
   );
   // 'ret' wasn't in pushResults → wasn't attempted → dirty remains
-  if (!result.dirtyAfter.includes('ret')) throw new Error(
+  if (!result.remainingDirty.includes('ret')) throw new Error(
     'unattempted table "ret" should keep dirty flag'
   );
-  // Pushed tables keep local data
-  if (result.dbAfter.o !== 'local_o') throw new Error(
-    'pushed table "o" should keep local data'
+  // Only 'o' should be cleared
+  if (result.clearedDirty.length !== 1) throw new Error(
+    `Only "o" should be cleared, got: ${result.clearedDirty.join(', ')}`
   );
-  // Failed tables keep local data
-  if (result.dbAfter.fgr !== 'local_fgr') throw new Error(
-    'failed table "fgr" should keep local data'
+  if (result.clearedDirty[0] !== 'o') throw new Error(
+    'clearedDirty should contain only "o"'
   );
-  // Non-dirty tables get cloud data
-  if (!result.pulled.includes('c')) throw new Error(
-    'non-dirty table "c" should be pulled from cloud'
+  // Pushed table skips pull
+  if (!result.skipPull.includes('o')) throw new Error(
+    'pushed table "o" should skip pull'
+  );
+  // Failed tables also skip pull (still dirty)
+  if (!result.skipPull.includes('fgr')) throw new Error(
+    'failed table "fgr" should skip pull'
+  );
+  // Non-dirty table pulls
+  if (!result.pullKeys.includes('c')) throw new Error(
+    'non-dirty table "c" should be pulled'
   );
 });
 
-// ── 运行 ──
+// ══ 额外测试 6：无脏表时所有表都拉取 ══
+test('no dirty tables: all keys pulled from cloud', () => {
+  const result = simulateSyncFlow([], {});
+
+  if (result.skipPull.length !== 0) throw new Error(
+    'no tables should skip pull when nothing is dirty'
+  );
+  if (result.pullKeys.length !== ALL_KEYS.length) throw new Error(
+    `all ${ALL_KEYS.length} tables should be pulled, got ${result.pullKeys.length}`
+  );
+  if (result.clearedDirty.length !== 0) throw new Error(
+    'no dirty flags should be cleared'
+  );
+  if (result.remainingDirty.length !== 0) throw new Error(
+    'no remaining dirty flags expected'
+  );
+});
+
+// ══ 运行 ══
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

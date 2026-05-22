@@ -5,6 +5,7 @@ const commands = [
   [process.execPath, ['tools/guard/dirty-sync-tests.mjs'], 'dirty sync guard'],
   [process.execPath, ['tools/guard/search-tests.mjs'], 'search guard'],
   [process.execPath, ['tools/guard/material-search-tests.mjs'], 'material search guard'],
+  [process.execPath, ['tools/guard/dashboard-status-tests.mjs'], 'dashboard status guard'],
   [process.execPath, ['tools/guard/print-style-tests.mjs'], 'print style guard'],
   [process.execPath, ['tools/guard/print-content-tests.mjs'], 'print content guard'],
   [process.execPath, ['tools/guard/data-audit.mjs'], 'data audit'],

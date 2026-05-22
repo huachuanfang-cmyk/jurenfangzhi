@@ -637,6 +637,20 @@ function calcShipStatus(ordId){
   if(outRolls.length>=ordRolls.length)return 'fully_out';
   return 'partial_out';
 }
+function calcColorShipStatus(ordId,colorNm){
+  var rolls=fgRolls();
+  var ordRolls=rolls.filter(function(r){return r.ordId===ordId&&(!colorNm||r.colorNm===colorNm);});
+  if(!ordRolls.length)return null;
+  var outRolls=ordRolls.filter(function(r){return r.status==='out';});
+  if(outRolls.length===0)return 'stocked';
+  if(outRolls.length>=ordRolls.length)return 'fully_out';
+  return 'partial_out';
+}
+function displayColorStatusForDashboard(ordId,c){
+  var shipSt=calcColorShipStatus(ordId,c&&c.nm);
+  if(shipSt==='fully_out')return 'shipped';
+  return (c&&c.clrStatus)||'pending';
+}
 function shipBx(s){
   if(s===null)return '<span style="color:#bbb;font-size:10px">—</span>';
   var m={
@@ -2157,6 +2171,7 @@ function pgDash(){
   var showArchived=localStorage.getItem('gjr5_dash_show_archived')==='1';
   // 判断订单是否已完结（所有颜色都是已出货）
   function isOrderDone(o){
+    if(calcShipStatus(o.id)==='fully_out')return true;
     var cls=o.colors||[];
     if(!cls.length)return false;
     return cls.every(function(c){return c.clrStatus==='shipped'||c.clrStatus==='done';});
@@ -2222,7 +2237,8 @@ function pgDash(){
       ri++;
       colors.forEach(function(c,ci){
         var tr=document.createElement('tr');
-        var st=CLR_STATUS_MAP[c.clrStatus||'pending']||CLR_STATUS_LIST[0];
+        var displayStatus=displayColorStatusForDashboard(o.id,c);
+        var st=CLR_STATUS_MAP[displayStatus||'pending']||CLR_STATUS_LIST[0];
         var si=CLR_STATUS_LIST.findIndex(function(s){return s.v===st.v;});
         var tot=CLR_STATUS_LIST.length-1;
         var pct=si<=0?0:Math.round(si/tot*100);
@@ -2261,7 +2277,7 @@ function pgDash(){
         tr.appendChild(mkTd(esc(c.nm||''),'border-left:3px solid '+st.color+';font-weight:600'));
         tr.appendChild(mkTd(esc(cCode),'font-family:monospace;font-size:10.5px;color:#666'));
         tr.appendChild(mkTd(esc(c.qty||'')+(c.unit?' '+c.unit:''),'text-align:center;color:var(--t2)'));
-        tr.appendChild(mkTd('<div style="margin-bottom:2px">'+clrStatusBadge(c.clrStatus||'pending')+'</div>'+bar,''));
+        tr.appendChild(mkTd('<div style="margin-bottom:2px">'+clrStatusBadge(displayStatus||'pending')+'</div>'+bar,''));
         if(ci===0){
           function mkRSTd2(html,rs2,style){
             var td=document.createElement('td');td.innerHTML=html;td.rowSpan=rs2;

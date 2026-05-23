@@ -2064,13 +2064,30 @@ function pgDash(){
       var dd=new Date(o.delDate);
       return dd>=new Date(today.getTime()+86400000)&&dd<=in7d&&calcShipStatus(o.id)!=='fully_out';
     });
+    // 跳转销售订单页 → 搜索定位 → 自动展开该订单
+    function goToOrd(id,no){
+      go('orders');
+      setTimeout(function(){
+        var inp=document.getElementById('oq');
+        if(inp){inp.value=no;}
+        if(!window._ordExp)window._ordExp={};
+        window._ordExp[id]=true;
+        if(typeof fOrd==='function')fOrd();
+        // 滚动到该行
+        setTimeout(function(){
+          var row=document.querySelector('[data-oid="'+id+'"]');
+          if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
+        },80);
+      },150);
+    }
+
     var critical=[],warning2=[];
     overdueOrds.forEach(function(o){
       var days=Math.round((today-new Date(o.delDate))/86400000);
       critical.push({icon:'📦',
         text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 逾期未出货，已超期 <b style="color:#DC2626">'+days+'天</b>',
-        label:'打开订单',
-        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+        label:'定位订单',
+        fn:(function(id,no){return function(){goToOrd(id,no);};})(o.id,o.no)
       });
     });
     overdueArecs.forEach(function(r){
@@ -2080,16 +2097,16 @@ function pgDash(){
     todayOrds.forEach(function(o){
       critical.push({icon:'🚚',
         text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 今天交货，请确认出货',
-        label:'打开订单',
-        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+        label:'定位订单',
+        fn:(function(id,no){return function(){goToOrd(id,no);};})(o.id,o.no)
       });
     });
     soonOrds.forEach(function(o){
       var days=Math.round((new Date(o.delDate)-today)/86400000);
       warning2.push({icon:'📅',
         text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 还剩 <b style="color:#D97706">'+days+'天</b> 交货（'+esc(o.delDate)+'）',
-        label:'打开订单',
-        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+        label:'定位订单',
+        fn:(function(id,no){return function(){goToOrd(id,no);};})(o.id,o.no)
       });
     });
     warnArecs.forEach(function(r){

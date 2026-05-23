@@ -2805,7 +2805,29 @@ function pgOrders(){
       b.style.borderColor=window._ordHideCompleted?'#F9A825':'';
     }
   };
-  sb2.appendChild(inp);sb2.appendChild(sel);sb2.appendChild(hideBtn);
+  // ── 展开/折叠全部按钮 ──
+  var expAllBtn=document.createElement('button');
+  expAllBtn.className='btn bs';expAllBtn.id='ord-exp-all';
+  expAllBtn.style.cssText='font-size:12px;white-space:nowrap';
+  expAllBtn.textContent='▶ 展开全部';
+  expAllBtn.onclick=function(){
+    var allExp=this.dataset.state==='expanded';
+    var newState=!allExp;
+    this.dataset.state=newState?'expanded':'';
+    this.textContent=newState?'▼ 折叠全部':'▶ 展开全部';
+    if(!window._ordExp)window._ordExp={};
+    (DB.orders||[]).forEach(function(o){window._ordExp[o.id]=newState;});
+    var tbody=document.querySelector('#ord-tbl tbody');
+    if(!tbody)return;
+    tbody.querySelectorAll('[data-doid]').forEach(function(r){
+      r.style.display=newState?'':'none';
+    });
+    tbody.querySelectorAll('[data-oid]').forEach(function(r){
+      var btn=document.getElementById('exp-btn-'+r.dataset.oid);
+      if(btn)btn.textContent=newState?'▼':'▶';
+    });
+  };
+  sb2.appendChild(inp);sb2.appendChild(sel);sb2.appendChild(hideBtn);sb2.appendChild(expAllBtn);
   sb2.appendChild(mkBtn('&#43; 新增订单','btn bp',function(){openOM();}));
   pg.appendChild(sb2);
   // ── 订单预警横幅 ──
@@ -2861,116 +2883,277 @@ function pgOrders(){
 }
 function renderOrds(list){
   var cb=document.getElementById('ords-body');if(!cb)return;cb.innerHTML='';
-  if(!list.length){var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3)';e.textContent='暂无订单';cb.appendChild(e);return;}
+  if(!list||!list.length){
+    var emp=document.createElement('div');emp.style.cssText='text-align:center;padding:36px;color:var(--t3);font-size:13px';
+    emp.textContent='暂无订单';cb.appendChild(emp);return;
+  }
 
-  // ── 外层可滚动容器（表头sticky需要relative父级）──
+  var today=new Date();today.setHours(0,0,0,0);
+  var in7d=new Date(today.getTime()+7*86400000);
+
+  // 每张订单的成品KG（从fgRolls自动汇总，按ordId+颜色）
+  var allRolls=fgRolls();
+  function ordFinKgByColor(oid,colorNm){
+    return allRolls.filter(function(r){return r.ordId===oid&&r.colorNm===colorNm;})
+      .reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+  }
+  function ordFinKgTotal(oid){
+    return allRolls.filter(function(r){return r.ordId===oid;})
+      .reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+  }
+
+  // 按接单月份分组
+  var groups={},gKeys=[];
+  list.forEach(function(o){
+    var m=(o.ordDate||'').slice(0,7)||'未知';
+    if(!groups[m]){groups[m]=[];gKeys.push(m);}
+    groups[m].push(o);
+  });
+  // 组内按接单日期正序（最早接的在最上面）
+  gKeys.forEach(function(m){
+    groups[m].sort(function(a,b){return (a.ordDate||'').localeCompare(b.ordDate||'');});
+  });
+  // 月份倒序（最新月份在最上面）
+  gKeys.sort(function(a,b){return b.localeCompare(a);});
+
+  // 展开状态持久化（存在window，搜索/刷新后保持）
+  if(!window._ordExp)window._ordExp={};
+
   var outerWrap=document.createElement('div');
   outerWrap.style.cssText='overflow:auto;max-height:calc(100vh - 160px);border-radius:8px;border:1px solid var(--bd)';
 
   var tbl=document.createElement('table');
-  tbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px';
+  tbl.id='ord-tbl';
+  tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
 
-  // ── 列定义：[标题, 默认宽px] ──
+  // ─── 12列表头 ───
+  // 摘要行：▶/▼ | 订单号 | 客户 | 布类 | 色数 | 计划KG | 成品KG | 下单日期 | 交货日期 | 状态 | 跟进 | 操作
   var COLS=[
-    ['我方订单号',110],['客户订单号',130],['客户',130],['布类',130],
-    ['颜色',90],['色号',90],['订单数量',72],['单位',48],
-    ['投产(KG)',72],['落缸(KG)',72],['成品(KG)',72],['损耗%',58],
-    ['下单日期',90],['交货日期',90],['状态',72],['跟进状态',96],['操作',110]
+    {t:'',w:28},{t:'订单号',w:114},{t:'客户',w:150},{t:'布类',w:128},
+    {t:'色数',w:46},{t:'计划KG',w:78},{t:'成品KG',w:78},
+    {t:'下单日期',w:90},{t:'交货日期',w:90},
+    {t:'状态',w:74},{t:'跟进状态',w:100},{t:'操作',w:116}
   ];
-
-  // ── 表头（sticky固定）──
+  var NC=COLS.length;
   var thead=document.createElement('thead');
-  var thRow=document.createElement('tr');
-  COLS.forEach(function(col){
+  var htr=document.createElement('tr');
+  COLS.forEach(function(c){
     var th=document.createElement('th');
-    th.textContent=col[0];
-    th.style.cssText='position:sticky;top:0;z-index:2;background:#eeecff;color:#3730a3;font-weight:600;font-size:11px;padding:7px 8px;border:1px solid #c7c4e8;text-align:left;white-space:nowrap;width:'+col[1]+'px;user-select:none';
-    // 拖拽手柄
-    var rsz=document.createElement('div');
-    rsz.style.cssText='position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:3';
-    rsz.addEventListener('mousedown',function(e){
-      e.preventDefault();
-      var startX=e.clientX,startW=th.offsetWidth;
-      function onMove(ev){th.style.width=Math.max(40,startW+(ev.clientX-startX))+'px';}
-      function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
-      document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
-    });
-    th.style.position='sticky';
-    th.appendChild(rsz);
-    thRow.appendChild(th);
+    th.textContent=c.t;
+    th.style.cssText='position:sticky;top:0;z-index:2;background:#EEEAFF;color:#3730a3;font-weight:600;font-size:11px;padding:7px 8px;border-right:1px solid #C7C4E8;border-bottom:2px solid #B4B0DC;text-align:left;white-space:nowrap;width:'+c.w+'px';
+    htr.appendChild(th);
   });
-  thead.appendChild(thRow);tbl.appendChild(thead);
+  thead.appendChild(htr);tbl.appendChild(thead);
 
-  // ── 数据行 ──
   var tbody=document.createElement('tbody');
-  var zebra=false;
-  list.forEach(function(o){
-    var colors=o.colors||[{}];
-    var rowspan=colors.length;
-    var bgBase=zebra?'#f9f8ff':'#ffffff';
-    zebra=!zebra;
-    var lc=lifecycleOf(o); // 全生命周期快照
-    var shipSt=lc.shipSt;
-    var dcls=(o.delDate&&(new Date(o.delDate)-new Date())<0)?'color:#DC2626;font-weight:600':(o.delDate&&(new Date(o.delDate)-new Date())<259200000?'color:#D97706':'color:var(--t2)');
 
-    function mkTd(html,style,rs){
-      var td=document.createElement('td');
-      td.innerHTML=html;
-      td.style.cssText='padding:5px 8px;border:1px solid #e0dff5;vertical-align:middle;background:'+bgBase+';'+(style||'');
-      if(rs&&rs>1)td.rowSpan=rs;
-      return td;
-    }
+  // ── 辅助：创建td ──
+  function mktd(html,style){
+    var t=document.createElement('td');
+    t.innerHTML=html||'';
+    t.style.cssText='padding:6px 8px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;vertical-align:middle;background:inherit;'+(style||'');
+    return t;
+  }
+  // 展开行的子td（带小标签）
+  function mkdtd(label,html,style){
+    var t=document.createElement('td');
+    t.style.cssText='padding:3px 8px 4px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;vertical-align:middle;background:inherit;text-align:center;'+(style||'');
+    if(label){var lb=document.createElement('div');lb.style.cssText='font-size:9px;color:#A0AEC0;margin-bottom:1px;letter-spacing:.3px';lb.textContent=label;t.appendChild(lb);}
+    var v=document.createElement('div');v.innerHTML=html||'<span style="color:#D1D5DB">—</span>';t.appendChild(v);
+    return t;
+  }
 
-    colors.forEach(function(c,ci){
+  gKeys.forEach(function(month){
+    var ords=groups[month];
+    var mLabel=month==='未知'?'未知日期':month.replace(/^(\d{4})-(\d{2})$/,'$1年$2月');
+    var mPlan=0,mFin=0;
+    ords.forEach(function(o){
+      (o.colors||[]).forEach(function(c){mPlan+=parseFloat(c.prodQty)||0;});
+      mFin+=ordFinKgTotal(o.id);
+    });
+    var monthHidden=window._ordExp['M_'+month]===false;
+
+    // ─── 月份分组标题行 ───
+    var gtr=document.createElement('tr');
+    var gtd=document.createElement('td');
+    gtd.colSpan=NC;
+    gtd.style.cssText='padding:6px 14px;background:#E4EAF7;border-bottom:1px solid #BAC8DA;font-size:11.5px;font-weight:700;color:#1E3A8A;cursor:pointer;user-select:none;white-space:nowrap';
+    var marr=document.createElement('span');marr.style.cssText='display:inline-block;width:14px;font-size:10px;transition:transform .15s';
+    marr.textContent=monthHidden?'▶':'▼';
+    gtd.appendChild(marr);
+    var mlb=document.createElement('span');mlb.textContent=' '+mLabel;gtd.appendChild(mlb);
+    var mmeta=document.createElement('span');
+    mmeta.style.cssText='font-weight:400;color:#64748B;margin-left:14px;font-size:10.5px';
+    var metaTxt=ords.length+'张订单';
+    if(mPlan>0)metaTxt+='　计划 '+mPlan.toFixed(0)+' KG';
+    if(mFin>0)metaTxt+='　已入库 '+mFin.toFixed(0)+' KG';
+    mmeta.textContent=metaTxt;gtd.appendChild(mmeta);
+    gtd.onclick=function(){
+      var hiding=window._ordExp['M_'+month]!==false;
+      window._ordExp['M_'+month]=hiding?false:true;
+      marr.textContent=hiding?'▶':'▼';
+      tbody.querySelectorAll('[data-m="'+CSS.escape(month)+'"]').forEach(function(r){r.style.display=hiding?'none':'';});
+    };
+    gtr.appendChild(gtd);tbody.appendChild(gtr);
+
+    ords.forEach(function(o){
+      var lc=lifecycleOf(o);
+      var colors=o.colors||[{}];
+      var planKg=0;colors.forEach(function(c){planKg+=parseFloat(c.prodQty)||0;});
+      var finKg=ordFinKgTotal(o.id);
+      var isExp=window._ordExp[o.id]||false;
+
+      // ─── 行背景色（自动，无需手动改色）───
+      var rowBg='#FFFFFF';
+      if(o.status==='cancelled'){rowBg='#F5F5F5';}
+      else if(lc.hasPaid){rowBg='#F0FDF4';}  // 已结清 → 浅绿
+      else if(lc.hasArec&&!lc.hasPaid){rowBg='#FFFEF0';}  // 待收款 → 浅黄
+      else if(lc.hasShip&&!lc.hasArec){rowBg='#FFF8ED';}  // 已出货待对账 → 浅橙
+      else if(o.delDate&&new Date(o.delDate)<today&&!lc.hasShip&&o.status!=='cancelled'){rowBg='#FFF0F0';}  // 超期 → 浅红
+      else if(o.delDate&&new Date(o.delDate)<=in7d&&!lc.hasShip&&o.status!=='cancelled'){rowBg='#FFFDE7';}  // 7天内到期 → 浅黄
+
+      // ─── 主摘要行 ───
       var tr=document.createElement('tr');
-      if(ci===0)tr.dataset.oid=o.id;
-      tr.style.cursor='pointer';
-      tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openOD(o.id,true);});
+      tr.dataset.m=month;tr.dataset.oid=o.id;
+      tr.style.cssText='cursor:pointer;background:'+rowBg;
+      if(monthHidden)tr.style.display='none';
+      tr.onmouseover=function(){this.style.filter='brightness(0.96)';};
+      tr.onmouseout=function(){this.style.filter='';};
 
-      var lossH='—';
-      if(c.prodQty&&c.finQty){
-        var l=((+c.prodQty-(+c.finQty))/(+c.prodQty)*100).toFixed(1);
-        lossH='<span style="color:'+(+l>10?'#DC2626':+l>7?'#D97706':'#16a34a')+';font-weight:600">'+l+'%</span>';
-      }
+      // 展开按钮
+      var expTd=document.createElement('td');
+      expTd.style.cssText='width:28px;text-align:center;padding:4px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;background:inherit';
+      var expBtn=document.createElement('span');expBtn.id='exp-btn-'+o.id;
+      expBtn.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:3px;background:#EDEDF8;font-size:9px;color:#6366F1;cursor:pointer;user-select:none;font-weight:700';
+      expBtn.textContent=isExp?'▼':'▶';expBtn.title=(colors.length)+'种颜色，点击展开';
+      expTd.appendChild(expBtn);tr.appendChild(expTd);
 
-      if(ci===0){
-        // rowspan列
-        var noTd=mkTd('','',rowspan);
-        var noA=document.createElement('a');noA.style.cssText='color:var(--p);font-weight:700;font-family:monospace;text-decoration:none;cursor:pointer';
-        noA.textContent=o.no;noA.onclick=function(e){e.stopPropagation();openOD(o.id,true);};
-        noTd.appendChild(noA);tr.appendChild(noTd);
-        tr.appendChild(mkTd(esc(o.custNo||''),'color:var(--t3);font-size:11px',rowspan));
-        tr.appendChild(mkTd('<strong>'+esc(o.custNm)+'</strong>','',rowspan));
-        tr.appendChild(mkTd(esc(o.fab||''),'color:var(--t2);font-size:11px',rowspan));
-      }
-      // 颜色行列（每行都有）
-      tr.appendChild(mkTd(esc(c.nm||''),'border-left:3px solid var(--pl)'));
-      tr.appendChild(mkTd(esc(c.code||''),'color:var(--t3);font-size:11px'));
-      tr.appendChild(mkTd(esc(c.qty||''),'color:var(--o);font-weight:600;text-align:center'));
-      tr.appendChild(mkTd(esc(c.unit||'公斤'),'text-align:center;color:var(--t3)'));
-      tr.appendChild(mkTd(esc(c.prodQty||'—'),'text-align:center;color:var(--t2)'));
-      tr.appendChild(mkTd(esc(c.vatQty||'—'),'text-align:center;color:var(--t2)'));
-      tr.appendChild(mkTd(esc(c.finQty||'—'),'text-align:center;color:var(--t2)'));
-      tr.appendChild(mkTd(lossH,'text-align:center'));
-      if(ci===0){
-        tr.appendChild(mkTd(esc(o.ordDate||''),'color:var(--t2);font-size:11px',rowspan));
-        tr.appendChild(mkTd(esc(o.delDate||''),dcls+';font-size:11px',rowspan));
-        tr.appendChild(mkTd(sBx(o.status),'',rowspan));
-        tr.appendChild(mkTd(lcBar(lc,o),'vertical-align:middle;padding:4px 6px',rowspan));
-        var opTd=mkTd('','white-space:nowrap',rowspan);
-        opTd.appendChild(mkBtn('详情','btn bsm bs',(function(id){return function(){openOD(id,true);};})(o.id)));
-        opTd.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openOM(id);};})(o.id)));
-        opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delO(id);};})(o.id)));
-        tr.appendChild(opTd);
-      }
+      // 订单号
+      var noTd=document.createElement('td');
+      noTd.style.cssText='padding:5px 8px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;vertical-align:middle;background:inherit';
+      var noA=document.createElement('a');noA.style.cssText='color:var(--p);font-weight:700;font-family:monospace;font-size:12px;text-decoration:none;cursor:pointer;white-space:nowrap';
+      noA.textContent=o.no;noA.onclick=function(e){e.stopPropagation();openOD(o.id,true);};
+      noTd.appendChild(noA);
+      if(o.custNo){var csn=document.createElement('div');csn.style.cssText='font-size:10px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px';csn.textContent=o.custNo;noTd.appendChild(csn);}
+      tr.appendChild(noTd);
+
+      // 客户
+      var custTd=document.createElement('td');
+      custTd.style.cssText='padding:6px 8px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;vertical-align:middle;background:inherit';
+      var custS=document.createElement('span');custS.style.cssText='font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:146px';
+      custS.title=o.custNm;custS.textContent=shortName(o.custNm)||o.custNm;custTd.appendChild(custS);tr.appendChild(custTd);
+
+      // 布类
+      tr.appendChild(mktd('<span style="font-size:11px;color:var(--t2)">'+esc(o.fab||'—')+'</span>'));
+
+      // 色数
+      tr.appendChild(mktd('<span style="background:#EDE9FE;color:#5B21B6;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:700">'+colors.length+'色</span>','text-align:center'));
+
+      // 计划KG
+      tr.appendChild(mktd(planKg>0?'<strong style="color:#374151">'+planKg.toFixed(0)+'</strong>':'—','text-align:center'));
+
+      // 成品KG（fgRolls自动汇总）
+      var fkH=finKg>0?'<strong style="color:#16A34A">'+finKg.toFixed(1)+'</strong>':'<span style="color:#D1D5DB;font-size:10px">待入库</span>';
+      tr.appendChild(mktd(fkH,'text-align:center'));
+
+      // 下单日期
+      tr.appendChild(mktd('<span style="font-size:11px;color:var(--t2)">'+esc(o.ordDate||'—')+'</span>'));
+
+      // 交货日期
+      var dCls=o.delDate&&new Date(o.delDate)<today?'color:#DC2626;font-weight:700':
+               o.delDate&&new Date(o.delDate)<=in7d?'color:#D97706;font-weight:600':'color:var(--t2)';
+      tr.appendChild(mktd('<span style="font-size:11px;'+dCls+'">'+esc(o.delDate||'—')+'</span>'));
+
+      // 状态
+      tr.appendChild(mktd(sBx(o.status)));
+
+      // 跟进状态
+      tr.appendChild(mktd(lcBar(lc,o),'padding:4px 6px'));
+
+      // 操作
+      var opTd=document.createElement('td');
+      opTd.style.cssText='padding:4px 6px;border-bottom:1px solid #ECEAF8;white-space:nowrap;vertical-align:middle;background:inherit';
+      opTd.appendChild(mkBtn('详情','btn bsm bs',(function(id){return function(){openOD(id,true);};})(o.id)));
+      opTd.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openOM(id);};})(o.id)));
+      opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delO(id);};})(o.id)));
+      tr.appendChild(opTd);
+
+      // 点击行展开/折叠
+      tr.onclick=function(e){
+        if(e.target.tagName==='BUTTON'||e.target.tagName==='A'||e.target.closest&&e.target.closest('button'))return;
+        var oid=this.dataset.oid;
+        var nowExp=!window._ordExp[oid];
+        window._ordExp[oid]=nowExp;
+        var btn=document.getElementById('exp-btn-'+oid);
+        if(btn)btn.textContent=nowExp?'▼':'▶';
+        tbody.querySelectorAll('[data-doid="'+oid+'"]').forEach(function(r){r.style.display=nowExp?'':'none';});
+      };
       tbody.appendChild(tr);
+
+      // ─── 颜色明细展开行 ───
+      colors.forEach(function(c,ci){
+        var dtr=document.createElement('tr');
+        dtr.dataset.doid=o.id;dtr.dataset.m=month;
+        var showNow=isExp&&!monthHidden;
+        dtr.style.cssText='background:#F7F6FF;display:'+(showNow?'':'none');
+
+        // 缩进连接线
+        var indTd=document.createElement('td');
+        indTd.style.cssText='padding:0;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;background:#F7F6FF;width:28px;position:relative';
+        var vl=document.createElement('div');vl.style.cssText='position:absolute;left:13px;top:0;bottom:'+(ci===colors.length-1?'50%':'0')+';width:1.5px;background:#C4B5FD';
+        var dot=document.createElement('div');dot.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#A5B4FC;border:2.5px solid #6366F1';
+        indTd.appendChild(vl);indTd.appendChild(dot);dtr.appendChild(indTd);
+
+        // 缸号（订单号列位置）
+        var vatTd=document.createElement('td');
+        vatTd.style.cssText='padding:3px 8px 4px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;background:#F7F6FF;vertical-align:middle';
+        var vl2=document.createElement('div');vl2.style.cssText='font-size:9px;color:#A0AEC0;margin-bottom:1px';vl2.textContent='缸号';vatTd.appendChild(vl2);
+        var vv=document.createElement('div');vv.style.cssText='font-size:11px;font-family:monospace;color:#7C3AED;font-weight:600';
+        vv.innerHTML=c.vatNo?esc(c.vatNo):'<span style="color:#D1D5DB">待定</span>';vatTd.appendChild(vv);dtr.appendChild(vatTd);
+
+        // 颜色名称（客户列位置）
+        var nmTd=document.createElement('td');
+        nmTd.style.cssText='padding:3px 8px 4px;border-bottom:1px solid #ECEAF8;border-right:1px solid #ECEAF8;background:#F7F6FF;vertical-align:middle';
+        var nl=document.createElement('div');nl.style.cssText='font-size:9px;color:#A0AEC0;margin-bottom:1px';nl.textContent='颜色';nmTd.appendChild(nl);
+        var nv=document.createElement('div');nv.style.cssText='font-weight:700;color:#374151;font-size:12px';nv.textContent=esc(c.nm||'—');nmTd.appendChild(nv);dtr.appendChild(nmTd);
+
+        // 色号（布类列位置）
+        dtr.appendChild(mkdtd('色号','<span style="color:#6B7280;font-size:11px">'+esc(c.code||'—')+'</span>'));
+
+        // 客下数量（色数列位置）
+        var qH=c.qty?'<span style="color:#E65100;font-weight:600">'+esc(c.qty)+'</span><span style="color:#9CA3AF;font-size:9.5px;margin-left:2px">'+esc(c.unit||'公斤')+'</span>':'—';
+        dtr.appendChild(mkdtd('客下单',qH));
+
+        // 投产KG（计划KG列位置）
+        dtr.appendChild(mkdtd('投产KG',c.prodQty?'<span style="color:#374151;font-weight:600">'+esc(c.prodQty)+'</span>':'—'));
+
+        // 落缸KG（成品KG列位置）
+        dtr.appendChild(mkdtd('落缸KG',c.vatQty?'<span style="color:#374151;font-weight:600">'+esc(c.vatQty)+'</span>':'—'));
+
+        // 成品KG（下单日期列位置）—— 优先用fgRolls自动值，否则用手填值
+        var fkc=ordFinKgByColor(o.id,c.nm);
+        var fkcH=fkc>0?'<span style="color:#16A34A;font-weight:700">'+fkc.toFixed(1)+'</span>':(c.finQty?'<span style="color:#16A34A;font-weight:700">'+esc(c.finQty)+'</span>':'—');
+        dtr.appendChild(mkdtd('成品KG',fkcH,''));
+
+        // 损耗%（交货日期列位置）
+        var prodN=parseFloat(c.prodQty)||0;
+        var finN=fkc>0?fkc:(parseFloat(c.finQty)||0);
+        var lossH='—';
+        if(prodN>0&&finN>0){var l=((prodN-finN)/prodN*100).toFixed(1);lossH='<span style="color:'+(+l>10?'#DC2626':+l>7?'#D97706':'#16a34a')+';font-weight:700">'+l+'%</span>';}
+        dtr.appendChild(mkdtd('损耗',lossH));
+
+        // 最后3列空（状态/跟进/操作位置）
+        var et=document.createElement('td');et.colSpan=3;et.style.cssText='border-bottom:1px solid #ECEAF8;background:#F7F6FF;padding:4px 8px';
+        if(c.clrStatus){et.innerHTML='<span style="font-size:10px;color:#6B7280">'+esc(c.clrStatus)+'</span>';}
+        dtr.appendChild(et);
+        tbody.appendChild(dtr);
+      });
     });
   });
-  tbl.appendChild(tbody);
-  outerWrap.appendChild(tbl);
-  cb.appendChild(outerWrap);
+
+  tbl.appendChild(tbody);outerWrap.appendChild(tbl);cb.appendChild(outerWrap);
   var info=document.createElement('div');info.style.cssText='font-size:10.5px;color:var(--t3);margin:6px 2px';
-  info.textContent='共 '+list.length+' 张订单 · 拖动表头边框可调整列宽';
+  info.textContent='共 '+list.length+' 张订单 · 点击行展开颜色明细 · 按接单月份分组';
   cb.appendChild(info);
 }
 function fOrd(){

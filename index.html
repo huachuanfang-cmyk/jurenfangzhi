@@ -10622,9 +10622,16 @@ function openFGInM(id){
     // ── 第一步：选订单（组合式下拉 Combobox）──
     var step1=document.createElement('div');step1.className='fg';
     step1.style.gridTemplateColumns='2.2fr 1fr 1fr 0.9fr';
+    // 缓存fgRolls，避免每行都重复读取
+    var _fgiRollsCache=null;
+    function _getFgiRolls(){if(!_fgiRollsCache)_fgiRollsCache=fgRolls();return _fgiRollsCache;}
     function _ordFullyIn(o){
+      // 以实际入库疋料记录判断，而非 clrStatus 字段
+      // clrStatus='finished' 只代表生产状态，不代表已登记入库
       var cs=o.colors||[];if(!cs.length)return false;
-      return cs.every(function(c){return c.clrStatus==='finished';});
+      var ordRolls=_getFgiRolls().filter(function(r){return r.ordId===o.id&&r.status!=='returned';});
+      if(!ordRolls.length)return false;  // 完全没有入库记录 → 未入库
+      return cs.every(function(c){return ordRolls.some(function(r){return r.colorNm===c.nm;});});
     }
     function _ordMatchesSearch(o,q){
       if(!q)return true;q=q.toLowerCase();

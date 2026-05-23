@@ -9873,16 +9873,18 @@ function pgFGStock(){
   } // end tab:stock
 
   // ════════════════════════════════════════════
-  // Tab: 出货记录
+  // Tab: 出货记录（按订单分组，可折叠）
   // ════════════════════════════════════════════
   if(_fgTab==='out'){
+    if(!window._fgOutExp)window._fgOutExp={};
     var oc=document.createElement('div');oc.className='card';oc.style.marginTop='12px';
     var och=document.createElement('div');och.className='ch';
     och.style.cssText='padding:11px 16px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:8px;background:var(--b3);border-radius:8px 8px 0 0;';
-    var ochR1=document.createElement('div');ochR1.style.cssText='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px';
+    // 第一行：标题 + 日期筛选 + 展开全部
+    var ochR1=document.createElement('div');ochR1.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap';
     var ochTitle=document.createElement('span');ochTitle.className='ct';ochTitle.textContent='↑ 出货记录（'+fgouts.length+'张）';
     var _fgDate=window._fgoutDate||'all';
-    var dtBar=document.createElement('div');dtBar.style.cssText='display:flex;gap:3px;align-items:center';
+    var dtBar=document.createElement('div');dtBar.style.cssText='display:flex;gap:3px;align-items:center;margin-left:auto';
     [['month','本月'],['lastMonth','上月'],['year','本年'],['all','全部']].forEach(function(d){
       var db=document.createElement('button');db.type='button';db.textContent=d[1];
       var isA2=_fgDate===d[0];
@@ -9890,7 +9892,25 @@ function pgFGStock(){
       db.onclick=function(){window._fgoutDate=d[0];pgFGStock();};
       dtBar.appendChild(db);
     });
-    ochR1.appendChild(ochTitle);ochR1.appendChild(dtBar);
+    // 展开/折叠全部
+    var outExpAll=document.createElement('button');outExpAll.type='button';outExpAll.className='btn bs bsm';
+    outExpAll.id='fg-out-exp-all';outExpAll.textContent='▶ 展开全部';
+    outExpAll.onclick=function(){
+      var toExp=this.dataset.state!=='expanded';
+      this.dataset.state=toExp?'expanded':'';
+      this.textContent=toExp?'▼ 折叠全部':'▶ 展开全部';
+      var tbody=document.querySelector('#fg-out-tbl tbody');
+      if(!tbody)return;
+      tbody.querySelectorAll('[data-fgo-detail]').forEach(function(r){r.style.display=toExp?'':'none';});
+      tbody.querySelectorAll('[data-fgo-oid]').forEach(function(r){
+        var oid=r.dataset.fgoOid;
+        window._fgOutExp[oid]=toExp;
+        var btn=r.querySelector('[data-fgo-exp]');
+        if(btn)btn.textContent=toExp?'▼':'▶';
+      });
+    };
+    ochR1.appendChild(ochTitle);ochR1.appendChild(dtBar);ochR1.appendChild(outExpAll);
+    // 第二行：客户筛选 + 搜索
     var ochR2=document.createElement('div');ochR2.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
     var custUniq=[...new Set(fgouts.map(function(r){return r.custNm||'';}).filter(Boolean))].sort();
     var _fgCustF=window._fgoutCust||'';
@@ -9898,30 +9918,28 @@ function pgFGStock(){
     var cAllOpt=document.createElement('option');cAllOpt.value='';cAllOpt.textContent='全部客户';custSel2.appendChild(cAllOpt);
     custUniq.forEach(function(c){var opt=document.createElement('option');opt.value=c;opt.textContent=c;if(_fgCustF===c)opt.selected=true;custSel2.appendChild(opt);});
     custSel2.onchange=function(){window._fgoutCust=this.value;pgFGStock();};
-    var outSrchInp=document.createElement('input');outSrchInp.type='text';outSrchInp.id='fgout-srch-inp';outSrchInp.placeholder='搜索订单号/送货单号/颜色...';
+    var outSrchInp=document.createElement('input');outSrchInp.type='text';outSrchInp.id='fgout-srch-inp';
+    outSrchInp.placeholder='搜索订单号 / 送货单号 / 颜色...';
     outSrchInp.value=window._fgoutSrch||'';
-    outSrchInp.style.cssText='padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:11.5px;width:165px';
+    outSrchInp.style.cssText='flex:1;min-width:150px;max-width:220px;padding:5px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none';
     outSrchInp.addEventListener('compositionstart',function(){window._fgoutSrchCmp=true;});
     outSrchInp.addEventListener('compositionend',function(){
       window._fgoutSrchCmp=false;window._fgoutSrch=this.value;pgFGStock();
-      setTimeout(function(){var ni=document.getElementById('fgout-srch-inp');if(ni){ni.focus();var l=ni.value.length;try{ni.setSelectionRange(l,l);}catch(e){}}},0);
+      setTimeout(function(){var ni=document.getElementById('fgout-srch-inp');if(ni){ni.focus();}},0);
     });
     outSrchInp.oninput=function(){
       if(window._fgoutSrchCmp)return;
       window._fgoutSrch=this.value;pgFGStock();
-      var ni=document.getElementById('fgout-srch-inp');
-      if(ni){ni.focus();var l=ni.value.length;try{ni.setSelectionRange(l,l);}catch(e){}}
+      setTimeout(function(){var ni=document.getElementById('fgout-srch-inp');if(ni)ni.focus();},0);
     };
-    var outSrchSel=document.createElement('select');outSrchSel.style.cssText='padding:4px 6px;border:1px solid var(--bd);border-radius:4px;font-size:11.5px;';
-    [{v:'0',l:'全部'},{v:'20',l:'最近20条'},{v:'50',l:'最近50条'},{v:'100',l:'最近100条'}].forEach(function(o){var opt=document.createElement('option');opt.value=o.v;opt.textContent=o.l;if((window._fgoutLimit||'0')===o.v)opt.selected=true;outSrchSel.appendChild(opt);});
-    outSrchSel.onchange=function(){window._fgoutLimit=this.value;pgFGStock();};
-    ochR2.appendChild(custSel2);ochR2.appendChild(outSrchInp);ochR2.appendChild(outSrchSel);
+    ochR2.appendChild(custSel2);ochR2.appendChild(outSrchInp);
     och.appendChild(ochR1);och.appendChild(ochR2);
     oc.appendChild(och);
+
+    // ── 过滤 ──
     var _fgq=(window._fgoutSrch||'').toLowerCase();
-    var _fgLim=parseInt(window._fgoutLimit||'0')||0;
     var retByOutId={};(DB.fgreturns||[]).forEach(function(ret){if(ret.outId&&ret.status!=='cancelled'){if(!retByOutId[ret.outId])retByOutId[ret.outId]=[];retByOutId[ret.outId].push(ret);}});
-    var filteredOuts=fgouts.slice().reverse().filter(function(r){
+    var filteredOuts=fgouts.slice().filter(function(r){
       if(_fgDate==='month'&&!(r.date||'').startsWith(thisMonth))return false;
       if(_fgDate==='lastMonth'&&!(r.date||'').startsWith(lastMonth))return false;
       if(_fgDate==='year'&&!(r.date||'').startsWith(thisYear))return false;
@@ -9931,122 +9949,209 @@ function pgFGStock(){
       var clrStr=[...new Set(rls2.map(function(x){return x.colorNm||'';}))].join(' ').toLowerCase();
       return (r.ordNo||'').toLowerCase().includes(_fgq)||(r.custNm||'').toLowerCase().includes(_fgq)||clrStr.includes(_fgq)||(r.no||'').toLowerCase().includes(_fgq);
     });
-    var totalOut=filteredOuts.length;
-    if(_fgLim>0&&filteredOuts.length>_fgLim)filteredOuts=filteredOuts.slice(0,_fgLim);
+
     if(!filteredOuts.length){
       var emDiv2=document.createElement('div');emDiv2.style.cssText='text-align:center;padding:48px 20px;color:var(--t3)';
-      emDiv2.innerHTML=(fgouts.length?'📭 没有符合条件的出货记录<br><span style="font-size:11px">尝试更换筛选条件，或切换到「全部」</span>':'📭 暂无出货记录<br><span style="font-size:11px">点击「登记出货」开始录入</span>');
+      emDiv2.innerHTML=(fgouts.length?'📭 没有符合条件的出货记录<br><span style="font-size:11px">尝试更换筛选条件</span>':'📭 暂无出货记录<br><span style="font-size:11px">点击「登记出货」开始录入</span>');
       oc.appendChild(emDiv2);
     }else{
-    var outWrapDiv=document.createElement('div');outWrapDiv.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
-    var outTbl=document.createElement('table');outTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-    var outCols=[['订单号',110],['客户',110],['布类',150],['颜色',80],['色号',80],['缸号',90],['出货时间',88],['送货单号',110],['出货数量',100],['备注',110],['操作',110]];
-    var outThead=document.createElement('thead');
-    var outThRow=document.createElement('tr');
-    outCols.forEach(function(col){
-      var th=document.createElement('th');th.textContent=col[0];
-      th.style.cssText='position:sticky;top:0;z-index:2;background:#eeecff;color:#3730a3;font-weight:700;font-size:10.5px;padding:7px 10px;border:1px solid #c7c4e8;text-align:left;white-space:nowrap;width:'+col[1]+'px;user-select:none';
-      var rsz=document.createElement('div');rsz.style.cssText='position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:3';
-      rsz.addEventListener('mousedown',function(e){
-        e.preventDefault();var sx=e.clientX,sw=th.offsetWidth;
-        function mv(ev){th.style.width=Math.max(40,sw+(ev.clientX-sx))+'px';}
-        function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
-        document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+      // ── 按订单分组 ──
+      var outOrdMap={};
+      filteredOuts.forEach(function(r){
+        var oid=r.ordId||r.ordNo||'__other__';
+        if(!outOrdMap[oid]){
+          var ord=orders.find(function(x){return x.id===r.ordId;})||{};
+          var fabStr=ord.fab||'';
+          // 从关联疋料取布类（若订单无）
+          if(!fabStr){var firstRl=rolls.find(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});if(firstRl)fabStr=firstRl.fab||'';}
+          outOrdMap[oid]={ordNo:r.ordNo||'',ordId:r.ordId||'',custNm:r.custNm||'',fab:fabStr,
+            outs:[],totalKG:0,totalPcs:0,latestDate:'',hasRet:false};
+        }
+        var rls=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
+        var kg=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+        outOrdMap[oid].outs.push(r);
+        outOrdMap[oid].totalKG+=kg;
+        outOrdMap[oid].totalPcs+=rls.length;
+        if((r.date||'')>outOrdMap[oid].latestDate)outOrdMap[oid].latestDate=r.date||'';
+        if(retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0)outOrdMap[oid].hasRet=true;
       });
-      th.appendChild(rsz);outThRow.appendChild(th);
-    });
-    outThead.appendChild(outThRow);outTbl.appendChild(outThead);
-    var outTbody=document.createElement('tbody');
-    filteredOuts.forEach(function(r,idx){
-      var rls=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
-      var totKG=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
-      var clrNms=[...new Set(rls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
-      var bg2=idx%2===0?'#ffffff':'#f9f8ff';
-      var hasRet=retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0;
-      var tr=document.createElement('tr');
-      tr.style.cssText='cursor:pointer;transition:background .1s'+(hasRet?';border-left:4px solid #DC2626':'');
-      tr.onmouseover=function(){this.style.background='#f0f0ff';};
-      tr.onmouseout=function(){this.style.background=bg2;};
-      function mkOTd(txt,style){
-        var td=document.createElement('td');
-        td.style.cssText='padding:6px 10px;border:1px solid #e0dff5;vertical-align:middle;background:'+bg2+';'+(style||'');
-        td.innerHTML=txt;return td;
-      }
-      var outCodes=[...new Set(rls.map(function(x){return x.colorCode||'';}).filter(Boolean))].join('、');
-      var outVats=[...new Set(rls.map(function(x){return x.vatNo||'';}).filter(Boolean))].join('、');
-      var outFabs=[...new Set(rls.map(function(x){return x.fab||'';}).filter(Boolean))];
-      var outFab=outFabs[0]||'';
-      var fabShortO=outFab&&outFab.length>16?outFab.slice(0,16)+'…':outFab||'—';
-      var fabTdO=mkOTd(esc(fabShortO),'color:#1e3a8a;font-size:11px');
-      if(outFab&&outFab.length>16)fabTdO.title=outFab;
-      tr.appendChild(mkOTd(esc(r.ordNo||''),'color:var(--p);font-weight:700;font-family:monospace;font-size:11px'));
-      tr.appendChild(mkOTd(esc(r.custNm||''),'font-weight:600;font-size:11px'));
-      tr.appendChild(fabTdO);
-      tr.appendChild(mkOTd(esc(clrNms),'font-size:11px;color:#333'));
-      tr.appendChild(mkOTd(esc(outCodes||'—'),'color:#666;font-family:monospace;font-size:10.5px'));
-      tr.appendChild(mkOTd(esc(outVats||'—'),'color:#555;font-size:11px'));
-      tr.appendChild(mkOTd(esc(r.date||''),'color:var(--t2);font-size:11px'));
-      tr.appendChild(mkOTd(esc(r.no||''),'color:var(--p);font-weight:700;font-family:monospace;font-size:10.5px'));
-      tr.appendChild(mkOTd(rls.length+'匹 / '+totKG.toFixed(1)+'KG','text-align:center;font-weight:700;color:#e67e22;font-size:11px'));
-      tr.appendChild(mkOTd(esc(r.rm||'')+(hasRet?' <span style="display:inline-block;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:3px;padding:0 5px;font-size:9px;font-weight:700">已退货</span>':''),'color:var(--t3);font-size:11px'));
-      var opTd=mkOTd('','white-space:nowrap');
-      opTd.appendChild(mkBtn('编辑','btn bsm bs',function(rid){return function(){
-        var rec=DB.fgouts.find(function(x){return x.id===rid;});
-        if(rec&&rec.isQuick)openQuickOutEdit(rid);else openFGOutEdit(rid);
-      };}(r.id)));
-      opTd.appendChild(mkBtn('打印','btn bsm boo',function(rid){return function(){
-        var rec=DB.fgouts.find(function(x){return x.id===rid;});
-        if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
-      };}(r.id)));
-      if(!hasRet)opTd.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
-      opTd.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
-        var _ov2=document.createElement('div');
-        _ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
-        var _box2=document.createElement('div');
-        _box2.style.cssText='background:#fff;border-radius:12px;padding:28px 28px 22px;box-shadow:0 16px 48px rgba(0,0,0,.25);max-width:400px;width:92%';
-        _box2.innerHTML=
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
-          +'<span style="font-size:22px">⚠️</span>'
-          +'<span style="font-size:16px;font-weight:700;color:#B91C1C">确认删除出货记录？</span>'
-          +'</div>'
-          +'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:12px;color:#7F1D1D;margin-bottom:14px;line-height:1.9">'
-          +'<b>送货单：</b>'+esc(rSnap.no||'—')+'&nbsp;&nbsp;<b>日期：</b>'+esc(rSnap.date||'—')+'<br>'
-          +'<b>客&nbsp;户：</b>'+esc(rSnap.custNm||'—')+'&nbsp;&nbsp;<b>数量：</b>'+rlsSnap+'匹 / '+totKGSnap.toFixed(1)+'KG'
-          +'</div>'
-          +'<div style="font-size:11.5px;color:#374151;margin-bottom:18px;line-height:2">'
-          +'删除后将产生以下影响：<br>'
-          +'① 出货匹料恢复为<b>「在库」</b>状态<br>'
-          +'② 对账单中此笔出货记录将<b>消失</b><br>'
-          +'③ 若已挂账请先确认<b>应收账款</b>是否需一并处理'
-          +'</div>'
-          +'<div style="display:flex;gap:10px;justify-content:flex-end">'
-          +'<button id="_del_cancel2" style="padding:8px 20px;background:#F3F4F6;color:#374151;border:1.5px solid #D1D5DB;border-radius:7px;font-size:13px;cursor:pointer">取&nbsp;消</button>'
-          +'<button id="_del_confirm2" style="padding:8px 20px;background:#DC2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">我已确认，删除</button>'
-          +'</div>';
-        _ov2.appendChild(_box2);document.body.appendChild(_ov2);
-        function _closeD(){_ov2.remove();}
-        document.getElementById('_del_cancel2').onclick=_closeD;
-        _ov2.addEventListener('click',function(e){if(e.target===_ov2)_closeD();});
-        document.getElementById('_del_confirm2').onclick=function(){
-          _closeD();
-          var r2=DB.fgouts.find(function(x){return x.id===rid;});
-          if(r2)(r2.rollIds||[]).forEach(function(rlid){
-            var allR=fgRolls();var rl=allR.find(function(x){return x.id===rlid;});
-            if(rl){rl.status='in';rl.outId='';saveFgRolls(allR);}
+      // 按最新出货日期倒序
+      var outOrdKeys=Object.keys(outOrdMap);
+      outOrdKeys.sort(function(a,b){
+        var da=outOrdMap[a].latestDate,db=outOrdMap[b].latestDate;
+        return da<db?1:da>db?-1:0;
+      });
+
+      var outWrap=document.createElement('div');outWrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+      var outTbl=document.createElement('table');outTbl.id='fg-out-tbl';
+      outTbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
+      // 表头：▶ | 订单号 | 客户 | 布类 | 合计出货 | 送货单数 | 最新日期 | 操作
+      var outTh=document.createElement('thead');
+      var outThR=document.createElement('tr');
+      [['',26],['订单号',110],['客户',130],['布类',150],['合计出货',110],['单数',60],['最新出货',90],['操作',80]].forEach(function(col){
+        var th=document.createElement('th');th.textContent=col[0];
+        th.style.cssText='position:sticky;top:0;z-index:2;background:#EEECFF;color:#3730A3;font-weight:700;font-size:11px;padding:7px 8px;border:1px solid #C7C4E8;text-align:left;white-space:nowrap;min-width:'+col[1]+'px';
+        outThR.appendChild(th);
+      });
+      outTh.appendChild(outThR);outTbl.appendChild(outTh);
+      var outBody=document.createElement('tbody');
+
+      outOrdKeys.forEach(function(oid,idx){
+        var og=outOrdMap[oid];if(!og)return;
+        var expanded=!!window._fgOutExp[oid];
+        var rowBg=idx%2===0?'#FFFFFF':'#F5F4FF';
+        var bdrClr=og.hasRet?'#DC2626':'#818CF8';
+
+        // 摘要行
+        var tr=document.createElement('tr');
+        tr.dataset.fgoOid=oid;
+        tr.style.cssText='cursor:pointer;background:'+rowBg+';border-left:3px solid '+bdrClr+';transition:background .1s';
+        tr.onmouseover=function(){this.style.background='#EDEAFF';};
+        tr.onmouseout=function(){this.style.background=rowBg;};
+        tr.onclick=function(){
+          var isExp=!!window._fgOutExp[oid];
+          window._fgOutExp[oid]=!isExp;
+          var btn=this.querySelector('[data-fgo-exp]');
+          if(btn)btn.textContent=window._fgOutExp[oid]?'▼':'▶';
+          outBody.querySelectorAll('[data-fgo-detail="'+oid+'"]').forEach(function(r){
+            r.style.display=window._fgOutExp[oid]?'':'none';
           });
-          DB.remove('fgo',rid);
-          pgFGStock();showToast('已删除，库存已恢复','success');
         };
-      };}(r.id, r, rls.length, totKG))));
-      tr.appendChild(opTd);
-      outTbody.appendChild(tr);
-    });
-    outTbl.appendChild(outTbody);outWrapDiv.appendChild(outTbl);oc.appendChild(outWrapDiv);
+        function mkOSumTd(html,style){
+          var td=document.createElement('td');
+          td.style.cssText='padding:8px;border-bottom:1px solid #E5E7EB;vertical-align:middle;'+(style||'');
+          td.innerHTML=html;return td;
+        }
+        var expTd=mkOSumTd('<span data-fgo-exp style="font-size:11px;font-weight:700;color:#9CA3AF">'+(expanded?'▼':'▶')+'</span>','width:26px;text-align:center;padding:8px 2px');
+        tr.appendChild(expTd);
+        var fabSh=og.fab&&og.fab.length>18?og.fab.slice(0,18)+'…':og.fab||'—';
+        tr.appendChild(mkOSumTd('<span style="font-weight:700;color:#4338CA;font-family:monospace;font-size:11.5px">'+esc(og.ordNo||'')+'</span>'+(og.hasRet?'<span style="margin-left:5px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 5px;border-radius:3px">含退货</span>':'')));
+        tr.appendChild(mkOSumTd('<span style="font-size:12px;font-weight:600;color:#1F2937">'+esc(og.custNm||'—')+'</span>'));
+        var fTd=mkOSumTd('<span style="font-size:11px;color:#374151">'+esc(fabSh)+'</span>');
+        if(og.fab&&og.fab.length>18)fTd.title=og.fab;tr.appendChild(fTd);
+        tr.appendChild(mkOSumTd('<b>'+og.totalPcs+'匹</b> / <span style="color:#E67E22;font-weight:700">'+og.totalKG.toFixed(1)+'KG</span>'));
+        tr.appendChild(mkOSumTd('<span style="color:#6B7280">'+og.outs.length+'张</span>','text-align:center'));
+        tr.appendChild(mkOSumTd('<span style="color:#64748B;font-size:11px">'+esc(og.latestDate)+'</span>'));
+        var opSumTd=mkOSumTd('','white-space:nowrap');
+        opSumTd.onclick=function(e){e.stopPropagation();};
+        var prtAllBtn=document.createElement('button');prtAllBtn.type='button';prtAllBtn.className='btn bsm bs';
+        prtAllBtn.style.fontSize='10.5px';prtAllBtn.textContent='全部打印';
+        prtAllBtn.onclick=(function(outList){return function(e){
+          e.stopPropagation();
+          if(outList.length===1){
+            var rec=DB.fgouts.find(function(x){return x.id===outList[0].id;});
+            if(rec&&rec.isQuick)printQuickOut(outList[0].id);else printFGOut(outList[0].id);
+          }else{
+            var nos=outList.map(function(r){return r.no||r.id;}).join('、');
+            if(confirm('共'+outList.length+'张送货单：'+nos+'\n逐张打印？'))outList.forEach(function(r){
+              var rec=DB.fgouts.find(function(x){return x.id===r.id;});
+              if(rec&&rec.isQuick)printQuickOut(r.id);else printFGOut(r.id);
+            });
+          }
+        };})(og.outs);
+        opSumTd.appendChild(prtAllBtn);
+        tr.appendChild(opSumTd);
+        outBody.appendChild(tr);
+
+        // ── 明细行：每张送货单一行 ──
+        // 子表头行
+        var subThTr=document.createElement('tr');
+        subThTr.dataset.fgoDetail=oid;
+        subThTr.style.cssText='display:'+(expanded?'':'none')+';background:#F3F2FF';
+        ['','送货单号','颜色','色号 / 缸号','出货日期','数量','备注','操作'].forEach(function(h,hi){
+          var th=document.createElement('td');th.textContent=h;
+          th.style.cssText='padding:4px 8px;font-size:10px;font-weight:700;color:#6D28D9;border-bottom:1px solid #DDD6FE;'+(hi===0?'width:26px':'');
+          subThTr.appendChild(th);
+        });
+        outBody.appendChild(subThTr);
+
+        // 每张送货单
+        og.outs.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:(b.date||'')<(a.date||'')?-1:0;}).forEach(function(r,ri){
+          var rls=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
+          var kg=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+          var clrNms=[...new Set(rls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
+          var outCodes=[...new Set(rls.map(function(x){return x.colorCode||'';}).filter(Boolean))].join('、');
+          var outVats=[...new Set(rls.map(function(x){return x.vatNo||'';}).filter(Boolean))].join('、');
+          var hasRetD=retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0;
+          var dBg=ri%2===0?'#FAF9FF':'#F3F2FF';
+          var dtr=document.createElement('tr');
+          dtr.dataset.fgoDetail=oid;
+          dtr.style.cssText='display:'+(expanded?'':'none')+';background:'+dBg+(hasRetD?';border-left:3px solid #DC2626':'');
+          dtr.onmouseover=function(){this.style.background='#EDE9FE';};
+          dtr.onmouseout=function(){this.style.background=dBg;};
+          function mkDTd2(html,style){
+            var td=document.createElement('td');
+            td.style.cssText='padding:5px 8px;border-bottom:1px solid #E5E7EB;font-size:11px;vertical-align:middle;'+(style||'');
+            td.innerHTML=html;return td;
+          }
+          dtr.appendChild(mkDTd2('','width:26px;border-left:3px solid #C4B5FD;background:'+dBg));
+          dtr.appendChild(mkDTd2('<span style="font-family:monospace;font-weight:700;color:#4338CA;font-size:10.5px">'+esc(r.no||'')+'</span>'+(hasRetD?'<span style="margin-left:4px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 4px;border-radius:2px">退货</span>':'')));
+          dtr.appendChild(mkDTd2('<span style="color:#374151;font-weight:600">'+esc(clrNms||'—')+'</span>'));
+          dtr.appendChild(mkDTd2('<span style="color:#94A3B8;font-family:monospace;font-size:10px">'+(outCodes?esc(outCodes)+' / ':'')+(outVats?esc(outVats):'—')+'</span>'));
+          dtr.appendChild(mkDTd2('<span style="color:#64748B">'+esc(r.date||'')+'</span>'));
+          dtr.appendChild(mkDTd2('<b>'+rls.length+'匹</b> / <span style="color:#E67E22">'+kg.toFixed(1)+'KG</span>'));
+          dtr.appendChild(mkDTd2('<span style="color:#9CA3AF;font-size:10.5px">'+esc(r.rm||'')+'</span>'));
+          var opDTd2=mkDTd2('','white-space:nowrap');
+          opDTd2.onclick=function(e){e.stopPropagation();};
+          opDTd2.appendChild(mkBtn('编辑','btn bsm bs',function(rid){return function(){
+            var rec=DB.fgouts.find(function(x){return x.id===rid;});
+            if(rec&&rec.isQuick)openQuickOutEdit(rid);else openFGOutEdit(rid);
+          };}(r.id)));
+          opDTd2.appendChild(mkBtn('打印','btn bsm boo',function(rid){return function(){
+            var rec=DB.fgouts.find(function(x){return x.id===rid;});
+            if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
+          };}(r.id)));
+          if(!hasRetD)opDTd2.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
+          opDTd2.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
+            var _ov2=document.createElement('div');
+            _ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
+            var _box2=document.createElement('div');
+            _box2.style.cssText='background:#fff;border-radius:12px;padding:28px 28px 22px;box-shadow:0 16px 48px rgba(0,0,0,.25);max-width:400px;width:92%';
+            _box2.innerHTML=
+              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+              +'<span style="font-size:22px">⚠️</span>'
+              +'<span style="font-size:16px;font-weight:700;color:#B91C1C">确认删除出货记录？</span>'
+              +'</div>'
+              +'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:12px;color:#7F1D1D;margin-bottom:14px;line-height:1.9">'
+              +'<b>送货单：</b>'+esc(rSnap.no||'—')+'&nbsp;&nbsp;<b>日期：</b>'+esc(rSnap.date||'—')+'<br>'
+              +'<b>客&nbsp;户：</b>'+esc(rSnap.custNm||'—')+'&nbsp;&nbsp;<b>数量：</b>'+rlsSnap+'匹 / '+totKGSnap.toFixed(1)+'KG'
+              +'</div>'
+              +'<div style="font-size:11.5px;color:#374151;margin-bottom:18px;line-height:2">'
+              +'删除后将产生以下影响：<br>'
+              +'① 出货匹料恢复为<b>「在库」</b>状态<br>'
+              +'② 对账单中此笔出货记录将<b>消失</b><br>'
+              +'③ 若已挂账请先确认<b>应收账款</b>是否需一并处理'
+              +'</div>'
+              +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+              +'<button id="_del_cancel2" style="padding:8px 20px;background:#F3F4F6;color:#374151;border:1.5px solid #D1D5DB;border-radius:7px;font-size:13px;cursor:pointer">取&nbsp;消</button>'
+              +'<button id="_del_confirm2" style="padding:8px 20px;background:#DC2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">我已确认，删除</button>'
+              +'</div>';
+            _ov2.appendChild(_box2);document.body.appendChild(_ov2);
+            function _closeD(){_ov2.remove();}
+            document.getElementById('_del_cancel2').onclick=_closeD;
+            _ov2.addEventListener('click',function(e){if(e.target===_ov2)_closeD();});
+            document.getElementById('_del_confirm2').onclick=function(){
+              _closeD();
+              var r2=DB.fgouts.find(function(x){return x.id===rid;});
+              if(r2)(r2.rollIds||[]).forEach(function(rlid){
+                var allR=fgRolls();var rl=allR.find(function(x){return x.id===rlid;});
+                if(rl){rl.status='in';rl.outId='';saveFgRolls(allR);}
+              });
+              DB.remove('fgo',rid);
+              pgFGStock();showToast('已删除，库存已恢复','success');
+            };
+          };}(r.id, r, rls.length, kg))));
+          dtr.appendChild(opDTd2);
+          outBody.appendChild(dtr);
+        });
+      });
+
+      outTbl.appendChild(outBody);outWrap.appendChild(outTbl);oc.appendChild(outWrap);
     }
     var outInfo=document.createElement('div');outInfo.style.cssText='font-size:10.5px;color:var(--t3);padding:5px 10px';
     var outInfoTxt='共 '+fgouts.length+' 张出货记录';
-    if(_fgq||_fgLim>0||_fgDate!=='all'||_fgCustF)outInfoTxt+=' · 当前筛选 '+filteredOuts.length+'张'+(totalOut>filteredOuts.length?'（共'+totalOut+'条符合）':'');
-    outInfoTxt+=' · 拖动表头边框可调整列宽';
+    if(_fgq||_fgDate!=='all'||_fgCustF)outInfoTxt+=' · 当前筛选 '+filteredOuts.length+'张 / '+Object.keys(outOrdMap||{}).length+'张订单';
+    outInfoTxt+=' · 点击行展开送货单明细';
     outInfo.textContent=outInfoTxt;
     oc.appendChild(outInfo);
     pg.appendChild(oc);

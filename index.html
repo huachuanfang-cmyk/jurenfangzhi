@@ -2067,18 +2067,30 @@ function pgDash(){
     var critical=[],warning2=[];
     overdueOrds.forEach(function(o){
       var days=Math.round((today-new Date(o.delDate))/86400000);
-      critical.push({icon:'📦',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 逾期未出货，已超期 <b style="color:#DC2626">'+days+'天</b>',label:'查看订单',fn:function(){go('orders');}});
+      critical.push({icon:'📦',
+        text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 逾期未出货，已超期 <b style="color:#DC2626">'+days+'天</b>',
+        label:'打开订单',
+        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+      });
     });
     overdueArecs.forEach(function(r){
       var s=getDaysStatus(r.dueDate);
       critical.push({icon:'💰',text:'<b>'+esc(r.custNm)+'</b> '+esc(r.month)+'月账款 — 逾期 <b style="color:#DC2626">'+s.days+'天</b>，余款 ¥'+parseFloat(r.balanceAmt||0).toFixed(0),label:'去收款',fn:function(){go('arec');}});
     });
     todayOrds.forEach(function(o){
-      critical.push({icon:'🚚',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 今天交货，请确认出货',label:'确认出货',fn:function(){go('fgstock');}});
+      critical.push({icon:'🚚',
+        text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 今天交货，请确认出货',
+        label:'打开订单',
+        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+      });
     });
     soonOrds.forEach(function(o){
       var days=Math.round((new Date(o.delDate)-today)/86400000);
-      warning2.push({icon:'📅',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 还剩 <b style="color:#D97706">'+days+'天</b> 交货（'+esc(o.delDate)+'）',label:'查看进度',fn:function(){go('orders');}});
+      warning2.push({icon:'📅',
+        text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 还剩 <b style="color:#D97706">'+days+'天</b> 交货（'+esc(o.delDate)+'）',
+        label:'打开订单',
+        fn:(function(id){return function(){go('orders');setTimeout(function(){openOD(id,true);},150);};})(o.id)
+      });
     });
     warnArecs.forEach(function(r){
       var s=getDaysStatus(r.dueDate);

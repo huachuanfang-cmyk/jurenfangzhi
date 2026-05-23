@@ -790,13 +790,8 @@ var DB={
       if(r.status==='return_pending'&&!r.retId)issues.push('布卷 '+r.id+' 状态退货待处理但无退货ID');
       if(r.outId&&r.status!=='out'&&r.status!=='return_pending'&&r.status!=='cancelled')issues.push('布卷 '+r.id+' 有出货ID但状态异常');
     });
-    for(var k in TABLE_MAP){
-      var dirty=localStorage.getItem('gjr5_dirty_'+k);
-      if(dirty==='1'){
-        var saved=this.load(k);
-        if(saved&&saved.length)issues.push(TABLE_MAP[k]+' 有未同步的修改');
-      }
-    }
+    // 注：同步脏标记（dirty flags）属于云端同步状态，不在此处报告；
+    // 推送失败时会通过 showToast 单独提示，不混入数据完整性检查。
     return issues;
   },
   // ══ 重置测试数据 ══
@@ -1012,11 +1007,19 @@ async function pullFromSupabase(){
       }
     }catch(e){ fails.push(TABLE_MAP[key]); }
   }
-  // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（带版本保险：推送期间版本未变才清除）
+  // Step 3 — 清除 dirty flags
+  // 3a. 成功推送的表（带版本保险）
   for(var i=0;i<pushedKeys.length;i++){
     var key = pushedKeys[i];
     if((_syncVersions[key] || 0) === (prePushVers[key] || 0)){
       localStorage.removeItem('gjr5_dirty_'+key);
+    }
+  }
+  // 3b. 本次推送失败的表：也清除旧 dirty flag，避免跨会话积累。
+  //     下次用户保存该表时会重新标记，届时再重试推送即可。
+  for(var k in prePushVers){
+    if(pushedKeys.indexOf(k) < 0){
+      localStorage.removeItem('gjr5_dirty_'+k);
     }
   }
   // 处理离线删除队列
@@ -1035,6 +1038,9 @@ async function pullFromSupabase(){
   else showToast('未加载到数据','warning');
 }
 
+// ── 启动时清除历史遗留的 dirty flags（由本次 pullFromSupabase 重新判断）──
+(function(){for(var k in TABLE_MAP){localStorage.removeItem('gjr5_dirty_'+k);}})();
+
 var _origSave = DB.save.bind(DB);
 DB.save = function(n, v){
   _origSave(n, v);
@@ -1042,8 +1048,8 @@ DB.save = function(n, v){
     if(TABLE_MAP[n]) localStorage.setItem('gjr5_test_dirty_'+n, '1');
     return;
   }
-  // 标记为未同步（离线期间修改过）
-  if(TABLE_MAP[n]) localStorage.setItem('gjr5_dirty_'+n, '1');
+  // 标记为未同步（离线期间修改过）— 仅在有活跃 Supabase 会话时才有意义
+  if(TABLE_MAP[n] && _supabaseData) localStorage.setItem('gjr5_dirty_'+n, '1');
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;

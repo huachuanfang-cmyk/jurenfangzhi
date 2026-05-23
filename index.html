@@ -790,8 +790,13 @@ var DB={
       if(r.status==='return_pending'&&!r.retId)issues.push('布卷 '+r.id+' 状态退货待处理但无退货ID');
       if(r.outId&&r.status!=='out'&&r.status!=='return_pending'&&r.status!=='cancelled')issues.push('布卷 '+r.id+' 有出货ID但状态异常');
     });
-    // 注：同步脏标记（dirty flags）属于云端同步状态，不在此处报告；
-    // 推送失败时会通过 showToast 单独提示，不混入数据完整性检查。
+    for(var k in TABLE_MAP){
+      var dirty=localStorage.getItem('gjr5_dirty_'+k);
+      if(dirty==='1'){
+        var saved=this.load(k);
+        if(saved&&saved.length)issues.push(TABLE_MAP[k]+' 有未同步的修改');
+      }
+    }
     return issues;
   },
   // ══ 重置测试数据 ══
@@ -996,30 +1001,26 @@ async function pullFromSupabase(){
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
       if(error){ fails.push(table); continue; }
-      if(data && data.length > 0){
-        var camelData = data.map(snakeToCamel);
-        // 按编号/日期降序排列，最新数据置顶
-        if(key === 'o') camelData.sort(function(a,b){ return (a.no||'') < (b.no||'') ? 1 : -1; });
-        else if(['c','f','mat','qt','yn'].indexOf(key)>=0) camelData.sort(function(a,b){ var an=a.nm||a.name||''; var bn=b.nm||b.name||''; return an<bn?-1:an>bn?1:0; });
-        localStorage.setItem('gjr5_'+key, JSON.stringify(camelData));
-        DB._c[key] = camelData;
-        loaded += data.length;
+      // ── 安全合并：云端数据 + 本地独有记录（防止推送失败后 pull 覆盖丢失本地新数据）──
+      var camelData = (data||[]).map(snakeToCamel);
+      if(key === 'o') camelData.sort(function(a,b){ return (a.no||'') < (b.no||'') ? 1 : -1; });
+      else if(['c','f','mat','qt','yn'].indexOf(key)>=0) camelData.sort(function(a,b){ var an=a.nm||a.name||''; var bn=b.nm||b.name||''; return an<bn?-1:an>bn?1:0; });
+      var _localPre=DB.load(key)||[];
+      var _remSet={};camelData.forEach(function(x){if(x&&x.id)_remSet[x.id]=true;});
+      var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id];});
+      if(_localOnly.length>0){
+        (function(_t,_rows){_supabaseData.from(_t).upsert(_rows,{onConflict:'id',ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],_localOnly.map(camelToSnake));
       }
+      var _merged=camelData.concat(_localOnly);
+      if(_merged.length>0){localStorage.setItem('gjr5_'+key,JSON.stringify(_merged));DB._c[key]=_merged;}
+      loaded+=camelData.length;
     }catch(e){ fails.push(TABLE_MAP[key]); }
   }
-  // Step 3 — 清除 dirty flags
-  // 3a. 成功推送的表（带版本保险）
+  // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（带版本保险：推送期间版本未变才清除）
   for(var i=0;i<pushedKeys.length;i++){
     var key = pushedKeys[i];
     if((_syncVersions[key] || 0) === (prePushVers[key] || 0)){
       localStorage.removeItem('gjr5_dirty_'+key);
-    }
-  }
-  // 3b. 本次推送失败的表：也清除旧 dirty flag，避免跨会话积累。
-  //     下次用户保存该表时会重新标记，届时再重试推送即可。
-  for(var k in prePushVers){
-    if(pushedKeys.indexOf(k) < 0){
-      localStorage.removeItem('gjr5_dirty_'+k);
     }
   }
   // 处理离线删除队列
@@ -1038,18 +1039,62 @@ async function pullFromSupabase(){
   else showToast('未加载到数据','warning');
 }
 
-// ── 启动时清除历史遗留的 dirty flags（由本次 pullFromSupabase 重新判断）──
-(function(){for(var k in TABLE_MAP){localStorage.removeItem('gjr5_dirty_'+k);}})();
+// ── 快照急救恢复 ──
+function restoreFromSnapshot(){
+  var ts=parseInt(localStorage.getItem('gjr5_snap_ts')||'0');
+  var tsStr=ts?new Date(ts).toLocaleString('zh-CN'):'未知时间';
+  var snapKeys=['fgr','fgo','fgi','o','ar'];
+  var snaps={};
+  snapKeys.forEach(function(k){var d=localStorage.getItem('gjr5_snap_'+k);if(d){try{var arr=JSON.parse(d);if(arr&&arr.length)snaps[k]=arr;}catch(e){}}});
+  var ks=Object.keys(snaps);
+  if(!ks.length){showToast('无可用快照数据','error');return;}
+  var keyLabels={fgr:'疋料记录',fgo:'出货单',fgi:'入库批次',o:'销售订单',ar:'对账单'};
+  var lines=ks.map(function(k){var cur=DB.load(k)||[];var sn=snaps[k];var d=sn.length-cur.length;return (keyLabels[k]||k)+'：快照'+sn.length+'条 / 当前'+cur.length+'条'+(d>0?' ← 可找回'+d+'条':'');});
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:28px 32px;max-width:480px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.25)';
+  box.innerHTML='<div style="font-size:15px;font-weight:700;color:#B91C1C;margin-bottom:6px">🚨 快照急救恢复</div>'
+    +'<div style="font-size:12px;color:#6B7280;margin-bottom:14px">快照时间：'+tsStr+'</div>'
+    +'<div style="background:#FEF2F2;border-radius:8px;padding:12px;font-size:11.5px;color:#374151;margin-bottom:16px;line-height:1.9">'
+    +lines.map(function(l){return '<div>'+l+'</div>';}).join('')+'</div>'
+    +'<div style="font-size:11.5px;color:#6B7280;margin-bottom:20px">仅补入快照中有、当前数据中没有的记录，已有记录不覆盖。</div>'
+    +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+    +'<button id="_sr_cancel" style="padding:8px 18px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:13px;cursor:pointer">取消</button>'
+    +'<button id="_sr_ok" style="padding:8px 20px;background:#DC2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">立即恢复</button>'
+    +'</div>';
+  overlay.appendChild(box);document.body.appendChild(overlay);
+  document.getElementById('_sr_cancel').onclick=function(){overlay.remove();};
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
+  document.getElementById('_sr_ok').onclick=function(){
+    overlay.remove();
+    var recovered=0;
+    ks.forEach(function(k){
+      var cur=DB.load(k)||[];var sn=snaps[k];
+      var curIds={};cur.forEach(function(x){if(x&&x.id)curIds[x.id]=true;});
+      var missing=sn.filter(function(x){return x&&x.id&&!curIds[x.id];});
+      if(missing.length){DB.save(k,cur.concat(missing));recovered+=missing.length;}
+    });
+    if(recovered>0){showToast('✅ 已从快照找回 '+recovered+' 条记录！','success');setTimeout(function(){pgFGStock();},400);}
+    else showToast('快照与当前数据一致，无需恢复','info');
+  };
+}
 
 var _origSave = DB.save.bind(DB);
+// ── 关键表自动快照（独立 key，不会被 Supabase pull 覆盖）──
+var _SNAP_KEYS={fgr:1,fgo:1,fgi:1,o:1,ar:1};
 DB.save = function(n, v){
   _origSave(n, v);
+  // 自动快照：每次写入关键表都在独立位置留副本
+  if(_SNAP_KEYS[n]&&Array.isArray(v)&&v.length>0){
+    try{localStorage.setItem('gjr5_snap_'+n,JSON.stringify(v));localStorage.setItem('gjr5_snap_ts',String(Date.now()));}catch(e){}
+  }
   if(_testMode){
     if(TABLE_MAP[n]) localStorage.setItem('gjr5_test_dirty_'+n, '1');
     return;
   }
-  // 标记为未同步（离线期间修改过）— 仅在有活跃 Supabase 会话时才有意义
-  if(TABLE_MAP[n] && _supabaseData) localStorage.setItem('gjr5_dirty_'+n, '1');
+  // 标记为未同步（离线期间修改过）
+  if(TABLE_MAP[n]) localStorage.setItem('gjr5_dirty_'+n, '1');
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
@@ -1192,10 +1237,10 @@ function bindAuthUI(){
         await _supabase.auth.signOut();
       }
       _authUser = null;
-      // 仅清除业务数据，保留登录偏好和锁屏密码
+      // 仅清除业务数据，保留登录偏好、锁屏密码和自动快照
       var _keep = ['gjr5_remember','gjr5_lock_pin'];
       for(var k in localStorage){
-        if(k.indexOf('gjr5_')===0 && _keep.indexOf(k)<0) localStorage.removeItem(k);
+        if(k.indexOf('gjr5_')===0 && _keep.indexOf(k)<0 && k.indexOf('gjr5_snap_')!==0) localStorage.removeItem(k);
       }
       location.reload();
     };
@@ -1254,40 +1299,6 @@ async function onAuthSuccess(){
     }
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
-  // ── 迁移 v2：批量回填历史缸号（双路径查找）──
-  (function(){
-    var migKey='gjr5_migrated_vatnos_v2';
-    if(localStorage.getItem(migKey)==='1')return; // 已执行过，跳过
-    var orders=DB.orders||[];
-    var rolls=fgRolls(); // 所有疋料记录（含已出货 status=out）
-    var fgouts=DB.fgouts||[];
-    // 建立 rollId → vatNo 快速查找表
-    var rollVatMap={};
-    rolls.forEach(function(r){if(r.id&&r.vatNo)rollVatMap[r.id]=r.vatNo;});
-    var changed=0;
-    orders.forEach(function(o){
-      (o.colors||[]).forEach(function(c){
-        if(c.yb)return; // 已有缸号，跳过
-        // 路径1：直接从 fgRolls 匹配 ordId + colorNm + vatNo
-        var matchRoll=rolls.find(function(r){return r.ordId===o.id&&r.colorNm===c.nm&&r.vatNo;});
-        if(matchRoll){c.yb=matchRoll.vatNo;changed++;return;}
-        // 路径2：从 fgouts rollIds → fgRolls 反查 vatNo（适用入库时未填缸号但出货时已关联）
-        var matchOut=fgouts.find(function(fo){
-          if(fo.ordId!==o.id)return false;
-          // 检查这个出货单的疋中是否有匹配该颜色的
-          var firstMatchRoll=(fo.rollIds||[]).map(function(rid){return rolls.find(function(r){return r.id===rid;});})
-            .find(function(r){return r&&r.colorNm===c.nm&&r.vatNo;});
-          if(firstMatchRoll){c.yb=firstMatchRoll.vatNo;changed++;return true;}
-          return false;
-        });
-      });
-    });
-    if(changed>0){
-      DB.orders=orders;
-      showToast('已自动补全 '+changed+' 个颜色行的历史缸号','success');
-    }
-    localStorage.setItem(migKey,'1'); // 标记已执行，下次不再重跑
-  })();
   _auditIssues = DB.audit();
   go('dash');
 }
@@ -9556,11 +9567,25 @@ function pgFGStock(){
   pg.appendChild(sr);
 
   // ── 快捷操作 ──
-  var qc=document.createElement('div');qc.style.cssText='display:flex;gap:8px;margin-bottom:12px';
+  var qc=document.createElement('div');qc.style.cssText='display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap';
   qc.appendChild(mkBtn('＋ 登记入库','btn bp',function(){openFGInM(null);}));
   qc.appendChild(mkBtn('＋ 登记出货','btn bq',function(){openFGOutM(null);}));
   qc.appendChild(mkBtn('⚡ 快速出货（无订单）','btn bs',function(){openQuickOut();}));
   qc.appendChild(mkBtn('📋 多色合并送货单','btn',function(){openMultiColorSheet();}));
+  // ── 快照急救按钮（仅当快照比当前出货数据多时出现）──
+  (function(){
+    var snapTs=parseInt(localStorage.getItem('gjr5_snap_ts')||'0');if(!snapTs)return;
+    var snapFgo=[];try{snapFgo=JSON.parse(localStorage.getItem('gjr5_snap_fgo')||'[]');}catch(e){}
+    var curFgo=DB.fgouts||[];
+    if(snapFgo.length<=curFgo.length)return;
+    var diff=snapFgo.length-curFgo.length;
+    var snapBtn=document.createElement('button');snapBtn.type='button';snapBtn.className='btn';
+    snapBtn.style.cssText='background:#FEF2F2;color:#B91C1C;border:1.5px solid #FCA5A5;font-size:11.5px;font-weight:700';
+    snapBtn.textContent='🚨 快照急救（找回 '+diff+' 条出货记录）';
+    snapBtn.title='快照时间：'+new Date(snapTs).toLocaleString('zh-CN');
+    snapBtn.onclick=function(){restoreFromSnapshot();};
+    qc.appendChild(snapBtn);
+  })();
   pg.appendChild(qc);
 
   // ── 最近操作：预展开目标行 ──
@@ -11219,20 +11244,12 @@ function openFGInM(id){
     saveFgRolls(existRolls);
     window._fgLastAction={type:'in',ordId:ordId,ordNo:o.no,custNm:o.custNm||'',ts:Date.now()};window._fgTab='stock';
     pgFGStock(); // 保存后立即刷新背后的库存列表，无需手动刷新
-    // 自动推进颜色状态 + 回填缸号
+    // 自动推进颜色状态
     var ord2=DB.orders.find(function(x){return x.id===ordId;});
-    var _vatSynced=false;
-    if(ord2){
-      var clr2=(ord2.colors||[]).find(function(c){return c.nm===colorNm;});
-      if(clr2){
-        clr2.clrStatus='finished';
-        // 仅当订单颜色行尚无缸号时才自动回填（有值则不覆盖）
-        if(!clr2.yb&&vatNo){clr2.yb=vatNo;_vatSynced=true;}
-      }
-      DB.orders=DB.orders;
-    }
+    if(ord2){var clr2=(ord2.colors||[]).find(function(c){return c.nm===colorNm;});
+      if(clr2)clr2.clrStatus='finished';DB.orders=DB.orders;}
     // 保存成功：不跳主页，留在弹窗，清空疋明细等待继续录下一缸
-    showToast('✓ 入库成功！'+inNo+' 共'+validRolls.length+'匹'+(_vatSynced?' · 缸号已同步至订单':''),'success');
+    showToast('✓ 入库成功！'+inNo+' 共'+validRolls.length+'匹','success');
     // 清空缸号和疋明细，颜色清空等待重选，订单保持不变
     var vatEl=document.getElementById('fgi-vat');if(vatEl)vatEl.value='';
     var rollBodyEl=document.getElementById('fgi-roll-body');

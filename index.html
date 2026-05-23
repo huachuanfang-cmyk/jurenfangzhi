@@ -9530,13 +9530,14 @@ function pgFGStock(){
 
   var mInKG=0,mOutKG=0,lmInKG=0,lmOutKG=0;
   fgins.forEach(function(r){
-    var rs=rolls.filter(function(x){return x.inId===r.id;});
+    if(r.status==='voided')return; // 已撤销批次不计入KPI
+    var rs=rolls.filter(function(x){return x.inId===r.id&&x.status!=='voided';});
     var kg=rs.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
     if((r.date||'').startsWith(thisMonth))mInKG+=kg;
     if((r.date||'').startsWith(lastMonth))lmInKG+=kg;
   });
   fgouts.forEach(function(r){
-    var rs=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
+    var rs=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0&&x.status!=='voided';});
     var kg=rs.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
     if((r.date||'').startsWith(thisMonth))mOutKG+=kg;
     if((r.date||'').startsWith(lastMonth))lmOutKG+=kg;
@@ -9551,7 +9552,7 @@ function pgFGStock(){
   // ── KPI 汇总卡（4格）──
   var sr=document.createElement('div');sr.className='sr';
   sr.style.gridTemplateColumns='repeat(4,1fr)';
-  var mInCnt=fgins.filter(function(x){return (x.date||'').startsWith(thisMonth);}).length;
+  var mInCnt=fgins.filter(function(x){return (x.date||'').startsWith(thisMonth)&&x.status!=='voided';}).length;
   var mOutCnt=fgouts.filter(function(x){return (x.date||'').startsWith(thisMonth);}).length;
   [
     {lbl:'当前在库',val:stockCount+'匹',sub:stockKG.toFixed(1)+' KG',cls:'sg',badge:'',tab:'stock'},
@@ -9718,7 +9719,7 @@ function pgFGStock(){
     // ── 按订单分组 ──
     var ordMap={};
     rolls.forEach(function(r){
-      if(r.status==='returned')return;
+      if(r.status==='returned'||r.status==='voided')return;
       var oid=r.ordId||'__none__';
       if(!ordMap[oid]){
         var ord=orders.find(function(x){return x.id===r.ordId;})||{};
@@ -10853,38 +10854,78 @@ function openRollList(k,grp,rolls){
     tbody.appendChild(sumTr);
     tbl.appendChild(tbody);body.appendChild(tbl);
 
-    // ── 撤销入库区（仅当有在库疋时显示）──
+    // ── 已撤销记录（软删除留痕）──
+    var voidedRolls=grpRolls.filter(function(r){return r.status==='voided';});
+    if(voidedRolls.length>0){
+      var voidedSec=document.createElement('div');
+      voidedSec.style.cssText='margin-top:12px;background:#F9FAFB;border-radius:8px;border:1px solid #E5E7EB;overflow:hidden';
+      var voidedHdr=document.createElement('div');
+      voidedHdr.style.cssText='padding:7px 12px;background:#F3F4F6;font-size:11px;color:#6B7280;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
+      voidedHdr.innerHTML='<span>🗂 已撤销记录（'+voidedRolls.length+'匹，数据永久保留供审计）</span><span>▶</span>';
+      var voidedBody=document.createElement('div');voidedBody.style.display='none';
+      voidedHdr.onclick=function(){
+        var shown=voidedBody.style.display!=='none';
+        voidedBody.style.display=shown?'none':'block';
+        voidedHdr.querySelector('span:last-child').textContent=shown?'▶':'▼';
+      };
+      var voidedTbl=document.createElement('table');
+      voidedTbl.style.cssText='width:100%;border-collapse:collapse;font-size:11px';
+      voidedTbl.innerHTML='<thead><tr style="background:#FEF2F2"><th style="padding:5px 10px;text-align:left;color:#9CA3AF">疋号</th><th style="padding:5px 10px;text-align:center;color:#9CA3AF">KG</th><th style="padding:5px 10px;color:#9CA3AF">撤销原因</th><th style="padding:5px 10px;color:#9CA3AF">撤销时间</th></tr></thead>';
+      var voidedTbody=document.createElement('tbody');
+      voidedRolls.forEach(function(r){
+        var vtr=document.createElement('tr');vtr.style.borderBottom='1px solid #F3F4F6';
+        vtr.innerHTML='<td style="padding:5px 10px;color:#9CA3AF;text-decoration:line-through">'+esc(r.rollNo||'')+'</td>'
+          +'<td style="padding:5px 10px;text-align:center;color:#9CA3AF">'+esc(r.kg||'')+'</td>'
+          +'<td style="padding:5px 10px;color:#6B7280;font-style:italic">'+esc(r.voidReason||'—')+'</td>'
+          +'<td style="padding:5px 10px;color:#9CA3AF;font-size:10px">'+esc(r.voidedAt?new Date(r.voidedAt).toLocaleString('zh-CN'):'')+'</td>';
+        voidedTbody.appendChild(vtr);
+      });
+      voidedTbl.appendChild(voidedTbody);voidedBody.appendChild(voidedTbl);
+      voidedSec.appendChild(voidedHdr);voidedSec.appendChild(voidedBody);
+      body.appendChild(voidedSec);
+    }
+
+    // ── 撤销入库区（三重保护：密码+原因+软删除留痕）──
     var inRolls=grpRolls.filter(function(r){return r.status==='in';});
     if(inRolls.length>0){
       var vd=document.createElement('div');
-      vd.style.cssText='margin-top:14px;padding:10px 14px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA;display:flex;align-items:center;justify-content:space-between;gap:12px';
-      var vdTxt=document.createElement('span');
-      vdTxt.style.cssText='font-size:11.5px;color:#991B1B;line-height:1.5';
-      vdTxt.innerHTML='<b>录错了？</b> 可撤销这批在库疋（共 <b>'+inRolls.length+' 匹</b>），撤销后重新登记入库。<br><span style="color:#6B7280;font-size:10.5px">已出货的疋不受影响。</span>';
-      var vdBtn=document.createElement('button');
-      vdBtn.type='button';vdBtn.className='btn';
-      vdBtn.style.cssText='background:#DC2626;color:#fff;border:none;font-size:12px;font-weight:700;white-space:nowrap;flex-shrink:0';
-      vdBtn.textContent='🗑 撤销入库';
-      vdBtn.onclick=function(){
-        if(!confirm('确认撤销这 '+inRolls.length+' 匹在库疋？\n撤销后可重新登记入库。')) return;
-        var allR=fgRolls();
-        var voidIds={};inRolls.forEach(function(r){voidIds[r.id]=true;});
-        var inIdSet={};inRolls.forEach(function(r){if(r.inId)inIdSet[r.inId]=true;});
-        var newRolls=allR.filter(function(r){return !voidIds[r.id];});
-        saveFgRolls(newRolls);
-        // 若 fgins 批次下已无任何疋，则一并删除
-        var fginsDB=DB.fgins||[];
-        Object.keys(inIdSet).forEach(function(iid){
-          if(!newRolls.some(function(r){return r.inId===iid;})){
-            fginsDB=fginsDB.filter(function(fi){return fi.id!==iid;});
-          }
-        });
-        DB.fgins=fginsDB;
-        showToast('已撤销 '+inRolls.length+' 匹入库记录，可重新登记','success');
-        cm();pgFGStock();
-      };
-      vd.appendChild(vdTxt);vd.appendChild(vdBtn);
+      vd.style.cssText='margin-top:14px;padding:12px 14px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA';
+      vd.innerHTML='<div style="font-size:12px;font-weight:700;color:#991B1B;margin-bottom:4px">🔒 撤销入库（需管理员密码）</div>'
+        +'<div style="font-size:11px;color:#6B7280;margin-bottom:10px">录入有误时使用。撤销后疋料<b>不会被删除</b>，以"已撤销"状态永久保留供审计追溯，可重新登记入库。</div>'
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +'<input id="void-reason" type="text" placeholder="撤销原因（必填，如：数量录错）" style="flex:1;min-width:180px;padding:6px 10px;border:1.5px solid #FCA5A5;border-radius:6px;font-size:12px;outline:none">'
+        +'<button type="button" id="void-exec-btn" class="btn" style="background:#DC2626;color:#fff;border:none;font-size:12px;font-weight:700;white-space:nowrap">🗑 撤销这批在库疋（'+inRolls.length+'匹）</button>'
+        +'</div>';
       body.appendChild(vd);
+      document.getElementById('void-exec-btn').onclick=function(){
+        var reason=(document.getElementById('void-reason')||{value:''}).value.trim();
+        if(!reason){showToast('请先填写撤销原因','error');document.getElementById('void-reason').focus();return;}
+        verifyPwd(function(){
+          var now=new Date().toISOString();
+          var allR=fgRolls();
+          var inIdSet={};
+          inRolls.forEach(function(r){inIdSet[r.inId||'']=true;});
+          // 软删除：标记 voided，保留记录
+          allR.forEach(function(r){
+            if(inRolls.some(function(ir){return ir.id===r.id;})){
+              r.status='voided';r.voidReason=reason;r.voidedAt=now;
+            }
+          });
+          saveFgRolls(allR);
+          // fgins 批次标记 voided（不删除）
+          var fginsDB=DB.fgins||[];
+          Object.keys(inIdSet).forEach(function(iid){
+            if(!iid)return;
+            var fi=fginsDB.find(function(x){return x.id===iid;});
+            if(fi&&!allR.some(function(r){return r.inId===iid&&r.status!=='voided';})){
+              fi.status='voided';fi.voidReason=reason;fi.voidedAt=now;
+            }
+          });
+          DB.fgins=fginsDB;
+          showToast('已撤销 '+inRolls.length+' 匹（原因：'+reason+'），记录已保留供审计','success');
+          cm();pgFGStock();
+        });
+      };
     }
   },null);
   om(modal);

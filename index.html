@@ -1969,290 +1969,277 @@ function pgDash(){
     if(o.status==='cancelled'||o.status==='draft')return false;
     return trks.some(function(t){return t.ordId===o.id;})&&!o.paid;
   });
-  var soon=active.filter(function(o){
-    if(!o.delDate)return false;
-    return (new Date(o.delDate)-new Date())/86400000<=7;
-  });
-
+  var today=new Date();today.setHours(0,0,0,0);
+  var in7d=new Date(today.getTime()+7*86400000);
   var pg=document.getElementById('pg');
   pg.innerHTML='';
 
-  // ── 云同步状态横幅 ──
-  (function(){
-    var banner=document.createElement('div');
-    banner.style.cssText='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px';
-    var icon=document.createElement('span');icon.style.cssText='font-size:16px';icon.textContent='☁';
-    var txt=document.createElement('span');txt.style.cssText='font-size:11.5px;color:#166534;flex:1';
-    txt.innerHTML='<b>数据已接入云端</b> · Supabase 实时同步 · 无需手动备份';
-    banner.appendChild(icon);banner.appendChild(txt);
-    pg.appendChild(banner);
-  })();
-
-  // 数据巡检横幅
-  if(_auditIssues && _auditIssues.length){
+  // ── 数据巡检横幅（仅有问题时出现）──
+  if(_auditIssues&&_auditIssues.length){
     var ab=document.createElement('div');
     ab.style.cssText='background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#E65100;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    ab.innerHTML='<span style="font-size:16px;flex-shrink:0">\u26A0\uFE0F</span><span style="font-weight:600;flex-shrink:0">数据巡检发现 '+_auditIssues.length+' 项异常：</span>'
+    ab.innerHTML='<span style="font-size:16px;flex-shrink:0">⚠️</span><span style="font-weight:600;flex-shrink:0">数据巡检发现 '+_auditIssues.length+' 项异常：</span>'
       +'<span style="color:#BF360C;font-size:11px">'+_auditIssues.slice(0,3).join('；')+'</span>'
-      +(_auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+_auditIssues.length+'项</span>':'')+'</span>';
-    pg.appendChild(ab);
-    _auditIssues = null;
+      +(_auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+_auditIssues.length+'项</span>':'');
+    pg.appendChild(ab);_auditIssues=null;
   }
 
-  // Stats
-  // 订单号设置区
-  var noSetWrap=document.createElement('div');
-  noSetWrap.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--b3);border:1px solid var(--bd);border-radius:6px';
-  var noSetLbl=document.createElement('span');noSetLbl.style.cssText='font-size:11px;color:var(--t2);font-weight:600;white-space:nowrap';noSetLbl.textContent='下一个订单号：';
-  var noSetInp=document.createElement('input');noSetInp.id='dash-nextno';noSetInp.style.cssText='width:130px;padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:12px';
-  var customNext=DB.load('nextNo');
-  var y=new Date().getFullYear();
-  var maxN=0;DB.orders.forEach(function(o){if(o.no&&o.no.startsWith('G'+y)){var n=parseInt(o.no.slice(5))||0;if(n>maxN)maxN=n;}});
-  noSetInp.value='G'+y+String(Math.max(maxN+1,customNext&&customNext.year===y?customNext.num:673)).padStart(4,'0');
-  noSetInp.placeholder='如G20260673';
-  var noSetBtn=mkBtn('设置','btn bsm bp',function(){
-    var v=noSetInp.value.trim();
-    var m=v.match(/^G(\d{4})(\d{3,6})$/);
-    if(!m)return alert('格式错误，请输入如 G20260673');
-    setNextNo(v);
-    showToast('订单号起始已设置为 '+v,'success');
-  });
-  // 锁定开关
-  var noLocked=DB.load('nextNoLock')===true;
-  var noLockBtn=document.createElement('button');noLockBtn.type='button';
-  noLockBtn.innerHTML=noLocked?'&#128274;':'&#128275;';
-  noLockBtn.title=noLocked?'点击解锁（需管理员密码）':'点击锁定';
-  noLockBtn.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:4px 8px;background:'+(noLocked?'#fee2e2':'#f0fdf4')+';font-size:13px;cursor:pointer;line-height:1';
-  noLockBtn.onclick=function(){
-    if(noLocked){
-      verifyPwd(function(){
-        noLocked=false;
-        noLockBtn.innerHTML='&#128275;';
-        noLockBtn.title='点击锁定';
-        noLockBtn.style.background='#f0fdf4';
-        noSetInp.disabled=false;
-        noSetBtn.style.display='';
-        DB.save('nextNoLock',false);
-      });
-    }else{
-      noLocked=true;
-      noLockBtn.innerHTML='&#128274;';
-      noLockBtn.title='点击解锁（需管理员密码）';
-      noLockBtn.style.background='#fee2e2';
-      noSetInp.disabled=true;
-      noSetBtn.style.display='none';
-      DB.save('nextNoLock',true);
-    }
-  };
-  if(noLocked){noSetInp.disabled=true;noSetBtn.style.display='none';}
-  noSetWrap.appendChild(noSetLbl);noSetWrap.appendChild(noSetInp);noSetWrap.appendChild(noSetBtn);noSetWrap.appendChild(noLockBtn);
-  var noHint=document.createElement('span');noHint.style.cssText='font-size:10px;color:var(--t3)';noHint.textContent='新建订单将从此号开始';
-  noSetWrap.appendChild(noHint);
-  pg.appendChild(noSetWrap);
-
-  // 进行中订单：排除"全部出货"的订单（仅影响显示数字，不影响active变量）
+  // ── KPI 卡片（3张，去掉「客户/工厂」）──
   var fullyOutIds=active.filter(function(o){return calcShipStatus(o.id)==='fully_out';}).map(function(o){return o.id;});
   var activeCount=active.length-fullyOutIds.length;
-  var activeHint='共'+orders.length+'张'+(fullyOutIds.length?'·已出货'+fullyOutIds.length+'张':'');
+  var activeHint='共'+orders.length+'张'+(fullyOutIds.length?'·出货'+fullyOutIds.length+'张':'');
   var sr=document.createElement('div');sr.className='sr';
-  [[activeCount,'进行中订单',activeHint,'sb'],[DB.custs.length+'/'+DB.facts.length,'客户/工厂','已录入','sg'],[inProc.length,'加工中批次','在外发','so'],[anom.length,'有产无收款','需核查','sr2']].forEach(function(s){
-    var st=document.createElement('div');st.className='st '+s[3];
+  sr.style.gridTemplateColumns='repeat(3,1fr)';
+  [[activeCount,'进行中订单',activeHint,'sb',function(){go('orders');}],
+   [inProc.length,'加工中批次','在外发','so',function(){go('trk');}],
+   [anom.length,'有产无收款','需核查','sr2',function(){go('arec');}]
+  ].forEach(function(s){
+    var st=document.createElement('div');st.className='st '+s[3];st.style.cursor='pointer';st.onclick=s[4];
     st.innerHTML='<div class="sl">'+s[1]+'</div><div class="sv">'+s[0]+'</div><div class="ss">'+s[2]+'</div>';
     sr.appendChild(st);
   });
   pg.appendChild(sr);
 
-  // ── 本月出货统计 ──
+  // ── 本月出货 + 上月趋势对比 ──
   (function(){
     var thisM=new Date().toISOString().slice(0,7);
+    var lmDate=new Date();lmDate.setMonth(lmDate.getMonth()-1);
+    var lastM=lmDate.toISOString().slice(0,7);
     var allRolls=typeof fgRolls==='function'?fgRolls():[];
-    var monthOuts=(DB.fgouts||[]).filter(function(r){return (r.date||'').startsWith(thisM);});
-    var mKG=0,mAmt=0;
-    monthOuts.forEach(function(fgo){
-      var ord=(DB.orders||[]).find(function(o){return o.id===fgo.ordId;})||{};
-      var baseUnitPr=parseFloat(ord.unitPr)||0;
-      var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-      (fgo.rollIds||[]).forEach(function(rid){
-        if(!rid)return;
-        var roll=allRolls.find(function(x){return x&&x.id===rid;});
-        if(!roll)return;
-        var kg=parseFloat(roll.kg)||0;
-        var m=parseFloat(roll.m)||0;
-        var clr=(ord.colors||[]).find(function(c){return c&&c.nm===roll.colorNm;})||{};
-        var unitPr=baseUnitPr+(parseFloat(clr.extraPr)||0);
-        var qty=_byM?m:kg;
-        mKG+=kg; mAmt+=qty*unitPr;
+    function calcM(m){
+      var outs=(DB.fgouts||[]).filter(function(r){return (r.date||'').startsWith(m);});
+      var kg=0,amt=0;
+      outs.forEach(function(fgo){
+        var ord=(DB.orders||[]).find(function(o){return o.id===fgo.ordId;})||{};
+        var bpr=parseFloat(ord.unitPr)||0;
+        var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+        (fgo.rollIds||[]).forEach(function(rid){
+          if(!rid)return;
+          var roll=allRolls.find(function(x){return x&&x.id===rid;});
+          if(!roll)return;
+          var rkg=parseFloat(roll.kg)||0,rm=parseFloat(roll.m)||0;
+          var clr=(ord.colors||[]).find(function(c){return c&&c.nm===roll.colorNm;})||{};
+          var upr=bpr+(parseFloat(clr.extraPr)||0);
+          kg+=rkg;amt+=(byM?rm:rkg)*upr;
+        });
       });
-    });
-    var mKGStr=mKG>0?mKG.toFixed(1)+' KG':'0 KG';
-    var mAmtStr=mAmt>0?'¥'+Math.round(mAmt).toLocaleString():'¥0';
+      return {kg:kg,amt:amt,cnt:outs.length};
+    }
+    var cur=calcM(thisM),last=calcM(lastM);
+    function trendBadge(c,l){
+      if(!l||l<=0)return '';
+      var p=(c-l)/l*100,up=p>=0;
+      return '<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;background:'+(up?'#D1FAE5':'#FEE2E2')+';color:'+(up?'#065F46':'#991B1B')+'">'+(up?'↑':'↓')+Math.abs(p).toFixed(0)+'%</span>';
+    }
     var mLbl=thisM.replace('-','年')+'月';
-    var sr2=document.createElement('div');
-    sr2.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px';
-    [['本月出货 KG',mKGStr,mLbl,'sb'],['本月出货金额',mAmtStr,'含税估算','sg']].forEach(function(s){
-      var st=document.createElement('div');st.className='st '+s[3];
-      st.style.cursor='pointer';
-      st.title='点击进入成品库存';
-      st.onclick=function(){go('fgstock');};
-      st.innerHTML='<div class="sl">'+s[0]+'</div>'
-        +'<div class="sv" style="font-size:18px">'+s[1]+'</div>'
-        +'<div class="ss">'+s[2]+(monthOuts.length?'&nbsp;·&nbsp;'+monthOuts.length+'笔出货':'&nbsp;·&nbsp;暂无出货')+'</div>';
-      sr2.appendChild(st);
-    });
-    pg.appendChild(sr2);
+    var row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px';
+    var s1=document.createElement('div');s1.className='st sb';s1.style.cursor='pointer';s1.onclick=function(){go('fgstock');};
+    s1.innerHTML='<div class="sl">本月出货 KG</div>'
+      +'<div class="sv" style="font-size:18px">'+(cur.kg>0?cur.kg.toFixed(1)+' KG':'0 KG')+'</div>'
+      +'<div class="ss" style="display:flex;align-items:center;gap:6px"><span>'+mLbl+'·'+cur.cnt+'笔</span>'+(cur.kg>0&&last.kg>0?trendBadge(cur.kg,last.kg):'')+'</div>';
+    var s2=document.createElement('div');s2.className='st sg';s2.style.cursor='pointer';s2.onclick=function(){go('fgstock');};
+    s2.innerHTML='<div class="sl">本月出货金额</div>'
+      +'<div class="sv" style="font-size:18px">'+(cur.amt>0?'¥'+Math.round(cur.amt).toLocaleString():'¥0')+'</div>'
+      +'<div class="ss" style="display:flex;align-items:center;gap:6px"><span>含税估算</span>'+(cur.amt>0&&last.amt>0?trendBadge(cur.amt,last.amt):'')+'</div>';
+    row.appendChild(s1);row.appendChild(s2);pg.appendChild(row);
   })();
 
-  // Alerts
-  // 逾期未收款提醒
-  var todayD=new Date();todayD.setHours(0,0,0,0);
-  var overdueOrds=orders.filter(function(o){
-    if(!o||o.paid||o.status==='cancelled'||o.status==='draft')return false;
-    return o.delDate&&new Date(o.delDate)<todayD;
-  });
-  if(overdueOrds.length){
-    var al=document.createElement('div');al.className='al alr';
-    al.style.cssText='cursor:pointer';
-    al.onclick=function(){go('recv');};
-    var totalOD=overdueOrds.reduce(function(s,o){return s+(parseFloat(o.amt)||0);},0);
-    al.innerHTML='&#128680; <strong>'+overdueOrds.length+'张订单逾期未收款</strong>'+(totalOD?'，合计 <strong>¥'+totalOD.toLocaleString()+'</strong>':'')+'  <span style="font-size:10px;opacity:.7">→ 点击查看应收账款</span>';
-    pg.appendChild(al);
-  } else if(anom.length){
-    var al=document.createElement('div');al.className='al alr';
-    var nums=anom.map(function(o){return '<strong>'+esc(o.no)+'</strong>('+esc(o.custNm)+')';}).join('、');
-    al.innerHTML='&#128680; <div><strong>'+anom.length+'张订单有加工记录但未收款！</strong> '+nums+'</div>';
-    pg.appendChild(al);
-  }
-  if(soon.length){
-    var als=document.createElement('div');als.className='al aly';
-    als.innerHTML='&#9200; <strong>近7天需交货：</strong>'+soon.map(function(o){return esc(o.no)+'（'+esc(o.delDate)+'）';}).join('、');
-    pg.appendChild(als);
-  }
-
-  // ══ 应收账款预警 ══
-  var arecs=DB.arecs||[];
-  var unsettled=arecs.filter(function(r){return r.status!=='settled'&&parseFloat(r.balanceAmt||0)>0;});
-  var overdueArecs=unsettled.filter(function(r){var s=getDaysStatus(r.dueDate);return s.type==='overdue';});
-  var warnArecs=unsettled.filter(function(r){var s=getDaysStatus(r.dueDate);return s.type==='warning';});
-  if(overdueArecs.length||warnArecs.length){
-    if(overdueArecs.length){
-      var oa=document.createElement('div');oa.className='al';oa.style.cssText='background:#FEF2F2;border-left:4px solid #DC2626;border-radius:4px;padding:8px 12px;margin-bottom:6px';
-      var oaHdr=document.createElement('div');oaHdr.style.cssText='font-weight:700;color:#991B1B;margin-bottom:6px;font-size:12px';oaHdr.innerHTML='🔴 应收逾期未收款（'+overdueArecs.length+'张）— 合计 ¥'+overdueArecs.reduce(function(s,r){return s+(parseFloat(r.balanceAmt)||0);},0).toFixed(0);
-      oa.appendChild(oaHdr);
-      overdueArecs.forEach(function(r){
-        var s=getDaysStatus(r.dueDate);
-        var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:.5px solid #FECACA;font-size:11px;cursor:pointer';
-        row.innerHTML='<span style="font-weight:600;min-width:100px">'+esc(r.custNm)+'</span><span style="color:#666;flex:1">'+esc(r.month)+'月结账 · 到期：'+esc(r.dueDate)+'</span><span style="color:#DC2626;font-weight:700;min-width:70px;text-align:center">逾期'+s.days+'天</span><span style="color:#C41E3A;font-weight:700;min-width:80px;text-align:right">¥'+(parseFloat(r.balanceAmt)||0).toFixed(0)+'</span>';
-        row.onclick=function(){go('arec');};
-        oa.appendChild(row);
-      });
-      pg.appendChild(oa);
+  // ── 今日要事（智能优先级清单）──
+  (function(){
+    var arecs=DB.arecs||[];
+    var unsettled=arecs.filter(function(r){return r.status!=='settled'&&parseFloat(r.balanceAmt||0)>0;});
+    var overdueArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='overdue';});
+    var warnArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='warning';});
+    var overdueOrds=orders.filter(function(o){
+      if(!o||o.paid||o.status==='cancelled'||o.status==='draft')return false;
+      return o.delDate&&new Date(o.delDate)<today&&calcShipStatus(o.id)!=='fully_out';
+    });
+    var todayOrds=active.filter(function(o){
+      if(!o.delDate)return false;
+      var dd=new Date(o.delDate);
+      return dd>=today&&dd<new Date(today.getTime()+86400000)&&calcShipStatus(o.id)!=='fully_out';
+    });
+    var soonOrds=active.filter(function(o){
+      if(!o.delDate)return false;
+      var dd=new Date(o.delDate);
+      return dd>=new Date(today.getTime()+86400000)&&dd<=in7d&&calcShipStatus(o.id)!=='fully_out';
+    });
+    var critical=[],warning2=[];
+    overdueOrds.forEach(function(o){
+      var days=Math.round((today-new Date(o.delDate))/86400000);
+      critical.push({icon:'📦',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 逾期未出货，已超期 <b style="color:#DC2626">'+days+'天</b>',label:'查看订单',fn:function(){go('orders');}});
+    });
+    overdueArecs.forEach(function(r){
+      var s=getDaysStatus(r.dueDate);
+      critical.push({icon:'💰',text:'<b>'+esc(r.custNm)+'</b> '+esc(r.month)+'月账款 — 逾期 <b style="color:#DC2626">'+s.days+'天</b>，余款 ¥'+parseFloat(r.balanceAmt||0).toFixed(0),label:'去收款',fn:function(){go('arec');}});
+    });
+    todayOrds.forEach(function(o){
+      critical.push({icon:'🚚',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 今天交货，请确认出货',label:'确认出货',fn:function(){go('fgstock');}});
+    });
+    soonOrds.forEach(function(o){
+      var days=Math.round((new Date(o.delDate)-today)/86400000);
+      warning2.push({icon:'📅',text:'<b>'+esc(o.no)+'</b> '+esc(shortName(o.custNm||''))+' — 还剩 <b style="color:#D97706">'+days+'天</b> 交货（'+esc(o.delDate)+'）',label:'查看进度',fn:function(){go('orders');}});
+    });
+    warnArecs.forEach(function(r){
+      var s=getDaysStatus(r.dueDate);
+      warning2.push({icon:'🔔',text:'<b>'+esc(r.custNm)+'</b> '+esc(r.month)+'月账款 — 还剩 <b style="color:#D97706">'+s.days+'天</b> 到期，¥'+parseFloat(r.balanceAmt||0).toFixed(0),label:'去对账',fn:function(){go('arec');}});
+    });
+    var total=critical.length+warning2.length;
+    var tcard=document.createElement('div');tcard.className='card';tcard.style.marginBottom='12px';
+    var tch=document.createElement('div');tch.className='ch';
+    tch.innerHTML='<span class="ct">📋 今日要事'+(total>0?' <span style="background:#EF4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:middle">'+total+'</span>':'')+'</span>';
+    tcard.appendChild(tch);
+    var tcb=document.createElement('div');tcb.className='cb';tcb.style.padding='10px 12px';
+    if(total===0){
+      tcb.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:12px 4px;color:#16A34A;font-size:12.5px"><span style="font-size:20px">✅</span> 今天一切正常，暂无待处理事项</div>';
+    } else {
+      function renderItems(items,bg,bc,sectionLabel){
+        if(!items.length)return;
+        var lbl=document.createElement('div');
+        lbl.style.cssText='font-size:10.5px;font-weight:700;color:'+bc+';margin:0 0 5px;letter-spacing:.3px';
+        lbl.textContent=sectionLabel+' ('+items.length+'件)';tcb.appendChild(lbl);
+        items.forEach(function(item){
+          var row=document.createElement('div');
+          row.style.cssText='display:flex;align-items:center;gap:10px;padding:7px 10px;background:'+bg+';border-left:3px solid '+bc+';border-radius:4px;margin-bottom:4px;font-size:11.5px';
+          var ic=document.createElement('span');ic.style.cssText='font-size:14px;flex-shrink:0';ic.textContent=item.icon;
+          var tx=document.createElement('span');tx.style.cssText='flex:1;line-height:1.5';tx.innerHTML=item.text;
+          var bt=document.createElement('button');bt.className='btn bsm bs';bt.style.cssText='white-space:nowrap;flex-shrink:0;font-size:11px';bt.textContent=item.label;bt.onclick=item.fn;
+          row.appendChild(ic);row.appendChild(tx);row.appendChild(bt);tcb.appendChild(row);
+        });
+        if(warning2.length&&sectionLabel.indexOf('紧急')>=0){var gap=document.createElement('div');gap.style.marginBottom='8px';tcb.appendChild(gap);}
+      }
+      renderItems(critical,'#FFF5F5','#DC2626','🔴 紧急 — 今天处理');
+      renderItems(warning2,'#FFFBEB','#D97706','🟡 本周内跟进');
     }
-    if(warnArecs.length){
-      var wa=document.createElement('div');wa.className='al aly';wa.style.cssText='background:#FFFBEB;border-left:4px solid #D97706;border-radius:4px;padding:8px 12px;margin-bottom:6px';
-      var waHdr=document.createElement('div');waHdr.style.cssText='font-weight:700;color:#92400E;margin-bottom:6px;font-size:12px';waHdr.innerHTML='🟡 应收即将到期（7天内，'+warnArecs.length+'张）— 合计 ¥'+warnArecs.reduce(function(s,r){return s+(parseFloat(r.balanceAmt)||0);},0).toFixed(0);
-      wa.appendChild(waHdr);
-      warnArecs.forEach(function(r){
-        var s=getDaysStatus(r.dueDate);
-        var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:.5px solid #FDE68A;font-size:11px;cursor:pointer';
-        row.innerHTML='<span style="font-weight:600;min-width:100px">'+esc(r.custNm)+'</span><span style="color:#666;flex:1">'+esc(r.month)+'月结账 · 到期：'+esc(r.dueDate)+'</span><span style="color:#D97706;font-weight:700;min-width:70px;text-align:center">还剩'+s.days+'天</span><span style="color:#C41E3A;font-weight:700;min-width:80px;text-align:right">¥'+(parseFloat(r.balanceAmt)||0).toFixed(0)+'</span>';
-        row.onclick=function(){go('arec');};
-        wa.appendChild(row);
-      });
-      pg.appendChild(wa);
-    }
-  }
+    tcard.appendChild(tcb);pg.appendChild(tcard);
+  })();
 
-  // Quick actions
+  // ── 快捷操作 + 云同步小绿点 ──
   var qc=document.createElement('div');qc.className='card';qc.style.marginBottom='12px';
-  var qch=document.createElement('div');qch.className='ch';qch.innerHTML='<span class="ct">&#9889; 快捷操作</span>';
-  var qcb=document.createElement('div');qcb.className='cb';qcb.style.cssText='display:flex;gap:9px;flex-wrap:wrap';
-  [['&#43; 新建销售订单','btn bp',function(){go('orders');setTimeout(openOM,80);}],
-   ['&#9889; 快速出货（无订单）','btn bs',function(){go('fgstock');setTimeout(openQuickOut,80);}]
+  var qch=document.createElement('div');qch.className='ch';qch.innerHTML='<span class="ct">⚡ 快捷操作</span>';
+  var qcb=document.createElement('div');qcb.className='cb';qcb.style.cssText='display:flex;gap:9px;flex-wrap:wrap;align-items:center';
+  [['+ 新建销售订单','btn bp',function(){go('orders');setTimeout(openOM,80);}],
+   ['⚡ 快速出货（无订单）','btn bs',function(){go('fgstock');setTimeout(openQuickOut,80);}]
   ].forEach(function(b){qcb.appendChild(mkBtn(b[0],b[1],b[2]));});
+  var syncDot=document.createElement('span');
+  syncDot.style.cssText='margin-left:auto;font-size:11px;color:#16A34A;display:flex;align-items:center;gap:4px;flex-shrink:0';
+  syncDot.innerHTML='<span style="width:7px;height:7px;background:#16A34A;border-radius:50%;display:inline-block;animation:_pulse 2s infinite"></span>云端已同步';
+  qcb.appendChild(syncDot);
   qc.appendChild(qch);qc.appendChild(qcb);pg.appendChild(qc);
 
-  // ══ 订单进度看板 ══
-  // 归档开关状态
+  // ── 订单号设置（可折叠抽屉）──
+  (function(){
+    var noWrap=document.createElement('div');
+    noWrap.style.cssText='margin-bottom:12px;border:1px solid var(--bd);border-radius:6px;overflow:hidden';
+    var isCol=localStorage.getItem('gjr5_dash_nono_col')!=='0';
+    var noHdr=document.createElement('div');
+    noHdr.style.cssText='display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--b3);cursor:pointer;user-select:none;font-size:11px;color:var(--t2)';
+    var arr=document.createElement('span');arr.style.cssText='font-size:9px';arr.textContent=isCol?'▶':'▼';
+    noHdr.appendChild(arr);
+    var lbspan=document.createElement('span');lbspan.textContent='⚙ 订单号设置';noHdr.appendChild(lbspan);
+    var noBody=document.createElement('div');
+    noBody.style.cssText='padding:8px 12px;display:'+(isCol?'none':'flex')+';align-items:center;gap:8px';
+    var noLbl=document.createElement('span');noLbl.style.cssText='font-size:11px;color:var(--t2);white-space:nowrap';noLbl.textContent='下一个订单号：';
+    var noInp=document.createElement('input');noInp.id='dash-nextno';noInp.style.cssText='width:130px;padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:12px';
+    var customNext=DB.load('nextNo'),y=new Date().getFullYear(),maxN=0;
+    DB.orders.forEach(function(o){if(o.no&&o.no.startsWith('G'+y)){var n=parseInt(o.no.slice(5))||0;if(n>maxN)maxN=n;}});
+    noInp.value='G'+y+String(Math.max(maxN+1,customNext&&customNext.year===y?customNext.num:673)).padStart(4,'0');
+    var noBtn=mkBtn('设置','btn bsm bp',function(){
+      var v=noInp.value.trim(),m=v.match(/^G(\d{4})(\d{3,6})$/);
+      if(!m)return alert('格式错误，请输入如 G20260673');
+      setNextNo(v);showToast('订单号起始已设置为 '+v,'success');
+    });
+    var noLocked=DB.load('nextNoLock')===true;
+    var noLkBtn=document.createElement('button');noLkBtn.type='button';
+    noLkBtn.innerHTML=noLocked?'&#128274;':'&#128275;';
+    noLkBtn.title=noLocked?'点击解锁（需管理员密码）':'点击锁定';
+    noLkBtn.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:4px 8px;background:'+(noLocked?'#fee2e2':'#f0fdf4')+';font-size:13px;cursor:pointer;line-height:1';
+    noLkBtn.onclick=function(){
+      if(noLocked){
+        verifyPwd(function(){noLocked=false;noLkBtn.innerHTML='&#128275;';noLkBtn.title='点击锁定';noLkBtn.style.background='#f0fdf4';noInp.disabled=false;noBtn.style.display='';DB.save('nextNoLock',false);});
+      }else{
+        noLocked=true;noLkBtn.innerHTML='&#128274;';noLkBtn.title='点击解锁（需管理员密码）';noLkBtn.style.background='#fee2e2';noInp.disabled=true;noBtn.style.display='none';DB.save('nextNoLock',true);
+      }
+    };
+    if(noLocked){noInp.disabled=true;noBtn.style.display='none';}
+    noBody.appendChild(noLbl);noBody.appendChild(noInp);noBody.appendChild(noBtn);noBody.appendChild(noLkBtn);
+    noHdr.onclick=function(){var c=noBody.style.display==='none';noBody.style.display=c?'flex':'none';arr.textContent=c?'▼':'▶';localStorage.setItem('gjr5_dash_nono_col',c?'0':'1');};
+    noWrap.appendChild(noHdr);noWrap.appendChild(noBody);pg.appendChild(noWrap);
+  })();
+
+  // ══ 订单进度看板（可折叠）══
   var showArchived=localStorage.getItem('gjr5_dash_show_archived')==='1';
-  // 判断订单是否已完结（所有颜色都是已出货）
+  var boardCol=localStorage.getItem('gjr5_dash_board_col')==='1';
   function isOrderDone(o){
     if(calcShipStatus(o.id)==='fully_out')return true;
-    var cls=o.colors||[];
-    if(!cls.length)return false;
+    var cls=o.colors||[];if(!cls.length)return false;
     return cls.every(function(c){return c.clrStatus==='shipped'||c.clrStatus==='done';});
   }
   var activeFilt=active.filter(function(o){return showArchived||!isOrderDone(o);});
   var archivedCount=active.filter(function(o){return isOrderDone(o);}).length;
-
   var card=document.createElement('div');card.className='card';
-  var ch=document.createElement('div');ch.className='ch';
-  ch.innerHTML='<span class="ct">&#128203; 订单进度看板（'+activeFilt.length+'张在产）<span style="font-size:10px;color:var(--t3);margin-left:8px;font-weight:400">点击颜色行更新进度</span></span>';
-  var allBtn=mkBtn('全部订单','btn bsm bq',function(){go('orders');});
-  ch.appendChild(allBtn);
-  // 归档开关按钮
+  var ch=document.createElement('div');ch.className='ch';ch.style.cursor='pointer';
+  var bArr=document.createElement('span');bArr.style.cssText='font-size:9px;margin-right:4px';bArr.textContent=boardCol?'▶':'▼';
+  var bTitle=document.createElement('span');bTitle.className='ct';
+  bTitle.textContent='📋 订单进度看板（'+activeFilt.length+'张在产）';
+  var bMeta=document.createElement('span');bMeta.style.cssText='font-size:10px;color:var(--t3);margin-left:8px;font-weight:400';bMeta.textContent='点击颜色行更新进度';
+  ch.appendChild(bArr);ch.appendChild(bTitle);ch.appendChild(bMeta);
+  var allBtn=mkBtn('全部订单','btn bsm bq',function(e){e.stopPropagation();go('orders');});ch.appendChild(allBtn);
   if(archivedCount>0){
-    var archBtn=document.createElement('button');
-    archBtn.className='btn bsm';
+    var archBtn=document.createElement('button');archBtn.className='btn bsm';
     archBtn.style.cssText='margin-left:6px;border-color:'+(showArchived?'#7C3AED':'#aaa')+';color:'+(showArchived?'#7C3AED':'#888');
     archBtn.textContent=(showArchived?'▼ 隐藏':'▶ 显示')+'已完结（'+archivedCount+'张）';
-    archBtn.onclick=function(){
-      localStorage.setItem('gjr5_dash_show_archived',showArchived?'0':'1');
-      pgDash();
-    };
+    archBtn.onclick=function(e){e.stopPropagation();localStorage.setItem('gjr5_dash_show_archived',showArchived?'0':'1');pgDash();};
     ch.appendChild(archBtn);
   }
-  card.appendChild(ch);
   var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
+  cb.style.display=boardCol?'none':'';
+  ch.onclick=function(e){
+    if(e.target.tagName==='BUTTON')return;
+    var nowCol=cb.style.display!=='none';
+    cb.style.display=nowCol?'none':'';
+    bArr.textContent=nowCol?'▶':'▼';
+    localStorage.setItem('gjr5_dash_board_col',nowCol?'1':'0');
+  };
+  card.appendChild(ch);
 
   if(!activeFilt.length){
     var emp=document.createElement('div');emp.style.cssText='text-align:center;padding:28px;color:var(--t3)';
-    emp.innerHTML=archivedCount>0?'所有订单已完结 &#127881;<br><span style="font-size:11px">点击「显示已完结」查看历史</span>':'暂无进行中订单';
+    emp.innerHTML=archivedCount>0?'所有订单已完结 🎉<br><span style="font-size:11px">点击「显示已完结」查看历史</span>':'暂无进行中订单';
     cb.appendChild(emp);
   } else {
-    // 可滚动容器 + sticky表头
-    var tblWrap=document.createElement('div');
-    tblWrap.style.cssText='overflow:auto;max-height:calc(100vh - 280px)';
-    var tbl=document.createElement('table');
-    tbl.style.cssText='width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed';
-    // sticky表头
-    var thead=document.createElement('thead');
-    var htr=document.createElement('tr');
+    var tblWrap=document.createElement('div');tblWrap.style.cssText='overflow:auto;max-height:calc(100vh - 280px)';
+    var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed';
+    var thead=document.createElement('thead');var htr=document.createElement('tr');
     [['订单号','11%'],['客户','9%'],['布类','14%'],['颜色','9%'],['色号','8%'],['数量','6%'],['生产进度','20%'],['交货日期','9%'],['织厂','7%'],['染厂','7%']].forEach(function(col){
       var th=document.createElement('th');th.textContent=col[0];
       th.style.cssText='position:sticky;top:0;z-index:2;background:#eeecff;color:#3730a3;font-weight:600;font-size:11px;padding:7px 10px;border:1px solid #c7c4e8;text-align:left;white-space:nowrap;width:'+col[1];
       htr.appendChild(th);
     });
     thead.appendChild(htr);tbl.appendChild(thead);
-    var tbody=document.createElement('tbody');
-    var ri=0;
+    var tbody=document.createElement('tbody');var ri=0;
     activeFilt.forEach(function(o){
-      var colors=o.colors||[{}];
-      var rs=colors.length;
+      var colors=o.colors||[{}],rs=colors.length;
       var wdoc=DB.wdocs.find(function(x){return x.ordId===o.id;})||{};
       var ddoc=DB.ddocs.find(function(x){return x.ordId===o.id;})||{};
-      var wfNm=wdoc.facNm?shortName(wdoc.facNm):'—';
-      var dfNm=ddoc.facNm?shortName(ddoc.facNm):'—';
-      // 交货日期：已完结不标红
+      var wfNm=wdoc.facNm?shortName(wdoc.facNm):'—',dfNm=ddoc.facNm?shortName(ddoc.facNm):'—';
       var isDone=isOrderDone(o);
       var isOverdue=o.delDate&&(new Date(o.delDate)-new Date())<0;
       var isWarn=o.delDate&&(new Date(o.delDate)-new Date())<259200000;
       var dcls=isDone?'color:var(--t3)':(isOverdue?'color:#e74c3c;font-weight:700':isWarn?'color:#e67e22;font-weight:600':'color:var(--t3)');
-      // 逾期行背景（未完结才标红）
-      var rowBgBase=(!isDone&&isOverdue)?'#FEF2F2':(ri%2===0?'#fff':'#f9f9ff');
-      ri++;
+      var rowBgBase=(!isDone&&isOverdue)?'#FEF2F2':(ri%2===0?'#fff':'#f9f9ff');ri++;
       colors.forEach(function(c,ci){
         var tr=document.createElement('tr');
         var displayStatus=displayColorStatusForDashboard(o.id,c);
         var st=CLR_STATUS_MAP[displayStatus||'pending']||CLR_STATUS_LIST[0];
         var si=CLR_STATUS_LIST.findIndex(function(s){return s.v===st.v;});
-        var tot=CLR_STATUS_LIST.length-1;
-        var pct=si<=0?0:Math.round(si/tot*100);
+        var pct=si<=0?0:Math.round(si/(CLR_STATUS_LIST.length-1)*100);
         function makeSeg(ph){
-          var done=st.phase>ph;var cur=st.phase===ph;
-          var pp=cur?(function(){var pi=CLR_STATUS_LIST.filter(function(s){return s.phase===ph;});var pos=pi.findIndex(function(s){return s.v===st.v;});return pos<0?0:Math.round((pos+1)/pi.length*100);})():0;
-          var bg2=done?CLR_PHASE_COLORS[ph]:cur?'transparent':'#ebebeb';
-          var inner=cur?'<div style="height:100%;width:'+pp+'%;background:'+CLR_PHASE_COLORS[ph]+';border-radius:3px"></div>':'';
-          return '<div style="flex:1;height:9px;border-radius:3px;background:'+bg2+';overflow:hidden;border:1px solid '+(done||cur?CLR_PHASE_COLORS[ph]+'50':'#ddd')+'">' +inner+'</div>';
+          var done=st.phase>ph,cur2=st.phase===ph;
+          var pp=cur2?(function(){var pi=CLR_STATUS_LIST.filter(function(s){return s.phase===ph;});var pos=pi.findIndex(function(s){return s.v===st.v;});return pos<0?0:Math.round((pos+1)/pi.length*100);})():0;
+          var bg2=done?CLR_PHASE_COLORS[ph]:cur2?'transparent':'#ebebeb';
+          var inner=cur2?'<div style="height:100%;width:'+pp+'%;background:'+CLR_PHASE_COLORS[ph]+';border-radius:3px"></div>':'';
+          return '<div style="flex:1;height:9px;border-radius:3px;background:'+bg2+';overflow:hidden;border:1px solid '+(done||cur2?CLR_PHASE_COLORS[ph]+'50':'#ddd')+'">'+inner+'</div>';
         }
         var bar='<div style="display:flex;gap:3px;margin-bottom:3px">'+makeSeg(0)+makeSeg(1)+makeSeg(2)+makeSeg(3)+'</div>'
           +'<div style="font-size:9px;color:var(--t3)">'+CLR_PHASE_NAMES[st.phase]+' · '+pct+'%</div>';
@@ -2260,35 +2247,19 @@ function pgDash(){
         tr.onmouseover=function(){this.querySelectorAll('td').forEach(function(td){td.style.background='#e8f0ff';});};
         tr.onmouseout=function(){this.querySelectorAll('td').forEach(function(td){td.style.background=rowBgBase;});};
         tr.onclick=(function(oid,cnm){return function(){openClrEdit(oid,cnm);};})(o.id,c.nm||'');
-        // 色号
-        var cCode=c.code||'—';
         if(ci===0){
-          // rowspan列
-          function mkRSTd(html,rs2,style){
-            var td=document.createElement('td');td.innerHTML=html;td.rowSpan=rs2;
-            td.style.cssText='padding:7px 10px;vertical-align:middle;border:1px solid #e8eeff;background:'+rowBgBase+';'+(style||'');
-            return td;
-          }
-          tr.appendChild(mkRSTd(esc(o.no)+'',rs,'font-weight:700;color:var(--p);font-family:monospace;font-size:11px'));
+          function mkRSTd(html,rs2,sty){var td=document.createElement('td');td.innerHTML=html;td.rowSpan=rs2;td.style.cssText='padding:7px 10px;vertical-align:middle;border:1px solid #e8eeff;background:'+rowBgBase+';'+(sty||'');return td;}
+          tr.appendChild(mkRSTd(esc(o.no),rs,'font-weight:700;color:var(--p);font-family:monospace;font-size:11px'));
           tr.appendChild(mkRSTd(esc(shortName(o.custNm||'')),rs,'font-weight:600'));
           tr.appendChild(mkRSTd(esc(o.fab?o.fab.slice(0,16):''),rs,'font-size:10.5px;color:var(--t2)'));
         }
-        // 颜色行列
-        function mkTd(html,style){
-          var td=document.createElement('td');td.innerHTML=html;
-          td.style.cssText='padding:7px 8px;border:1px solid #e8eeff;background:'+rowBgBase+';'+(style||'');
-          return td;
-        }
+        function mkTd(html,sty){var td=document.createElement('td');td.innerHTML=html;td.style.cssText='padding:7px 8px;border:1px solid #e8eeff;background:'+rowBgBase+';'+(sty||'');return td;}
         tr.appendChild(mkTd(esc(c.nm||''),'border-left:3px solid '+st.color+';font-weight:600'));
-        tr.appendChild(mkTd(esc(cCode),'font-family:monospace;font-size:10.5px;color:#666'));
+        tr.appendChild(mkTd(esc(c.code||'—'),'font-family:monospace;font-size:10.5px;color:#666'));
         tr.appendChild(mkTd(esc(c.qty||'')+(c.unit?' '+c.unit:''),'text-align:center;color:var(--t2)'));
         tr.appendChild(mkTd('<div style="margin-bottom:2px">'+clrStatusBadge(displayStatus||'pending')+'</div>'+bar,''));
         if(ci===0){
-          function mkRSTd2(html,rs2,style){
-            var td=document.createElement('td');td.innerHTML=html;td.rowSpan=rs2;
-            td.style.cssText='padding:7px 8px;vertical-align:middle;text-align:center;border:1px solid #e8eeff;background:'+rowBgBase+';'+(style||'');
-            return td;
-          }
+          function mkRSTd2(html,rs2,sty){var td=document.createElement('td');td.innerHTML=html;td.rowSpan=rs2;td.style.cssText='padding:7px 8px;vertical-align:middle;text-align:center;border:1px solid #e8eeff;background:'+rowBgBase+';'+(sty||'');return td;}
           tr.appendChild(mkRSTd2('<span style="'+dcls+'">'+esc(o.delDate||'—')+'</span>',rs,'font-size:11px'));
           tr.appendChild(mkRSTd2(esc(wfNm),rs,'font-size:10.5px;color:var(--t2)'));
           tr.appendChild(mkRSTd2(esc(dfNm),rs,'font-size:10.5px;color:var(--t2)'));
@@ -2303,45 +2274,25 @@ function pgDash(){
   }
   card.appendChild(cb);pg.appendChild(card);
 
-    // 底部两列
+  // ── 底部两列：最近加工 + 待付加工费 ──
   var tc2=document.createElement('div');tc2.className='tc2';
-
-  // 最近加工记录
   var c1=document.createElement('div');c1.className='card';
-  var c1h=document.createElement('div');c1h.className='ch';
-  c1h.innerHTML='<span class="ct">最近加工记录</span>';
-  c1h.appendChild(mkBtn('全部','btn bsm bq',function(){go('trk');}));
-  c1.appendChild(c1h);
-  var trks=DB.trks;
-  if(trks.length){
-    var trows=trks.slice(-5).reverse().map(function(t){
-      var tr=document.createElement('tr');
-      tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td>'+esc(t.proc)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+tBx(t.status)+'</td>';
-      return tr;
-    });
+  var c1h=document.createElement('div');c1h.className='ch';c1h.innerHTML='<span class="ct">最近加工记录</span>';
+  c1h.appendChild(mkBtn('全部','btn bsm bq',function(){go('trk');}));c1.appendChild(c1h);
+  var trks2=DB.trks;
+  if(trks2.length){
+    var trows=trks2.slice(-5).reverse().map(function(t){var tr=document.createElement('tr');tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td>'+esc(t.proc)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+tBx(t.status)+'</td>';return tr;});
     c1.appendChild(buildTable(['订单号','工序','颜色','缸号','状态'],trows));
-  } else {
-    var e1=document.createElement('div');e1.style.cssText='text-align:center;padding:22px;color:var(--t3)';e1.textContent='暂无记录';c1.appendChild(e1);
-  }
+  } else {var e1=document.createElement('div');e1.style.cssText='text-align:center;padding:22px;color:var(--t3)';e1.textContent='暂无记录';c1.appendChild(e1);}
   tc2.appendChild(c1);
-
-  // 待付加工费
   var c2=document.createElement('div');c2.className='card';
-  var c2h=document.createElement('div');c2h.className='ch';
-  c2h.innerHTML='<span class="ct">待付加工费</span>';
-  c2h.appendChild(mkBtn('全部','btn bsm bq',function(){go('payb');}));
-  c2.appendChild(c2h);
+  var c2h=document.createElement('div');c2h.className='ch';c2h.innerHTML='<span class="ct">待付加工费</span>';
+  c2h.appendChild(mkBtn('全部','btn bsm bq',function(){go('payb');}));c2.appendChild(c2h);
   var upay=DB.trks.filter(function(t){return !t.fPaid&&t.fee;});
   if(upay.length){
-    var prows=upay.slice(-5).map(function(t){
-      var tr=document.createElement('tr');
-      tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td>'+esc(t.factNm)+'</td><td class="cr">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';
-      return tr;
-    });
+    var prows=upay.slice(-5).map(function(t){var tr=document.createElement('tr');tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td>'+esc(t.factNm)+'</td><td class="cr">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';return tr;});
     c2.appendChild(buildTable(['订单号','工厂','加工费','状态'],prows));
-  } else {
-    var e2=document.createElement('div');e2.style.cssText='text-align:center;padding:22px;color:var(--t3)';e2.textContent='暂无待付款';c2.appendChild(e2);
-  }
+  } else {var e2=document.createElement('div');e2.style.cssText='text-align:center;padding:22px;color:var(--t3)';e2.textContent='暂无待付款';c2.appendChild(e2);}
   tc2.appendChild(c2);
   pg.appendChild(tc2);
 }

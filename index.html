@@ -9811,7 +9811,7 @@ function pgFGStock(){
         if(!isAllOut){
           var outBtnG=document.createElement('button');outBtnG.type='button';outBtnG.className='btn bsm bq';
           outBtnG.style.fontSize='11px';outBtnG.textContent='登记出货';
-          outBtnG.onclick=function(e){e.stopPropagation();openFGOutM(null);};
+          outBtnG.onclick=(function(ordId2){return function(e){e.stopPropagation();openFGOutM(ordId2);};})(oid);
           opTd.appendChild(outBtnG);
         }
         tr.appendChild(opTd);
@@ -12236,6 +12236,12 @@ function openFGOutM(id){
       stats.textContent='已选 0 匹，合计 0.0 KG';
       rollSelDiv.appendChild(stats);
     };
+
+    // ── 若传入订单id，自动预选并加载疋料 ──
+    if(id){
+      ordSel.value=id;
+      if(typeof ordSel.onchange==='function')ordSel.onchange.call(ordSel);
+    }
 
     function updateFGOutStats(){
       var cbs=document.querySelectorAll('.fgo-roll-cb:checked');

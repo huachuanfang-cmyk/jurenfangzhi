@@ -9871,8 +9871,33 @@ function pgFGStock(){
         tr.appendChild(mkSumTd(statusBadge));
 
         // 操作列（阻止行点击冒泡）
-        var opTd=mkSumTd('','white-space:nowrap;text-align:left');
+        var opTd=mkSumTd('','white-space:nowrap;text-align:left;display:flex;gap:5px;align-items:center;flex-wrap:wrap');
         opTd.onclick=function(e){e.stopPropagation();};
+        // 明细按钮（直接打开该订单所有疋的明细+修改+撤销入库）
+        (function(og2){
+          var detBtnG=document.createElement('button');detBtnG.type='button';detBtnG.className='btn bsm bs';
+          detBtnG.style.fontSize='11px';detBtnG.textContent='明细';
+          detBtnG.onclick=function(e){
+            e.stopPropagation();
+            // 收集该订单所有疋料
+            var allR=fgRolls();
+            var ordRolls=allR.filter(function(r){return r.ordId===og2.ordId&&r.status!=='returned';});
+            if(!ordRolls.length){showToast('暂无疋料记录','info');return;}
+            // 若只有一个颜色/缸号组，直接打开；否则展示所有
+            var colorKeys=[...new Set(ordRolls.map(function(r){return (r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'');}))];
+            if(colorKeys.length===1){
+              var fk=colorKeys[0];var fp=fk.split('|');
+              openRollList(fk,{ordNo:og2.ordNo,colorNm:fp[1]||'',vatNo:fp[2]||'',ordId:og2.ordId,custNm:og2.custNm,fab:og2.fab},allR);
+            } else {
+              // 多色：先展开行，再提示点子行明细
+              window._fgExp[og2.ordId]=true;
+              tbody.querySelectorAll('[data-fg-detail="'+og2.ordId+'"]').forEach(function(r){r.style.display='';});
+              var btn=tr.querySelector('[data-exp-fg]');if(btn)btn.textContent='▼';
+              showToast('已展开明细行，点各颜色行右侧「明细」可修改','info');
+            }
+          };
+          opTd.appendChild(detBtnG);
+        })(og);
         if(!isAllOut){
           var outBtnG=document.createElement('button');outBtnG.type='button';outBtnG.className='btn bsm bq';
           outBtnG.style.fontSize='11px';outBtnG.textContent='登记出货';

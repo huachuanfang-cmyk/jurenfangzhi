@@ -9,6 +9,7 @@ const commands = [
   [process.execPath, ['tools/guard/print-style-tests.mjs'], 'print style guard'],
   [process.execPath, ['tools/guard/print-content-tests.mjs'], 'print content guard'],
   [process.execPath, ['tools/guard/data-audit.mjs'], 'data audit'],
+  [process.execPath, ['tools/guard/print-snapshot-tests.mjs'], 'print snapshot guard'],
 ];
 
 let failed = false;

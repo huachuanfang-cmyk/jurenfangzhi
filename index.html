@@ -1254,18 +1254,32 @@ async function onAuthSuccess(){
     }
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
-  // ── 一次性迁移：批量回填历史缸号到订单颜色行 ──
+  // ── 迁移 v2：批量回填历史缸号（双路径查找）──
   (function(){
-    var migKey='gjr5_migrated_vatnos_v1';
+    var migKey='gjr5_migrated_vatnos_v2';
     if(localStorage.getItem(migKey)==='1')return; // 已执行过，跳过
     var orders=DB.orders||[];
-    var rolls=fgRolls();
+    var rolls=fgRolls(); // 所有疋料记录（含已出货 status=out）
+    var fgouts=DB.fgouts||[];
+    // 建立 rollId → vatNo 快速查找表
+    var rollVatMap={};
+    rolls.forEach(function(r){if(r.id&&r.vatNo)rollVatMap[r.id]=r.vatNo;});
     var changed=0;
     orders.forEach(function(o){
       (o.colors||[]).forEach(function(c){
         if(c.yb)return; // 已有缸号，跳过
+        // 路径1：直接从 fgRolls 匹配 ordId + colorNm + vatNo
         var matchRoll=rolls.find(function(r){return r.ordId===o.id&&r.colorNm===c.nm&&r.vatNo;});
-        if(matchRoll){c.yb=matchRoll.vatNo;changed++;}
+        if(matchRoll){c.yb=matchRoll.vatNo;changed++;return;}
+        // 路径2：从 fgouts rollIds → fgRolls 反查 vatNo（适用入库时未填缸号但出货时已关联）
+        var matchOut=fgouts.find(function(fo){
+          if(fo.ordId!==o.id)return false;
+          // 检查这个出货单的疋中是否有匹配该颜色的
+          var firstMatchRoll=(fo.rollIds||[]).map(function(rid){return rolls.find(function(r){return r.id===rid;});})
+            .find(function(r){return r&&r.colorNm===c.nm&&r.vatNo;});
+          if(firstMatchRoll){c.yb=firstMatchRoll.vatNo;changed++;return true;}
+          return false;
+        });
       });
     });
     if(changed>0){

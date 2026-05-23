@@ -2062,7 +2062,7 @@ function pgDash(){
     var overdueArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='overdue';});
     var warnArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='warning';});
     var overdueOrds=orders.filter(function(o){
-      if(!o||o.paid||o.status==='cancelled'||o.status==='draft')return false;
+      if(!o||o.paid||o.status==='cancelled'||o.status==='draft'||o.status==='completed')return false;
       return o.delDate&&new Date(o.delDate)<today&&calcShipStatus(o.id)!=='fully_out';
     });
     var todayOrds=active.filter(function(o){

@@ -10897,9 +10897,9 @@ function openRollList(k,grp,rolls){
         +'<button type="button" id="void-exec-btn" class="btn" style="background:#DC2626;color:#fff;border:none;font-size:12px;font-weight:700;white-space:nowrap">🗑 撤销这批在库疋（'+inRolls.length+'匹）</button>'
         +'</div>';
       body.appendChild(vd);
-      document.getElementById('void-exec-btn').onclick=function(){
-        var reason=(document.getElementById('void-reason')||{value:''}).value.trim();
-        if(!reason){showToast('请先填写撤销原因','error');document.getElementById('void-reason').focus();return;}
+      vd.querySelector('#void-exec-btn').onclick=function(){
+        var reason=(vd.querySelector('#void-reason')||{value:''}).value.trim();
+        if(!reason){showToast('请先填写撤销原因','error');(vd.querySelector('#void-reason')||{focus:function(){}}).focus();return;}
         verifyPwd(function(){
           var now=new Date().toISOString();
           var allR=fgRolls();

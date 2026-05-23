@@ -11185,12 +11185,20 @@ function openFGInM(id){
     saveFgRolls(existRolls);
     window._fgLastAction={type:'in',ordId:ordId,ordNo:o.no,custNm:o.custNm||'',ts:Date.now()};window._fgTab='stock';
     pgFGStock(); // 保存后立即刷新背后的库存列表，无需手动刷新
-    // 自动推进颜色状态
+    // 自动推进颜色状态 + 回填缸号
     var ord2=DB.orders.find(function(x){return x.id===ordId;});
-    if(ord2){var clr2=(ord2.colors||[]).find(function(c){return c.nm===colorNm;});
-      if(clr2)clr2.clrStatus='finished';DB.orders=DB.orders;}
+    var _vatSynced=false;
+    if(ord2){
+      var clr2=(ord2.colors||[]).find(function(c){return c.nm===colorNm;});
+      if(clr2){
+        clr2.clrStatus='finished';
+        // 仅当订单颜色行尚无缸号时才自动回填（有值则不覆盖）
+        if(!clr2.yb&&vatNo){clr2.yb=vatNo;_vatSynced=true;}
+      }
+      DB.orders=DB.orders;
+    }
     // 保存成功：不跳主页，留在弹窗，清空疋明细等待继续录下一缸
-    showToast('✓ 入库成功！'+inNo+' 共'+validRolls.length+'匹','success');
+    showToast('✓ 入库成功！'+inNo+' 共'+validRolls.length+'匹'+(_vatSynced?' · 缸号已同步至订单':''),'success');
     // 清空缸号和疋明细，颜色清空等待重选，订单保持不变
     var vatEl=document.getElementById('fgi-vat');if(vatEl)vatEl.value='';
     var rollBodyEl=document.getElementById('fgi-roll-body');

@@ -1254,6 +1254,26 @@ async function onAuthSuccess(){
     }
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
+  // ── 一次性迁移：批量回填历史缸号到订单颜色行 ──
+  (function(){
+    var migKey='gjr5_migrated_vatnos_v1';
+    if(localStorage.getItem(migKey)==='1')return; // 已执行过，跳过
+    var orders=DB.orders||[];
+    var rolls=fgRolls();
+    var changed=0;
+    orders.forEach(function(o){
+      (o.colors||[]).forEach(function(c){
+        if(c.yb)return; // 已有缸号，跳过
+        var matchRoll=rolls.find(function(r){return r.ordId===o.id&&r.colorNm===c.nm&&r.vatNo;});
+        if(matchRoll){c.yb=matchRoll.vatNo;changed++;}
+      });
+    });
+    if(changed>0){
+      DB.orders=orders;
+      showToast('已自动补全 '+changed+' 个颜色行的历史缸号','success');
+    }
+    localStorage.setItem(migKey,'1'); // 标记已执行，下次不再重跑
+  })();
   _auditIssues = DB.audit();
   go('dash');
 }

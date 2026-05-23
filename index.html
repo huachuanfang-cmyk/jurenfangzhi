@@ -514,36 +514,47 @@ function shortName(name){
 function genNo(){
   var y=new Date().getFullYear();
   var customNext=DB.load('nextNo');if(Array.isArray(customNext))customNext=null;
-  // 如果设置了完整订单号（fullNo），优先精确使用
-  if(customNext && customNext.fullNo){
-    var no=customNext.fullNo;
-    // 检查此号码是否已被占用（重复保存安全）
-    var exists=DB.orders.some(function(o){return o.no===no;});
-    if(!exists){
-      // 自动推进：数值部分+1，更新fullNo
-      var m=no.match(/^G(\d{4})(\d{3,6})$/);
-      if(m){
-        var nextNum=parseInt(m[2])+1;
-        DB.save('nextNo',{year:parseInt(m[1]),num:nextNum,fullNo:'G'+m[1]+String(nextNum).padStart(4,'0')});
-      }else{
-        DB.save('nextNo',null);
+
+  // 辅助：全局扫描所有订单，跨年份取最大序号（格式 G{4位年}{4位序号}）
+  function _globalMax(){
+    var mx=0;
+    (DB.orders||[]).forEach(function(o){
+      var m=o.no&&o.no.match(/^G\d{4}(\d{3,6})$/);
+      if(m){var n=parseInt(m[1])||0;if(n>mx)mx=n;}
+    });
+    return mx;
+  }
+
+  // 如果设置了完整订单号（fullNo），优先使用其序号（但年份始终用当前年）
+  if(customNext&&customNext.fullNo){
+    var fm=customNext.fullNo.match(/^G\d{4}(\d{3,6})$/);
+    if(fm){
+      var fseq=parseInt(fm[1]);
+      var fcan='G'+y+String(fseq).padStart(4,'0');
+      var allNos0=new Set((DB.orders||[]).map(function(o){return o.no;}));
+      if(!allNos0.has(fcan)){
+        // 号码可用：保存下一个并返回
+        DB.save('nextNo',{year:y,num:fseq+1,fullNo:'G'+y+String(fseq+1).padStart(4,'0')});
+        return fcan;
       }
-      return no;
+      // 号码已被占用：清除 fullNo，以全局最大值为基础继续
+      customNext={year:y,num:Math.max(_globalMax()+1,fseq+1)};
+      DB.save('nextNo',customNext);
     }
   }
-  var customNum=customNext&&customNext.year===y?customNext.num:null;
-  var maxN=0;
-  DB.orders.forEach(function(o){
-    if(o.no&&o.no.startsWith('G'+y)){
-      var n=parseInt(o.no.slice(5))||0;
-      if(n>maxN)maxN=n;
-    }
-  });
-  var nextN=Math.max(maxN+1, customNum||672);
-  if(!customNum||nextN>=customNum){
-    DB.save('nextNo',{year:y,num:nextN+1});
-  }
-  return 'G'+y+String(nextN).padStart(4,'0');
+
+  // ── 全局序号：跨所有年份找最大序号，年份始终用当前年 ──
+  var globalMx=_globalMax();
+  var savedNum=(customNext&&customNext.num)||0;
+  var nextN=Math.max(globalMx+1, savedNum, 672);
+
+  // 防重复：候选号码不得与任何现有订单号（任意年份）重复
+  var allNos=new Set((DB.orders||[]).map(function(o){return o.no;}));
+  var candidate='G'+y+String(nextN).padStart(4,'0');
+  while(allNos.has(candidate)){nextN++;candidate='G'+y+String(nextN).padStart(4,'0');}
+
+  DB.save('nextNo',{year:y,num:nextN+1});
+  return candidate;
 }
 function setNextNo(fullNo){
   var m=fullNo.match(/^G(\d{4})(\d{3,6})$/);
@@ -2171,8 +2182,10 @@ function pgDash(){
     var noLbl=document.createElement('span');noLbl.style.cssText='font-size:11px;color:var(--t2);white-space:nowrap';noLbl.textContent='下一个订单号：';
     var noInp=document.createElement('input');noInp.id='dash-nextno';noInp.style.cssText='width:130px;padding:4px 8px;border:1px solid var(--bd);border-radius:4px;font-size:12px';
     var customNext=DB.load('nextNo'),y=new Date().getFullYear(),maxN=0;
-    DB.orders.forEach(function(o){if(o.no&&o.no.startsWith('G'+y)){var n=parseInt(o.no.slice(5))||0;if(n>maxN)maxN=n;}});
-    noInp.value='G'+y+String(Math.max(maxN+1,customNext&&customNext.year===y?customNext.num:673)).padStart(4,'0');
+    // 全局扫描：跨年份取最大序号
+    (DB.orders||[]).forEach(function(o){var m=o.no&&o.no.match(/^G\d{4}(\d{3,6})$/);if(m){var n=parseInt(m[1])||0;if(n>maxN)maxN=n;}});
+    var _savedNum=(customNext&&customNext.num)||0;
+    noInp.value='G'+y+String(Math.max(maxN+1,_savedNum,673)).padStart(4,'0');
     var noBtn=mkBtn('设置','btn bsm bp',function(){
       var v=noInp.value.trim(),m=v.match(/^G(\d{4})(\d{3,6})$/);
       if(!m)return alert('格式错误，请输入如 G20260673');
@@ -3646,6 +3659,25 @@ function pgOrders(){
       warnBar.appendChild(clrChip);
     }
     pg.appendChild(warnBar);
+  })();
+
+  // ── 重复订单号检测 ──
+  (function(){
+    var noMap={};
+    (DB.orders||[]).forEach(function(o){if(o.no){if(!noMap[o.no])noMap[o.no]=[];noMap[o.no].push(o);}});
+    var dups=Object.keys(noMap).filter(function(no){return noMap[no].length>1;});
+    if(!dups.length)return;
+    // 计算建议的下一个可用号码
+    var gmx=0;(DB.orders||[]).forEach(function(o){var m=o.no&&o.no.match(/^G\d{4}(\d{3,6})$/);if(m){var n=parseInt(m[1])||0;if(n>gmx)gmx=n;}});
+    var sugNo='G'+new Date().getFullYear()+String(gmx+1).padStart(4,'0');
+    var dupBar=document.createElement('div');
+    dupBar.style.cssText='background:#FEF2F2;border:1.5px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#991B1B;display:flex;align-items:flex-start;gap:10px';
+    dupBar.innerHTML='<span style="font-size:18px;flex-shrink:0">⚠️</span>'
+      +'<div style="line-height:1.8"><b>发现重复订单号（共'+dups.length+'个）：</b> '
+      +dups.map(function(no){return '<b style="font-family:monospace;background:#FEE2E2;padding:1px 5px;border-radius:3px">'+esc(no)+'</b>（'+noMap[no].length+'张）';}).join(' ')
+      +'<br><span style="font-size:11px">请点击其中一张订单→编辑→将订单号改为 <b>'+esc(sugNo)+'</b> 等新编号，以消除重复。</span>'
+      +'</div>';
+    pg.appendChild(dupBar);
   })();
 
   var card=document.createElement('div');card.className='card';

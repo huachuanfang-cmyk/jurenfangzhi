@@ -9523,6 +9523,14 @@ function pgFGStock(){
   qc.appendChild(mkBtn('📋 多色合并送货单','btn',function(){openMultiColorSheet();}));
   pg.appendChild(qc);
 
+  // ── 最近操作：预展开目标行 ──
+  var _lastAct=window._fgLastAction;
+  var _lastActOk=_lastAct&&(Date.now()-_lastAct.ts)<90000;
+  if(_lastActOk&&_lastAct.ordId){
+    if(_lastAct.type==='in'){if(!window._fgExp)window._fgExp={};window._fgExp[_lastAct.ordId]=true;}
+    if(_lastAct.type==='out'){if(!window._fgOutExp)window._fgOutExp={};window._fgOutExp[_lastAct.ordId]=true;}
+  }
+
   // ── Tab 切换栏 ──
   var _fgTab=window._fgTab||'stock';
   var tabBar=document.createElement('div');
@@ -9561,6 +9569,19 @@ function pgFGStock(){
     tabBar.appendChild(tbtn);
   });
   pg.appendChild(tabBar);
+
+  // ── 定位横幅：入库/出货完成后自动显示 ──
+  if(_lastActOk&&_lastAct.ordNo){
+    var actBar=document.createElement('div');
+    actBar.style.cssText='background:#ECFDF5;border:1.5px solid #6EE7B7;border-radius:8px;padding:9px 14px;margin-bottom:10px;font-size:12px;color:#065F46;display:flex;align-items:center;gap:8px';
+    actBar.innerHTML='<span style="font-size:16px">✅</span>'
+      +'<span><b>'+(_lastAct.type==='in'?'入库已完成':'出货已登记')+'</b>　'
+      +'<b style="font-family:monospace">'+esc(_lastAct.ordNo)+'</b>'
+      +(_lastAct.custNm?' &middot; '+esc(_lastAct.custNm):'')
+      +' &mdash; 已自动定位并展开该订单行 ↓</span>'
+      +'<button type="button" onclick="window._fgLastAction=null;pgFGStock()" style="margin-left:auto;background:none;border:none;color:#059669;cursor:pointer;font-size:13px;font-weight:700;padding:2px 8px;border-radius:4px;line-height:1">✕</button>';
+    pg.appendChild(actBar);
+  }
 
   // ════════════════════════════════════════════
   // Tab: 库存台账（按订单分组，可展开颜色/缸号）
@@ -10302,6 +10323,19 @@ function pgFGStock(){
     }
     pg.appendChild(rc);
   }
+  // ── 自动滚动定位：入库/出货后高亮目标行 ──
+  if(typeof _lastActOk!=='undefined'&&_lastActOk&&_lastAct&&_lastAct.ordId){
+    setTimeout(function(){
+      var selStr=_lastAct.type==='in'?'[data-fg-oid="'+_lastAct.ordId+'"]':'[data-fgo-oid="'+_lastAct.ordId+'"]' ;
+      var row=document.querySelector(selStr);
+      if(row){
+        row.scrollIntoView({behavior:'smooth',block:'center'});
+        var oBg=row.style.background;
+        row.style.transition='background 0.4s';row.style.background='#D1FAE5';
+        setTimeout(function(){row.style.transition='background 1s';row.style.background=oBg||'';},1800);
+      }
+    },150);
+  }
 }
 
 // ── 退货处理 ──
@@ -10632,6 +10666,7 @@ function openFGOutFromGroup(k,grp){
     var allR=fgRolls();
     rollIds.forEach(function(rid){var r=allR.find(function(x){return x.id===rid;});if(r){r.status='out';r.outId=outRec.id;}});
     saveFgRolls(allR);
+    window._fgLastAction={type:'out',ordId:grp.ordId,ordNo:grp.ordNo,custNm:grp.custNm||'',ts:Date.now()};window._fgTab='out';
     cm();pgFGStock();showToast('出货登记完成！'+outNo,'success');
     if(confirm('出货登记完成！是否立即打印送货单？'))printFGOut(outRec.id);
   });
@@ -11142,6 +11177,7 @@ function openFGInM(id){
       });
     });
     saveFgRolls(existRolls);
+    window._fgLastAction={type:'in',ordId:ordId,ordNo:o.no,custNm:o.custNm||'',ts:Date.now()};window._fgTab='stock';
     pgFGStock(); // 保存后立即刷新背后的库存列表，无需手动刷新
     // 自动推进颜色状态
     var ord2=DB.orders.find(function(x){return x.id===ordId;});

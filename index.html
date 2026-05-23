@@ -10446,7 +10446,7 @@ function openFGInM(id){
     cbTogLbl.style.cssText='display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none';
     var cbTog=document.createElement('input');cbTog.type='checkbox';cbTog.style.margin='0';
     cbTogLbl.appendChild(cbTog);
-    var cbTogTxt=document.createElement('span');cbTogTxt.textContent='显示已全部入库';
+    var cbTogTxt=document.createElement('span');cbTogTxt.textContent='显示已全部出货';
     cbTogLbl.appendChild(cbTogTxt);
     cbBar.appendChild(cbTogLbl);
     var cbHint=document.createElement('span');cbHint.style.cssText='margin-left:auto;font-family:monospace';
@@ -10475,7 +10475,8 @@ function openFGInM(id){
       var q=cbSearch.value.trim();
       var showAll=cbTog.checked;
       var filtered=ords.filter(function(o){
-        if(!showAll&&_ordFullyIn(o))return false;
+        // 只有「已全部出货」的订单才默认隐藏，避免把「货在库未出货」的订单漏掉
+        if(!showAll&&calcShipStatus(o.id)==='fully_out')return false;
         return _ordMatchesSearch(o,q);
       });
       cbList.innerHTML='';

@@ -5061,7 +5061,7 @@ function pgDW(){
   var facSel=mkSelect('wd-f',[{v:'',l:'请选择织厂'}].concat(DB.facts.filter(function(f){var ps=f.prcs||[];return ps.indexOf('织厂')>=0||ps.indexOf('织布厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
   facSel.onchange=function(){
     var fnm=this.value;var fac=facts.find(function(f){return f.nm===fnm;});
-    if(fac){var ctEl=document.getElementById('wd-ct');if(ctEl&&fac.ct)ctEl.value=fac.ct;}
+    if(fac){var ctEl=document.getElementById('wd-ct');if(ctEl&&(fac.ct||fac.contact))ctEl.value=fac.ct||fac.contact;}
   };
   var cb=document.createElement('div');cb.style.cssText='display:flex;flex-direction:column;gap:0';
   cb.appendChild(al);
@@ -5281,6 +5281,28 @@ function pgDW(){
   btmBar.appendChild(mkBtn('\uD83D\uDDA8 打印/PDF','btn boo',function(){saveWDcfg();prtW();}));
   cb.appendChild(btmBar);
 
+  function latestYarnIssueFactoryForWD(ord){
+    if(!ord)return '';
+    var hits=(DB.yarnouts||[]).filter(function(r){
+      return r&&r.type==='out'&&r.factory&&((r.ordNo&&r.ordNo===ord.no)||(r.ordId&&r.ordId===ord.id));
+    }).sort(function(a,b){
+      var d=String(a.date||'').localeCompare(String(b.date||''));
+      return d||String(a.id||'').localeCompare(String(b.id||''));
+    });
+    return hits.length?hits[hits.length-1].factory:'';
+  }
+  function applyWDFactoryIfEmpty(factoryNm){
+    if(!factoryNm)return;
+    var ff=document.getElementById('wd-f');if(!ff||ff.value)return;
+    if(!Array.from(ff.options).some(function(o){return o.value===factoryNm;})){
+      ff.appendChild(new Option(factoryNm+' · 发料记录',factoryNm));
+    }
+    ff.value=factoryNm;
+    var fac=DB.facts.find(function(f){return f.nm===factoryNm;});
+    var ct=document.getElementById('wd-ct');
+    if(ct&&!ct.value&&fac)ct.value=fac.ct||fac.contact||'';
+  }
+
   // ══ Reconnect ordSel.onchange to update new UI ══
   var _origOrdChange=ordSel.onchange;
   ordSel.onchange=function(){
@@ -5355,7 +5377,10 @@ function pgDW(){
         applySpecToDOM(ordSpecs, ord&&ord.widthUnit);
       }
       // Restore factory contact
-      if(cfg.facNm&&!cfg.ct){var fac=DB.facts.find(function(f){return f.nm===cfg.facNm;});if(fac&&ct)ct.value=fac.ct||'';}
+      if(cfg.facNm&&!cfg.ct){var fac=DB.facts.find(function(f){return f.nm===cfg.facNm;});if(fac&&ct)ct.value=fac.ct||fac.contact||'';}
+      if(!cfg.facNm){
+        applyWDFactoryIfEmpty(latestYarnIssueFactoryForWD(ord));
+      }
     }
   };
   // Trigger if already has value
@@ -7670,6 +7695,39 @@ function pgARec(){
   pg.appendChild(listCard);
 }
 
+function getARecReturnRows(rec, fgoutsDB, orders, rolls){
+  var outIds=(rec&&rec.outIds)||[];
+  var retIds=(rec&&rec.retIds)||[];
+  var rows=[];
+  (DB.fgreturns||[]).forEach(function(ret){
+    if(!ret||!ret.outId||ret.status==='cancelled')return;
+    if(retIds.length){
+      if(retIds.indexOf(ret.id)<0)return;
+    }else if(outIds.indexOf(ret.outId)<0)return;
+    var out=fgoutsDB.find(function(x){return x.id===ret.outId;});if(!out)return;
+    var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
+    var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
+    var kg=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0):(parseFloat(out.totalKG)||parseFloat(out.kg)||0);
+    var mSum=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0):(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
+    var unitPr=parseFloat(ord.unitPr)||0;
+    var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+    var outAmt=(byM?mSum:kg)*unitPr;
+    var deductKG=parseFloat(ret.deductKG)||parseFloat(ret.totalKG)||0;
+    if(deductKG<=0)return;
+    var retAmt=kg>0&&outAmt>0?(deductKG/kg)*outAmt:deductKG*unitPr;
+    var retRolls=rolls.filter(function(x){return (ret.rollIds||[]).indexOf(x.id)>=0;});
+    var clrNms=retRolls.length
+      ?[...new Set(retRolls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、')
+      :(out.clrNm||out.colorNm||'');
+    rows.push({
+      id:ret.id,no:ret.no||'',outNo:out.no||'',date:ret.date||out.date||'',fab:ord.fab||'',
+      clr:clrNms,pcs:retRolls.length||'',kg:deductKG,unitPr:unitPr,amt:retAmt,
+      reason:ret.reason||'退货扣损'
+    });
+  });
+  return rows;
+}
+
 // ── 对账单导出Excel（简洁专业版）──
 function exportARecExcel(id){
   if(typeof ExcelJS==='undefined'){return alert('Excel导出库未加载，请确保联网后刷新页面（Ctrl+Shift+R）再试。');}
@@ -7701,10 +7759,12 @@ function exportARecExcel(id){
       no:(out.no||'').replace(/^[A-Z]+/,''),custNo:out.custOrdNo||ord.custNo||'',
       rm:out.feeNm&&feeAmt?(out.feeNm+'¥'+feeAmt.toFixed(0)):''});
   });
+  var returnDataList=getARecReturnRows(r,fgoutsDB,orders,rolls);
+  var returnTotal=returnDataList.reduce(function(s,d){return s+(parseFloat(d.amt)||0);},0);
   var deductTotal=parseFloat(r.deductTotal)||0;
   var addTotal=parseFloat(r.addTotal)||0;
   var paidTotal=parseFloat(r.paidTotal)||0;
-  var balance=Math.max(0,grandTotal+totalFee-deductTotal+addTotal-paidTotal);
+  var balance=Math.max(0,grandTotal+totalFee-returnTotal-deductTotal+addTotal-paidTotal);
 
   // ── 样式常量（极简：只用蓝色系，白底为主）──
   var FN='Microsoft YaHei';
@@ -7799,6 +7859,15 @@ function exportARecExcel(id){
     sc(dr.getCell(5),bg,{size:10},{horizontal:'right'},'','#,##0.0');
     sc(dr.getCell(6),bg,{size:10,color:{argb:BLUE}},{horizontal:'right'},BD_LIGHT,'#,##0.00');
     sc(dr.getCell(7),bg,{bold:true,size:10,color:{argb:BLUE}},{horizontal:'right'},BD_LIGHT,'#,##0.00');
+  });
+  returnDataList.forEach(function(d){
+    var dr=ws.addRow([d.date,'退货扣损：'+d.fab,d.clr,d.pcs||'',-d.kg,d.unitPr,-d.amt,(d.no||'').replace(/^[A-Z]+/,''),(d.outNo||'').replace(/^[A-Z]+/,''),d.reason]);
+    dr.height=22;
+    dr.eachCell(function(cell){sc(cell,F_WHITE,{size:10,color:{argb:RED}},{horizontal:'left'},BD_LIGHT);});
+    sc(dr.getCell(4),F_WHITE,{size:10,color:{argb:RED}},{horizontal:'center'},BD_LIGHT);
+    sc(dr.getCell(5),F_WHITE,{size:10,color:{argb:RED}},{horizontal:'right'},BD_LIGHT,'#,##0.0');
+    sc(dr.getCell(6),F_WHITE,{size:10,color:{argb:RED}},{horizontal:'right'},BD_LIGHT,'#,##0.00');
+    sc(dr.getCell(7),F_WHITE,{bold:true,size:10,color:{argb:RED}},{horizontal:'right'},BD_LIGHT,'#,##0.00');
   });
 
   // ── 汇总区域（白底，用字体区分，不用背景色）──
@@ -7931,6 +8000,8 @@ function printARec(id){
       custNo:custNo,rm:rm.join('；')
     });
   });
+  var returnDataList=getARecReturnRows(r,fgoutsDB,orders,rolls);
+  var returnTotal=returnDataList.reduce(function(s,d){return s+(parseFloat(d.amt)||0);},0);
 
   // 构建明细行
   var outRows='';
@@ -7949,6 +8020,22 @@ function printARec(id){
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:right;font-weight:600;font-size:10px">'+(d.amt?'¥'+d.amt.toFixed(2):'—')+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:9px;color:#C2410C;font-weight:600;word-break:break-all">'+esc(d.custNo)+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:9.5px;color:#92400E">'+esc(d.rm)+'</td>'
+      +'</tr>';
+  });
+  returnDataList.forEach(function(d){
+    var meterTd=hasMeter?'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;color:#DC2626">—</td>':'';
+    outRows+='<tr style="background:#FEF2F2;color:#991B1B">'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:9.5px;white-space:nowrap">'+esc(d.date)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px">退货扣损：'+esc(d.fab)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px;white-space:nowrap">'+esc(d.clr)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">'+(d.pcs||'')+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;font-weight:700">-'+d.kg.toFixed(1)+'</td>'
+      +meterTd
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">—</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-family:monospace;font-size:9.5px;color:#DC2626">'+esc((d.no||'').replace(/^[A-Z]+/,''))+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:right;font-weight:700;font-size:10px;color:#DC2626">-¥'+d.amt.toFixed(2)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:9px;color:#991B1B">原单 '+esc((d.outNo||'').replace(/^[A-Z]+/,''))+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:9.5px;color:#991B1B">'+esc(d.reason)+'</td>'
       +'</tr>';
   });
 
@@ -7980,7 +8067,7 @@ function printARec(id){
       +'</tr>';
   });
 
-  var balance=Math.max(0,grandTotal+totalFee-deductTotal+addTotal-paidTotal);
+  var balance=Math.max(0,grandTotal+totalFee-returnTotal-deductTotal+addTotal-paidTotal);
   var meterTh=hasMeter?'<th style="border:1px solid #ccc;padding:5px 6px;color:#1e3a8a;text-align:center;font-size:10px;width:55px">米数</th>':'';
 
   var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'
@@ -8035,6 +8122,11 @@ function printARec(id){
       +'<td colspan="'+(hasMeter?8:7)+'" style="border:1px solid #e0e0e0;padding:4px 6px;text-align:right;color:#E65100;font-size:10px;font-weight:700">'
         +'附加费（小缸费）合计</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:right;color:#E65100;font-weight:800;font-size:11px">+¥'+totalFee.toFixed(2)+'</td>'
+      +'<td colspan="2" style="border:1px solid #e0e0e0;padding:4px 6px"></td>'
+      +'</tr>':'')
+    +(returnTotal?'<tr style="background:#FEF2F2">'
+      +'<td colspan="'+(hasMeter?8:7)+'" style="border:1px solid #e0e0e0;padding:4px 6px;text-align:right;color:#DC2626;font-size:10px;font-weight:700">退货扣损合计</td>'
+      +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:right;color:#DC2626;font-weight:800;font-size:10px">-¥'+returnTotal.toFixed(2)+'</td>'
       +'<td colspan="2" style="border:1px solid #e0e0e0;padding:4px 6px"></td>'
       +'</tr>':'')
     +(deductTotal?'<tr style="background:#FEF2F2">'
@@ -8112,7 +8204,7 @@ function openPaymentModal(arecId){
     rec.payments.push(payment);
     // 重算欠尾款
     var totalPaid=rec.payments.reduce(function(s,p){return s+(parseFloat(p.amt)||0);},0);
-    var netAmt=(parseFloat(rec.totalAmt)||0)-(parseFloat(rec.deductTotal)||0)+(parseFloat(rec.addTotal)||0);
+    var netAmt=(parseFloat(rec.totalAmt)||0)+(parseFloat(rec.shipFeeTotal)||0)-(parseFloat(rec.deductTotal)||0)+(parseFloat(rec.addTotal)||0);
     rec.balanceAmt=String(Math.max(0,netAmt-totalPaid));
     if(parseFloat(rec.balanceAmt)<=0)rec.status='settled';
     DB.arecs=DB.arecs;
@@ -8339,6 +8431,8 @@ function openARecModal(id){
             var retTd=document.createElement('td');retTd.style.cssText='padding:5px 8px;text-align:center';
             var retCb=document.createElement('input');retCb.type='checkbox';retCb.className='ar-out-cb';
             retCb.checked=true;retCb.disabled=true;
+            retCb.value='';
+            retCb.dataset.retId=retRec.id||'';
             retCb.dataset.kg=(-retDeductKG).toFixed(1);retCb.dataset.amt=retAmtVal.toFixed(2);
             retTd.appendChild(retCb);
             retTr.appendChild(retTd);
@@ -8488,9 +8582,18 @@ function openARecModal(id){
 
     // 收集勾选的出货单
     var selOutIds=[];
-    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){selOutIds.push(c.value);});
-    var total=0,shipFeeTotal=0;
-    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);shipFeeTotal+=parseFloat(c.dataset.fee||0);});
+    var selRetIds=[];
+    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){
+      if(c.dataset.retId)selRetIds.push(c.dataset.retId);
+      else if(c.value)selOutIds.push(c.value);
+    });
+    var total=0,shipFeeTotal=0,returnTotal=0;
+    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){
+      var amt=parseFloat(c.dataset.amt||0);
+      total+=amt;
+      if(c.dataset.retId)returnTotal+=Math.abs(amt);
+      shipFeeTotal+=parseFloat(c.dataset.fee||0);
+    });
 
     // 扣减/附加
     var adjustments=[];
@@ -8521,7 +8624,7 @@ function openARecModal(id){
       id:rec?rec.id:'ar_'+Date.now(),
       no:rec?rec.no:arecNo(),
       custNm:custNm,month:month,payType:payType,dueDate:dueDate,
-      outIds:selOutIds,totalAmt:String(total),shipFeeTotal:String(shipFeeTotal),
+      outIds:selOutIds,retIds:selRetIds,totalAmt:String(total),shipFeeTotal:String(shipFeeTotal),returnTotal:String(returnTotal),
       adjustments:adjustments,deductTotal:String(deductTotal),addTotal:String(addTotal),
       payments:payments,paidTotal:String(paidTotal),
       balanceAmt:String(balance),

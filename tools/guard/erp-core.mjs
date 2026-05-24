@@ -122,17 +122,22 @@ export function createGuardStore() {
     },
 
     returnFinishedGoods(ret) {
-      requireRecord('fgo', ret.outId, 'shipment');
+      const shipment = requireRecord('fgo', ret.outId, 'shipment');
+      var totalKG = 0;
       for (const rollId of ret.rollIds || []) {
         const roll = requireRecord('fgr', rollId, 'roll');
         if (roll.outId !== ret.outId) throw new Error(`roll is not linked to shipment: ${rollId}`);
         roll.status = 'return_pending';
+        totalKG += parseFloat(roll.kg) || 0;
       }
       const record = {
         id: ret.id,
         outId: ret.outId,
+        ordId: shipment.ordId,
         rollIds: clone(ret.rollIds || []),
         reason: ret.reason || '',
+        totalKG: ret.totalKG !== undefined ? ret.totalKG : totalKG,
+        deductKG: ret.deductKG !== undefined ? ret.deductKG : totalKG,
         status: 'pending',
       };
       data.ret = data.ret.filter((item) => item.id !== record.id).concat(record);
@@ -272,7 +277,27 @@ export function createGuardStore() {
 
       var totalAmt = shipments.reduce(function(s, sh){ return s + sh.amt; }, 0);
       var shipFeeTotal = shipments.reduce(function(s, sh){ return s + (parseFloat(sh.feeAmt) || 0); }, 0);
-      var balance = Math.max(0, totalAmt + shipFeeTotal - (parseFloat(ar.paidTotal) || 0));
+      var returns = data.ret.filter(function(ret){
+        if (ret.status === 'cancelled') return false;
+        if (ar.retIds && ar.retIds.length) return ar.retIds.indexOf(ret.id) >= 0;
+        return (ar.outIds || []).indexOf(ret.outId) >= 0;
+      }).map(function(ret){
+        var shipment = byId(data.fgo, ret.outId);
+        if (!shipment) return null;
+        var shipmentAmt = this.calcShipmentAmount(shipment.id);
+        var retKG = parseFloat(ret.deductKG) || parseFloat(ret.totalKG) || 0;
+        var shipmentKG = shipmentAmt && shipmentAmt.kg ? shipmentAmt.kg : 0;
+        var returnAmt = shipmentKG > 0 ? (retKG / shipmentKG) * shipmentAmt.amt : 0;
+        return {
+          id: ret.id,
+          outId: ret.outId,
+          reason: ret.reason || '',
+          deductKG: Math.round(retKG * 10) / 10,
+          amt: Math.round(returnAmt * 100) / 100,
+        };
+      }, this).filter(Boolean);
+      var returnTotal = returns.reduce(function(s, ret){ return s + ret.amt; }, 0);
+      var balance = Math.max(0, totalAmt + shipFeeTotal - returnTotal - (parseFloat(ar.paidTotal) || 0));
 
       return {
         id: ar.id,
@@ -281,6 +306,8 @@ export function createGuardStore() {
         shipments: shipments,
         totalAmt: Math.round(totalAmt * 100) / 100,
         shipFeeTotal: Math.round(shipFeeTotal * 100) / 100,
+        returnTotal: Math.round(returnTotal * 100) / 100,
+        returns: returns,
         paidTotal: parseFloat(ar.paidTotal) || 0,
         balanceAmt: Math.round(balance * 100) / 100,
         status: balance <= 0 ? 'settled' : 'pending',
@@ -332,10 +359,30 @@ export function createGuardStore() {
         id: input.id,
         yarnId: input.yarnId || '',
         type: input.type || 'out',
+        ordNo: input.ordNo || '',
+        factory: input.factory || '',
+        date: input.date || '',
         kg: input.kg || '',
       };
       data.yo = data.yo.filter((item) => item.id !== record.id).concat(record);
       return clone(record);
+    },
+
+    getLatestYarnIssueFactoryForOrder(ordIdOrNo) {
+      const order = byId(data.o, ordIdOrNo);
+      const ordNo = order ? order.no : ordIdOrNo;
+      const matches = data.yo
+        .filter((item) => item.type === 'out' && item.factory && item.ordNo === ordNo)
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+      const latest = matches[matches.length - 1];
+      return latest ? latest.factory : '';
+    },
+
+    resolveWeavingFactoryDefaults({ ordId, currentFactory = '', savedConfig = null } = {}) {
+      if (currentFactory) return { factory: currentFactory, source: 'manual' };
+      if (savedConfig && savedConfig.facNm) return { factory: savedConfig.facNm, source: 'saved' };
+      const suggested = this.getLatestYarnIssueFactoryForOrder(ordId);
+      return suggested ? { factory: suggested, source: 'yarnout' } : { factory: '', source: 'empty' };
     },
 
     deleteYarnPurchase(id) {

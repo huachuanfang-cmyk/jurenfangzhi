@@ -324,6 +324,32 @@ test('receivable details include shipment extra fee in balance', () => {
   assert.equal(details.balanceAmt, 706);
 });
 
+test('receivable details subtract returned deduct KG from selected shipment', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-030-ret', no: 'G20260030', prUnit: 'KG', unitPr: 45 });
+  store.receiveFinishedGoods({ id: 'in-030-ret', ordId: 'ord-030-ret',
+    rolls: [
+      { id: 'roll-030-ret-a', kg: '1179.3', colorNm: 'Natural' },
+      { id: 'roll-030-ret-b', kg: '380.3', colorNm: 'Natural' },
+    ] });
+  store.shipFinishedGoods({ id: 'out-030-ret-a', ordId: 'ord-030-ret', rollIds: ['roll-030-ret-a'] });
+  store.shipFinishedGoods({ id: 'out-030-ret-b', ordId: 'ord-030-ret', rollIds: ['roll-030-ret-b'] });
+  store.returnFinishedGoods({
+    id: 'ret-030',
+    outId: 'out-030-ret-b',
+    rollIds: ['roll-030-ret-b'],
+    reason: '品质问题',
+    deductKG: '325.3',
+  });
+  store.createReceivable({ id: 'ar-030-ret', no: 'AR20260030', outIds: ['out-030-ret-a', 'out-030-ret-b'] });
+
+  const details = store.getReceivableDetails('ar-030-ret');
+  assert.equal(details.totalAmt, 70182);
+  assert.equal(details.returnTotal, 14638.5);
+  assert.equal(details.balanceAmt, 55543.5);
+  assert.equal(details.returns.length, 1);
+});
+
 // ══ 真实业务流程：多颜色入库 ══
 
 test('同一订单多颜色入库后各色布卷独立管理', () => {
@@ -480,6 +506,51 @@ test('yarn purchase delete is blocked when issue or return records reference it'
   assert.throws(() => store.deleteYarnPurchase('yn-002'), /linked yarn movement/);
   assert.equal(store.getYarnPurchase('yn-002').poNo, 'PO20260002');
   assert.deepEqual(store.getDeleteIntents(), []);
+});
+
+test('weaving doc suggests factory from latest yarn issue when no saved config', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-wd-001', no: 'G20260675' });
+  store.createYarnMovement({
+    id: 'yo-old',
+    type: 'out',
+    ordNo: 'G20260675',
+    factory: '旧织厂',
+    date: '2026-05-01',
+    kg: '500',
+  });
+  store.createYarnMovement({
+    id: 'yo-new',
+    type: 'out',
+    ordNo: 'G20260675',
+    factory: '东莞市裕泰纺织科技有限公司',
+    date: '2026-05-08',
+    kg: '1675',
+  });
+
+  const defaults = store.resolveWeavingFactoryDefaults({ ordId: 'ord-wd-001' });
+  assert.equal(defaults.factory, '东莞市裕泰纺织科技有限公司');
+  assert.equal(defaults.source, 'yarnout');
+});
+
+test('weaving doc saved factory is not overwritten by yarn issue suggestion', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-wd-002', no: 'G20260676' });
+  store.createYarnMovement({
+    id: 'yo-wd-002',
+    type: 'out',
+    ordNo: 'G20260676',
+    factory: '发料记录织厂',
+    date: '2026-05-08',
+    kg: '1000',
+  });
+
+  const defaults = store.resolveWeavingFactoryDefaults({
+    ordId: 'ord-wd-002',
+    savedConfig: { facNm: '已保存织厂' },
+  });
+  assert.equal(defaults.factory, '已保存织厂');
+  assert.equal(defaults.source, 'saved');
 });
 
 let passed = 0;

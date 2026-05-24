@@ -3781,6 +3781,29 @@ function showAllOrders(){
     b.style.borderColor='';
   }
 }
+function orderWarningMatch(o,key){
+  if(!o||!key)return false;
+  var lc=lifecycleOf(o);
+  var today=new Date();today.setHours(0,0,0,0);
+  if(key==='overdue'){
+    return !lc.hasShip&&o.delDate&&new Date(o.delDate)<today&&o.status!=='cancelled'&&o.status!=='draft'&&o.status!=='completed';
+  }
+  if(key==='noArec'){
+    return lc.hasShip&&!lc.hasArec&&o.status!=='cancelled'&&o.status!=='draft';
+  }
+  if(key==='noPaid'){
+    return lc.hasArec&&!lc.hasPaid&&o.status!=='cancelled'&&o.status!=='draft';
+  }
+  return false;
+}
+function activateOrderWarningFilter(key){
+  var same=window._ordWarnFilter===key;
+  window._ordWarnFilter=same?'':key;
+  window._ordHideCompleted=false;
+  var q=document.getElementById('oq');if(q)q.value='';
+  var s=document.getElementById('os');if(s)s.value='';
+  pgOrders();
+}
 function pgOrders(){
   var pg=document.getElementById('pg');pg.innerHTML='';
   var sb2=document.createElement('div');sb2.className='sb2';
@@ -3831,13 +3854,11 @@ function pgOrders(){
   pg.appendChild(sb2);
   // ── 订单预警横幅 ──
   (function(){
-    var today=new Date();today.setHours(0,0,0,0);
     var noShip=[],noArec=[],noPaid=[],overdue=[];
-    (DB.orders||[]).filter(function(o){return o.status!=='cancelled'&&o.status!=='draft';}).forEach(function(o){
-      var lc=lifecycleOf(o);
-      if(lc.hasShip&&!lc.hasArec)noArec.push(o);
-      if(lc.hasArec&&!lc.hasPaid)noPaid.push(o);
-      if(!lc.hasShip&&o.delDate&&new Date(o.delDate)<today)overdue.push(o);
+    (DB.orders||[]).forEach(function(o){
+      if(orderWarningMatch(o,'noArec'))noArec.push(o);
+      if(orderWarningMatch(o,'noPaid'))noPaid.push(o);
+      if(orderWarningMatch(o,'overdue'))overdue.push(o);
     });
     var items=[];
     if(overdue.length)items.push({key:'overdue',icon:'🔴',txt:'超期未出货 '+overdue.length+' 张',color:'#FEF2F2',bc:'#FECACA',tc:'#991B1B'});
@@ -3857,10 +3878,7 @@ function pgOrders(){
       chip.style.cssText='display:inline-flex;align-items:center;gap:4px;padding:5px 13px;background:'+(isAct?it.bc:it.color)+';border:2px solid '+it.bc+';border-radius:99px;font-size:12px;font-weight:700;color:'+it.tc+';cursor:pointer;transition:all .15s;'+(isAct?'box-shadow:0 0 0 3px '+it.tc+'44;':'');
       chip.title='点击只显示这类订单';
       chip.textContent=it.icon+' '+it.txt+(isAct?' ✕':'');
-      chip.onclick=(function(key){return function(){
-        window._ordWarnFilter=(window._ordWarnFilter===key)?'':key;
-        pgOrders();
-      };})(it.key);
+      chip.onclick=(function(key){return function(){activateOrderWarningFilter(key);};})(it.key);
       warnBar.appendChild(chip);
     });
     // 清除筛选
@@ -4141,10 +4159,7 @@ function fOrd(){
   renderOrds(DB.orders.filter(function(o){
     // ── 预警快速筛选 ──
     if(_wf){
-      var lc2=lifecycleOf(o);
-      if(_wf==='overdue'&&!(!lc2.hasShip&&o.delDate&&new Date(o.delDate)<today&&o.status!=='cancelled'&&o.status!=='draft'))return false;
-      if(_wf==='noArec'&&!(lc2.hasShip&&!lc2.hasArec&&o.status!=='cancelled'&&o.status!=='draft'))return false;
-      if(_wf==='noPaid'&&!(lc2.hasArec&&!lc2.hasPaid&&o.status!=='cancelled'&&o.status!=='draft'))return false;
+      if(!orderWarningMatch(o,_wf))return false;
     }
     if(searchHit([(o.no||''),(o.prodNo||''),(o.custNm||''),(o.custNo||''),(o.fab||''),(o.fabB||''),(o.sty||''),(o.follower||''),(o.colors||[]).map(function(c){return (c.nm||'')+' '+(c.code||'');}).join(' ')].join(' '),q)){
       if(s&&o.status!==s)return false;

@@ -20,6 +20,19 @@ test('orders hide/show button uses the show all helper when currently hiding com
   assert.match(html, /if\(window\._ordHideCompleted\)\{showAllOrders\(\);return;\}/);
 });
 
+test('warning chips and warning-filtered order list use the same predicate', () => {
+  assert.match(html, /function\s+orderWarningMatch\s*\(/, 'missing shared order warning predicate');
+  assert.match(html, /orderWarningMatch\(o,'overdue'\)/, 'overdue count/filter should use shared predicate');
+  assert.match(html, /orderWarningMatch\(o,_wf\)/, 'warning-filtered list should use shared predicate');
+});
+
+test('clicking a warning chip clears unrelated filters so the matching orders are visible', () => {
+  assert.match(html, /activateOrderWarningFilter\s*\(/, 'missing warning activation helper');
+  assert.match(html, /window\._ordHideCompleted\s*=\s*false/, 'warning activation should disable completed-order hiding');
+  assert.match(html, /document\.getElementById\('oq'\)/, 'warning activation should clear search input');
+  assert.match(html, /document\.getElementById\('os'\)/, 'warning activation should clear status select');
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

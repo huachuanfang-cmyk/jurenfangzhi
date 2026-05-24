@@ -995,9 +995,23 @@ async function pullFromSupabase(){
   // Step 2 — 拉取云端数据（跳过脏表 以及 刚推送成功的表——后者本地已是最新，拉取可能带回旧数据）
   var loaded = 0;
   var fails = [];
+  // ── 关键业务表：本地有数据时以本地为权威，绝不用 Supabase 数据覆盖 ──
+  // 根本原因：inline push 在 RLS 静默拒绝或网络异常时也可能清除 dirty flag，
+  // 导致下次 pull 用旧/空数据覆盖本地正确数据。本地优先是单机 ERP 的正确语义。
+  // 恢复路径：若本地为空（如清空浏览器），pull 正常从 Supabase 还原；
+  //           auto-migrate（下方）则在 Supabase 为空时把本地推上去。
+  var _localFirstKeys={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1};
   for(var key in TABLE_MAP){
     if(localStorage.getItem('gjr5_dirty_'+key) === '1') continue;
     if(pushedKeys.indexOf(key) >= 0) continue;
+    // 本地优先安全锁：关键表有本地数据时跳过拉取
+    if(_localFirstKeys[key]){
+      var _lfCheck=DB.load(key);
+      if(_lfCheck&&_lfCheck.length>0){
+        console.log('[Sync 本地优先] '+key+': 本地 '+_lfCheck.length+' 条，跳过 Supabase 拉取');
+        continue;
+      }
+    }
     try{
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
@@ -1013,10 +1027,8 @@ async function pullFromSupabase(){
         (function(_t,_rows,_conflict){_supabaseData.from(_t).upsert(_rows,{onConflict:_conflict,ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],_localOnly.map(camelToSnake),key==='dd'?'ord_id':'id');
       }
       var _merged=camelData.concat(_localOnly);
-      // ── 安全阀：关键表若云端合并结果 < 本地现有数量，拒绝覆盖并标脏重推
-      // 防止 Supabase 表意外被清空或数据比本地少时覆盖本地完整数据
-      var _criticalKeys={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1};
-      if(_criticalKeys[key]&&_localPre.length>0&&_merged.length<_localPre.length){
+      // ── 安全阀（兜底）：合并结果仍 < 本地，拒绝覆盖 ──
+      if(_localPre.length>0&&_merged.length<_localPre.length){
         console.warn('[Sync 安全阀] '+key+' 云端('+_merged.length+') < 本地('+_localPre.length+')，放弃覆盖，标记为脏数据重推');
         localStorage.setItem('gjr5_dirty_'+key,'1');
         loaded+=camelData.length;

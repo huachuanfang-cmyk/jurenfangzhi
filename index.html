@@ -8287,6 +8287,8 @@ function openARecModal(id){
             amt=qty2*baseUnitPr;
           }
         }
+        var feeAmt=parseFloat(o.feeAmt)||0;
+        var feeNm=o.feeNm||'';
         var unitPr=baseUnitPr;
         var clrNms=oRolls.length>0
           ?[...new Set(oRolls.map(function(r){return r.colorNm||'';}).filter(Boolean))].join('、')
@@ -8301,7 +8303,7 @@ function openARecModal(id){
         var cb=document.createElement('input');cb.type='checkbox';cb.className='ar-out-cb';cb.value=o.id;
         // 新建默认勾选；编辑模式下，只勾选之前保存的那些
         cb.checked=!rec||savedOutIds.indexOf(o.id)>=0;
-        cb.dataset.kg=kg.toFixed(1);cb.dataset.amt=amt.toFixed(2);
+        cb.dataset.kg=kg.toFixed(1);cb.dataset.amt=amt.toFixed(2);cb.dataset.fee=feeAmt.toFixed(2);
         cb.onchange=calcTotal;
         var cbTd=document.createElement('td');cbTd.style.cssText='padding:5px 8px;text-align:center';cbTd.appendChild(cb);
         tr.appendChild(cbTd);
@@ -8312,13 +8314,14 @@ function openARecModal(id){
         var _legacyTag=o._isLegacy
           ?'<span style="display:inline-block;background:#F97316;color:#fff;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:600">⚠ '+(o.date||'').slice(0,7)+' 遗留</span>'
           :'';
+        var feeTag=feeAmt?'<div style="font-size:9px;color:#C2410C;font-weight:700;margin-top:2px">+'+esc(feeNm||'附加费')+' ¥'+feeAmt.toFixed(2)+'</div>':'';
         tr.innerHTML+=
           '<td style="padding:5px 8px;font-size:10px;color:var(--p);font-weight:600">'+esc(o.no||'')+_legacyTag+'</td>'+
           '<td style="padding:5px 8px;font-size:10px">'+esc(o.ordNo||'')+'</td>'+
           '<td style="padding:5px 8px;font-size:10px">'+esc(clrNms||'—')+'</td>'+
           '<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:600">'+_qtyDisp+'</td>'+
           '<td style="padding:5px 8px;text-align:center;font-size:10px;color:#555">'+_unitDisp+'</td>'+
-          '<td style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:#1e3a8a">'+(amt?'¥'+amt.toFixed(2):'手填')+'</td>'+
+          '<td style="padding:5px 8px;text-align:right;font-size:10px;font-weight:600;color:#1e3a8a">'+(amt?'¥'+amt.toFixed(2):'手填')+feeTag+'</td>'+
           '<td style="padding:5px 8px;font-size:10px;color:var(--t2)">'+esc(o.date||'')+'</td>';
         tbody.appendChild(tr);
         // ── 退货/扣损红字冲销行 ──
@@ -8377,9 +8380,9 @@ function openARecModal(id){
 
       function calcTotal(){
         var cbs=outWrap.querySelectorAll('.ar-out-cb:checked');
-        var totKg=0,totAmt=0;
-        cbs.forEach(function(c){totKg+=parseFloat(c.dataset.kg||0);totAmt+=parseFloat(c.dataset.amt||0);});
-        var si=document.getElementById('ar-sel-info');if(si)si.textContent='已选'+cbs.length+'笔 · ¥'+totAmt.toFixed(2);
+        var totKg=0,totAmt=0,totFee=0;
+        cbs.forEach(function(c){totKg+=parseFloat(c.dataset.kg||0);totAmt+=parseFloat(c.dataset.amt||0);totFee+=parseFloat(c.dataset.fee||0);});
+        var si=document.getElementById('ar-sel-info');if(si)si.textContent='已选'+cbs.length+'笔 · 货款¥'+totAmt.toFixed(2)+(totFee?' + 附加¥'+totFee.toFixed(2):'');
         var ta=document.getElementById('ar-calc-total');if(ta)ta.textContent='¥'+totAmt.toFixed(2);
         recalcBalance();
       }
@@ -8444,18 +8447,18 @@ function openARecModal(id){
     body.appendChild(s5);
 
     function recalcBalance(){
-      var total=0;
-      document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);});
+      var total=0,shipFee=0;
+      document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);shipFee+=parseFloat(c.dataset.fee||0);});
       var deduct=0,add=0;
       document.querySelectorAll('.ar-adj-row').forEach(function(row){
         var t=row.querySelector('.ar-adj-type');var a=parseFloat(row.querySelector('.ar-adj-amt').value)||0;
         if(t&&t.value==='deduct')deduct+=a;else add+=a;
       });
       var paid=0;document.querySelectorAll('.ar-pay-amt').forEach(function(i){paid+=parseFloat(i.value)||0;});
-      var bal=Math.max(0,total-deduct+add-paid);
+      var bal=Math.max(0,total+shipFee-deduct+add-paid);
       var f=function(v){return '¥'+v.toFixed(2);};
       var set=function(id,val){var el=document.getElementById('ar-calc-'+id);if(el)el.textContent=val;};
-      set('total',f(total));set('deduct',f(deduct));set('add',f(add));set('paid',f(paid));set('balance',f(bal));
+      set('total',f(total));set('deduct',f(deduct));set('add',f(shipFee+add));set('paid',f(paid));set('balance',f(bal));
     }
     setTimeout(recalcBalance,100);
     // 编辑模式：自动拉取出货记录（客户和月份已回填）并重算汇总
@@ -8486,8 +8489,8 @@ function openARecModal(id){
     // 收集勾选的出货单
     var selOutIds=[];
     document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){selOutIds.push(c.value);});
-    var total=0;
-    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);});
+    var total=0,shipFeeTotal=0;
+    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);shipFeeTotal+=parseFloat(c.dataset.fee||0);});
 
     // 扣减/附加
     var adjustments=[];
@@ -8511,14 +8514,14 @@ function openARecModal(id){
       if(amt)payments.push({amt:String(amt),date:date,method:method,rm:rm});
     });
     var paidTotal=payments.reduce(function(s,p){return s+(parseFloat(p.amt)||0);},0);
-    var netAmt=total-deductTotal+addTotal;
+    var netAmt=total+shipFeeTotal-deductTotal+addTotal;
     var balance=Math.max(0,netAmt-paidTotal);
 
     var data={
       id:rec?rec.id:'ar_'+Date.now(),
       no:rec?rec.no:arecNo(),
       custNm:custNm,month:month,payType:payType,dueDate:dueDate,
-      outIds:selOutIds,totalAmt:String(total),
+      outIds:selOutIds,totalAmt:String(total),shipFeeTotal:String(shipFeeTotal),
       adjustments:adjustments,deductTotal:String(deductTotal),addTotal:String(addTotal),
       payments:payments,paidTotal:String(paidTotal),
       balanceAmt:String(balance),

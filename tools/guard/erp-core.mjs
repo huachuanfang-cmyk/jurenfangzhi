@@ -106,6 +106,8 @@ export function createGuardStore() {
         id: shipment.id,
         ordId: shipment.ordId,
         rollIds: clone(shipment.rollIds || []),
+        feeNm: shipment.feeNm || '',
+        feeAmt: shipment.feeAmt || '',
         arecId: '',
       };
       data.fgo = data.fgo.filter((item) => item.id !== record.id).concat(record);
@@ -262,11 +264,13 @@ export function createGuardStore() {
         var s = byId(data.fgo, outId);
         if (!s) return null;
         var amtInfo = this.calcShipmentAmount(s.id);
-        return { id: s.id, ordId: s.ordId, rollIds: s.rollIds, ...amtInfo };
+        var feeAmt = parseFloat(s.feeAmt) || 0;
+        return { id: s.id, ordId: s.ordId, rollIds: s.rollIds, feeNm: s.feeNm || '', feeAmt: feeAmt, ...amtInfo };
       }, this).filter(Boolean);
 
       var totalAmt = shipments.reduce(function(s, sh){ return s + sh.amt; }, 0);
-      var balance = Math.max(0, totalAmt - (parseFloat(ar.paidTotal) || 0));
+      var shipFeeTotal = shipments.reduce(function(s, sh){ return s + (parseFloat(sh.feeAmt) || 0); }, 0);
+      var balance = Math.max(0, totalAmt + shipFeeTotal - (parseFloat(ar.paidTotal) || 0));
 
       return {
         id: ar.id,
@@ -274,6 +278,7 @@ export function createGuardStore() {
         outIds: ar.outIds,
         shipments: shipments,
         totalAmt: Math.round(totalAmt * 100) / 100,
+        shipFeeTotal: Math.round(shipFeeTotal * 100) / 100,
         paidTotal: parseFloat(ar.paidTotal) || 0,
         balanceAmt: Math.round(balance * 100) / 100,
         status: balance <= 0 ? 'settled' : 'pending',

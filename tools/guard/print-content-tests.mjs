@@ -123,6 +123,20 @@ test('对账单包含客户名称、月份、应收金额、出货记录', () =>
   }
 });
 
+test('应收对账拉取出货记录时自动带入送货单附加费', () => {
+  const checks = [
+    { field: '出货单附加费写入勾选项', pattern: /dataset\.fee\s*=\s*feeAmt\.toFixed\(2\)/ },
+    { field: '底部余额包含出货单附加费', pattern: /total\+shipFee-deduct\+add-paid/ },
+    { field: '保存对账单记录出货单附加费合计', pattern: /shipFeeTotal:String\(shipFeeTotal\)/ },
+    { field: '保存余额包含出货单附加费', pattern: /netAmt=total\+shipFeeTotal-deductTotal\+addTotal/ },
+  ];
+
+  const failures = checks.filter(c => !c.pattern.test(html));
+  if (failures.length) {
+    throw new Error('应收对账附加费自动带入缺少: ' + failures.map(f => f.field).join(', '));
+  }
+});
+
 // ══ 加工单 · prtD → buildDH ══
 test('染整加工单包含订单号、布类、颜色分配', () => {
   const fn = extractFunction('buildDH');

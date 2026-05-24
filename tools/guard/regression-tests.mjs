@@ -304,6 +304,26 @@ test('receivable details show pending status when partially paid', () => {
   assert.equal(details.status, 'pending');
 });
 
+test('receivable details include shipment extra fee in balance', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-029', no: 'G20260029', prUnit: 'KG', unitPr: 10 });
+  store.receiveFinishedGoods({ id: 'in-029', ordId: 'ord-029',
+    rolls: [{ id: 'roll-029a', kg: '40.6', colorNm: 'Light purple' }] });
+  store.shipFinishedGoods({
+    id: 'out-029',
+    ordId: 'ord-029',
+    rollIds: ['roll-029a'],
+    feeNm: '小缸费',
+    feeAmt: '300',
+  });
+  store.createReceivable({ id: 'ar-029', no: 'AR20260029', outIds: ['out-029'] });
+
+  const details = store.getReceivableDetails('ar-029');
+  assert.equal(details.totalAmt, 406);
+  assert.equal(details.shipFeeTotal, 300);
+  assert.equal(details.balanceAmt, 706);
+});
+
 // ══ 真实业务流程：多颜色入库 ══
 
 test('同一订单多颜色入库后各色布卷独立管理', () => {

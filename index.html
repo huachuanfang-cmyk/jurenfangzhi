@@ -1065,12 +1065,12 @@ async function pullFromSupabase(){
 function restoreFromSnapshot(){
   var ts=parseInt(localStorage.getItem('gjr5_snap_ts')||'0');
   var tsStr=ts?new Date(ts).toLocaleString('zh-CN'):'未知时间';
-  var snapKeys=['fgr','fgo','fgi','o','ar'];
+  var snapKeys=['fgr','fgo','fgi','ret','o','ar'];
   var snaps={};
   snapKeys.forEach(function(k){var d=localStorage.getItem('gjr5_snap_'+k);if(d){try{var arr=JSON.parse(d);if(arr&&arr.length)snaps[k]=arr;}catch(e){}}});
   var ks=Object.keys(snaps);
   if(!ks.length){showToast('无可用快照数据','error');return;}
-  var keyLabels={fgr:'疋料记录',fgo:'出货单',fgi:'入库批次',o:'销售订单',ar:'对账单'};
+  var keyLabels={fgr:'疋料记录',fgo:'出货单',fgi:'入库批次',ret:'退货单',o:'销售订单',ar:'对账单'};
   var lines=ks.map(function(k){var cur=DB.load(k)||[];var sn=snaps[k];var d=sn.length-cur.length;return (keyLabels[k]||k)+'：快照'+sn.length+'条 / 当前'+cur.length+'条'+(d>0?' ← 可找回'+d+'条':'');});
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
@@ -1104,7 +1104,7 @@ function restoreFromSnapshot(){
 
 var _origSave = DB.save.bind(DB);
 // ── 关键表自动快照（独立 key，不会被 Supabase pull 覆盖）──
-var _SNAP_KEYS={fgr:1,fgo:1,fgi:1,o:1,ar:1};
+var _SNAP_KEYS={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1};
 DB.save = function(n, v){
   _origSave(n, v);
   // 自动快照：每次写入关键表都在独立位置留副本

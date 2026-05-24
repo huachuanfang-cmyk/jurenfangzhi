@@ -1128,6 +1128,79 @@ var _origSave = DB.save.bind(DB);
 // ── 全表自动快照：每个业务表每次保存时都在独立 key 留副本，刷新/同步都不会覆盖 ──
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
 var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1};
+var SYNC_SAFETY_KEYS={o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
+
+function countDirtySyncKeys(){
+  var n=0;
+  for(var k in SYNC_SAFETY_KEYS){
+    if(localStorage.getItem('gjr5_dirty_'+k)==='1')n++;
+  }
+  return n;
+}
+
+function getSyncSafetyRows(){
+  var rows=[];
+  for(var k in SYNC_SAFETY_KEYS){
+    var local=DB.load(k)||[];
+    var dirty=localStorage.getItem('gjr5_dirty_'+k)==='1';
+    var snap=[];
+    var raw=localStorage.getItem('gjr5_snap_'+k);
+    if(raw){try{snap=JSON.parse(raw)||[];}catch(e){snap=[];}}
+    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,snap:snap.length,dirty:dirty});
+  }
+  return rows;
+}
+
+function openSyncSafetyModal(){
+  var rows=getSyncSafetyRows();
+  var dirtyRows=rows.filter(function(r){return r.dirty;});
+  var snapTs=parseInt(localStorage.getItem('gjr5_snap_ts')||'0');
+  var snapTime=snapTs?new Date(snapTs).toLocaleString('zh-CN'):'暂无快照';
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;max-width:760px;width:96%;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden';
+  var danger=dirtyRows.length>0;
+  box.innerHTML='<div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">'
+    +'<div><div style="font-size:15px;font-weight:800;color:#1e3a8a">刷新前安全检查</div><div style="font-size:11px;color:#64748B;margin-top:3px">只读检查，不会修改数据。快照时间：'+esc(snapTime)+'</div></div>'
+    +'<button id="_syncsafe_close" style="background:none;border:none;font-size:22px;color:#94A3B8;cursor:pointer">×</button></div>'
+    +'<div style="padding:16px 20px">'
+    +'<div style="border:1px solid '+(danger?'#FCA5A5':'#86EFAC')+';background:'+(danger?'#FEF2F2':'#F0FDF4')+';color:'+(danger?'#991B1B':'#166534')+';border-radius:8px;padding:11px 13px;font-size:12px;margin-bottom:12px;line-height:1.6">'
+    +(danger?'发现 '+dirtyRows.length+' 个关键表仍有本地未同步标记。建议先不要刷新，等同步成功或点“重试同步”后再检查。':'关键业务表暂无未同步标记。当前页面刷新风险较低；本机快照也可用于急救找回。')
+    +'</div>'
+    +'<div style="overflow:auto;border:1px solid #E5E7EB;border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +'<thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left;color:#1e3a8a">业务表</th><th style="padding:8px;text-align:right;color:#1e3a8a">本机条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">快照条数</th><th style="padding:8px;text-align:center;color:#1e3a8a">同步状态</th><th style="padding:8px;text-align:left;color:#1e3a8a">刷新建议</th></tr></thead><tbody>'
+    +rows.map(function(r){
+      var st=r.dirty?'<span style="color:#DC2626;font-weight:800">未同步</span>':(r.local>0?'<span style="color:#16A34A;font-weight:800">暂无未同步</span>':'<span style="color:#94A3B8">无本机数据</span>');
+      var adv=r.dirty?'先等同步或重试后再刷新':(r.local>0&&r.snap>=r.local?'可刷新，快照有保护':(r.local>0?'可刷新，但建议先导出备份':'无数据'));
+      return '<tr style="border-top:1px solid #EEF2F7">'
+        +'<td style="padding:8px;font-weight:700">'+esc(r.label)+'</td>'
+        +'<td style="padding:8px;text-align:right">'+r.local+'</td>'
+        +'<td style="padding:8px;text-align:right">'+r.snap+'</td>'
+        +'<td style="padding:8px;text-align:center">'+st+'</td>'
+        +'<td style="padding:8px;color:#64748B">'+esc(adv)+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table></div>'
+    +'<div style="font-size:11px;color:#64748B;margin-top:12px;line-height:1.7">说明：这里看的是本机保存状态和本机快照。若出现红色“未同步”，表示这些数据还需要继续推到云端；不要用其它电脑核对，以当前录入电脑为准。</div>'
+    +'</div>'
+    +'<div style="padding:12px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px">'
+    +'<button id="_syncsafe_retry" style="padding:7px 16px;border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:6px;font-size:12px;cursor:pointer">重试同步</button>'
+    +'<button id="_syncsafe_ok" style="padding:7px 18px;border:none;background:#1565C0;color:#fff;border-radius:6px;font-size:12px;cursor:pointer">知道了</button>'
+    +'</div>';
+  overlay.appendChild(box);document.body.appendChild(overlay);
+  function close(){if(overlay.parentNode)overlay.parentNode.removeChild(overlay);}
+  document.getElementById('_syncsafe_close').onclick=close;
+  document.getElementById('_syncsafe_ok').onclick=close;
+  overlay.onclick=function(e){if(e.target===overlay)close();};
+  document.getElementById('_syncsafe_retry').onclick=async function(){
+    var btn=this;btn.disabled=true;btn.textContent='同步中...';
+    await pullFromSupabase();
+    close();
+    setTimeout(openSyncSafetyModal,300);
+  };
+}
+
 DB.save = function(n, v){
   if(Array.isArray(v)){
     v=v.map(stripTransientFieldsForCloud);
@@ -2260,11 +2333,13 @@ function pgDash(){
   var qch=document.createElement('div');qch.className='ch';qch.innerHTML='<span class="ct">⚡ 快捷操作</span>';
   var qcb=document.createElement('div');qcb.className='cb';qcb.style.cssText='display:flex;gap:9px;flex-wrap:wrap;align-items:center';
   [['+ 新建销售订单','btn bp',function(){go('orders');setTimeout(openOM,80);}],
-   ['⚡ 快速出货（无订单）','btn bs',function(){go('fgstock');setTimeout(openQuickOut,80);}]
+   ['⚡ 快速出货（无订单）','btn bs',function(){go('fgstock');setTimeout(openQuickOut,80);}],
+   ['刷新前检查','btn bs',openSyncSafetyModal]
   ].forEach(function(b){qcb.appendChild(mkBtn(b[0],b[1],b[2]));});
   var syncDot=document.createElement('span');
-  syncDot.style.cssText='margin-left:auto;font-size:11px;color:#16A34A;display:flex;align-items:center;gap:4px;flex-shrink:0';
-  syncDot.innerHTML='<span style="width:7px;height:7px;background:#16A34A;border-radius:50%;display:inline-block;animation:_pulse 2s infinite"></span>云端已同步';
+  var dirtySyncCnt=countDirtySyncKeys();
+  syncDot.style.cssText='margin-left:auto;font-size:11px;color:'+(dirtySyncCnt?'#DC2626':'#16A34A')+';display:flex;align-items:center;gap:4px;flex-shrink:0;font-weight:700';
+  syncDot.innerHTML='<span style="width:7px;height:7px;background:'+(dirtySyncCnt?'#DC2626':'#16A34A')+';border-radius:50%;display:inline-block;animation:_pulse 2s infinite"></span>'+(dirtySyncCnt?'有 '+dirtySyncCnt+' 项未同步':'云端已同步');
   qcb.appendChild(syncDot);
   qc.appendChild(qch);qc.appendChild(qcb);pg.appendChild(qc);
 

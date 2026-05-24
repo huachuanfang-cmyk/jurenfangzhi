@@ -10615,21 +10615,14 @@ function pgFGStock(){
           var gd=retGroup[gk];if(!gd)return;
           if(!confirm('确认「回修入库」？\n\n旧的 '+gd.cnt+'匹将标记为"已回修"，\n系统会打开登记入库弹窗，请填写回修后的实际重量重新入库。'))return;
           resolveRetGroup(gd,'repaired','repaired',{repairNote:'回修后重新登记入库'});
-          // 打开登记入库，预填订单/颜色
+          // 打开登记入库，预填订单/颜色/缸号
           cm();
           setTimeout(function(){
             window._fgTab='stock';
+            // 存回修预填数据，openFGInM 挂载后自动读取
+            window._fgiRepairPrefill={ordId:gd.ordId,colorNm:gd.colorNm,vatNo:gd.vatNo,reason:gd.reason||''};
             openFGInM(null);
-            setTimeout(function(){
-              var ordSel=document.getElementById('fgi-ord');
-              if(ordSel&&gd.ordId){for(var i=0;i<ordSel.options.length;i++){if(ordSel.options[i].value===gd.ordId){ordSel.value=gd.ordId;ordSel.onchange&&ordSel.onchange();break;}}}
-              setTimeout(function(){
-                var clrSel=document.getElementById('fgi-clr');
-                if(clrSel&&gd.colorNm){for(var i=0;i<clrSel.options.length;i++){if(clrSel.options[i].textContent===gd.colorNm){clrSel.value=clrSel.options[i].value;clrSel.onchange&&clrSel.onchange();break;}}}
-                var rmEl=document.getElementById('fgi-rm');if(rmEl)rmEl.value='回修入库（原退货：'+esc(gd.reason||'')+'）';
-              },300);
-            },400);
-          },200);
+          },100);
           showToast('旧疋已标记回修，请在弹窗中填写回修后的实际重量','info');
         };})(k)));
         // ── ② 恢复在库（货原封退回，重量无变化）──
@@ -11651,6 +11644,43 @@ function openFGInM(id){
     for(var i=0;i<5;i++)addRollRow(null);
     // 模态挂载后刷新一次（确保保存按钮初始为禁用态，因为 0 匹有效）
     setTimeout(updateStats,0);
+
+    // ── 回修入库预填（从退货待处理页跳转而来）──
+    var _pf=window._fgiRepairPrefill;
+    if(_pf){
+      window._fgiRepairPrefill=null; // 用完即清
+      setTimeout(function(){
+        // ① 设置订单（hidden select + 触发 onchange 填充颜色选项）
+        var ordSel2=document.getElementById('fgi-ord');
+        if(ordSel2&&_pf.ordId){
+          ordSel2.value=_pf.ordId;
+          if(ordSel2.onchange)ordSel2.onchange.call(ordSel2); // 同步填充颜色选项
+        }
+        // ② 设置颜色（onchange已同步填好选项，直接按value赋值）
+        var clrSel2=document.getElementById('fgi-clr');
+        if(clrSel2&&_pf.colorNm){
+          clrSel2.value=_pf.colorNm;
+          if(clrSel2.onchange)clrSel2.onchange.call(clrSel2);
+        }
+        // ③ 缸号：原缸号 + 'R'（回修标准后缀，如 23-04520-C → 23-04520-CR）
+        var vatEl=document.getElementById('fgi-vat');
+        if(vatEl&&_pf.vatNo){
+          vatEl.value=(_pf.vatNo+'R');
+          vatEl.style.borderColor='#F59E0B'; // 高亮提示可修改
+          vatEl.title='回修缸号，默认在原缸号末尾加R，可根据染厂实际改动';
+        }
+        // ④ 备注预填
+        var rmEl2=document.getElementById('fgi-rm');
+        if(rmEl2)rmEl2.value='回修入库（原退货原因：'+(_pf.reason||'—')+'）';
+        // ⑤ 更新 combobox 显示（找到 ordSel 前的兄弟combobox，更新 input 显示）
+        var cb2=document.querySelector('#fgi-ord-wrap,input[data-cb-for="fgi-ord"],.combobox-wrap');
+        if(!cb2){
+          // 兜底：直接在infoBar上面加提示
+          var infoBar2=document.getElementById('fgi-info');
+          if(infoBar2){var repNote=document.createElement('div');repNote.style.cssText='background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;color:#B45309;margin-top:6px';repNote.textContent='🔧 回修入库 — 已预填订单/颜色，缸号末尾已加R，请确认后保存';infoBar2.parentNode.insertBefore(repNote,infoBar2.nextSibling);}
+        }
+      },50);
+    }
 
   },function(){
     var ordId=(document.getElementById('fgi-ord')||{value:''}).value;

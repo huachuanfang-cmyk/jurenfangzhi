@@ -126,7 +126,7 @@ test('对账单包含客户名称、月份、应收金额、出货记录', () =>
 test('应收对账拉取出货记录时自动带入送货单附加费', () => {
   const checks = [
     { field: '出货单附加费写入勾选项', pattern: /dataset\.fee\s*=\s*feeAmt\.toFixed\(2\)/ },
-    { field: '底部余额包含出货单附加费', pattern: /total\+shipFee-deduct\+add-paid/ },
+    { field: '底部余额包含出货单附加费', pattern: /gross-retDeductTotal\+shipFee-deduct\+add-paid|total\+shipFee-deduct\+add-paid/ },
     { field: '保存对账单记录出货单附加费合计', pattern: /shipFeeTotal:String\(shipFeeTotal\)/ },
     { field: '保存余额包含出货单附加费', pattern: /netAmt=total\+shipFeeTotal-deductTotal\+addTotal/ },
   ];

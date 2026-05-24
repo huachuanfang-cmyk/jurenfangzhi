@@ -8429,10 +8429,11 @@ function openARecModal(id){
             var retTr=document.createElement('tr');
             retTr.style.cssText='background:#FEF2F2;border-bottom:.5px solid #FECACA';
             var retTd=document.createElement('td');retTd.style.cssText='padding:5px 8px;text-align:center';
-            var retCb=document.createElement('input');retCb.type='checkbox';retCb.className='ar-out-cb';
+            var retCb=document.createElement('input');retCb.type='checkbox';retCb.className='ar-out-cb ar-ret-cb';
             retCb.checked=true;retCb.disabled=true;
             retCb.value='';
             retCb.dataset.retId=retRec.id||'';
+            retCb.dataset.parentOutId=o.id; // 用于联动父送货单
             retCb.dataset.kg=(-retDeductKG).toFixed(1);retCb.dataset.amt=retAmtVal.toFixed(2);
             retTd.appendChild(retCb);
             retTr.appendChild(retTd);
@@ -8473,11 +8474,10 @@ function openARecModal(id){
       calcTotal();
 
       function calcTotal(){
-        var cbs=outWrap.querySelectorAll('.ar-out-cb:checked');
+        var cbs=outWrap.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)');
         var totKg=0,totAmt=0,totFee=0;
         cbs.forEach(function(c){totKg+=parseFloat(c.dataset.kg||0);totAmt+=parseFloat(c.dataset.amt||0);totFee+=parseFloat(c.dataset.fee||0);});
         var si=document.getElementById('ar-sel-info');if(si)si.textContent='已选'+cbs.length+'笔 · 货款¥'+totAmt.toFixed(2)+(totFee?' + 附加¥'+totFee.toFixed(2):'');
-        var ta=document.getElementById('ar-calc-total');if(ta)ta.textContent='¥'+totAmt.toFixed(2);
         recalcBalance();
       }
       window._arecCalcTotal=calcTotal;
@@ -8529,9 +8529,11 @@ function openARecModal(id){
     var s5=document.createElement('div');s5.style.cssText='background:#1e3a8a;color:#fff;padding:12px 16px;border-radius:6px;display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap;margin-top:4px';
     function calcSpan(lbl,id,color){var w=document.createElement('div');w.style.cssText='text-align:right';var l=document.createElement('div');l.style.cssText='font-size:9px;color:#93C5FD;margin-bottom:2px';l.textContent=lbl;var v=document.createElement('div');v.id='ar-calc-'+id;v.style.cssText='font-size:15px;font-weight:800;'+(color||'color:#fff');v.textContent='¥0.00';w.appendChild(l);w.appendChild(v);return w;}
     function opSpan(t){var s=document.createElement('div');s.style.cssText='font-size:18px;color:#93C5FD;padding-top:10px';s.textContent=t;return s;}
-    s5.appendChild(calcSpan('货款合计','total'));
+    s5.appendChild(calcSpan('本期货款','total'));
     s5.appendChild(opSpan('−'));
-    s5.appendChild(calcSpan('扣减合计','deduct','color:#FCA5A5'));
+    s5.appendChild(calcSpan('退货扣损','retdeduct','color:#FCA5A5'));
+    s5.appendChild(opSpan('−'));
+    s5.appendChild(calcSpan('其他扣减','deduct','color:#FCA5A5'));
     s5.appendChild(opSpan('+'));
     s5.appendChild(calcSpan('附加费','add','color:#FDE68A'));
     s5.appendChild(opSpan('−'));
@@ -8541,18 +8543,36 @@ function openARecModal(id){
     body.appendChild(s5);
 
     function recalcBalance(){
-      var total=0,shipFee=0;
-      document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){total+=parseFloat(c.dataset.amt||0);shipFee+=parseFloat(c.dataset.fee||0);});
+      // 本期货款：只统计正常送货单行（排除退货行）
+      var gross=0,shipFee=0;
+      document.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)').forEach(function(c){
+        gross+=parseFloat(c.dataset.amt||0);
+        shipFee+=parseFloat(c.dataset.fee||0);
+      });
+      // 退货扣损：只统计父送货单已选中的退货行
+      var retDeductTotal=0;
+      document.querySelectorAll('.ar-ret-cb').forEach(function(c){
+        var parentId=c.dataset.parentOutId||'';
+        var parentCb=parentId?document.querySelector('.ar-out-cb[value="'+parentId+'"]:not(.ar-ret-cb)'):null;
+        if(!parentCb||parentCb.checked){
+          retDeductTotal+=Math.abs(parseFloat(c.dataset.amt||0));
+        }
+      });
       var deduct=0,add=0;
       document.querySelectorAll('.ar-adj-row').forEach(function(row){
         var t=row.querySelector('.ar-adj-type');var a=parseFloat(row.querySelector('.ar-adj-amt').value)||0;
         if(t&&t.value==='deduct')deduct+=a;else add+=a;
       });
       var paid=0;document.querySelectorAll('.ar-pay-amt').forEach(function(i){paid+=parseFloat(i.value)||0;});
-      var bal=Math.max(0,total+shipFee-deduct+add-paid);
+      var bal=Math.max(0,gross-retDeductTotal+shipFee-deduct+add-paid);
       var f=function(v){return '¥'+v.toFixed(2);};
       var set=function(id,val){var el=document.getElementById('ar-calc-'+id);if(el)el.textContent=val;};
-      set('total',f(total));set('deduct',f(deduct));set('add',f(shipFee+add));set('paid',f(paid));set('balance',f(bal));
+      set('total',f(gross));
+      set('retdeduct',f(retDeductTotal));
+      set('deduct',f(deduct));
+      set('add',f(shipFee+add));
+      set('paid',f(paid));
+      set('balance',f(bal));
     }
     setTimeout(recalcBalance,100);
     // 编辑模式：自动拉取出货记录（客户和月份已回填）并重算汇总
@@ -8580,20 +8600,29 @@ function openARecModal(id){
     var payType=(document.getElementById('ar-payType')||{value:''}).value||'月结30天';
     var dueDate=calcDueDate(payType,month);
 
-    // 收集勾选的出货单
+    // 收集勾选的出货单（送货单行）和退货行
     var selOutIds=[];
     var selRetIds=[];
-    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){
-      if(c.dataset.retId)selRetIds.push(c.dataset.retId);
-      else if(c.value)selOutIds.push(c.value);
+    document.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)').forEach(function(c){
+      if(c.value)selOutIds.push(c.value);
     });
-    var total=0,shipFeeTotal=0,returnTotal=0;
-    document.querySelectorAll('.ar-out-cb:checked').forEach(function(c){
-      var amt=parseFloat(c.dataset.amt||0);
-      total+=amt;
-      if(c.dataset.retId)returnTotal+=Math.abs(amt);
+    // 退货行：父送货单已选中的才收录
+    document.querySelectorAll('.ar-ret-cb').forEach(function(c){
+      if(!c.dataset.retId)return;
+      var parentId=c.dataset.parentOutId||'';
+      var parentCb=parentId?document.querySelector('.ar-out-cb[value="'+parentId+'"]:not(.ar-ret-cb)'):null;
+      if(!parentCb||parentCb.checked) selRetIds.push(c.dataset.retId);
+    });
+    var gross=0,shipFeeTotal=0,returnTotal=0;
+    document.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)').forEach(function(c){
+      gross+=parseFloat(c.dataset.amt||0);
       shipFeeTotal+=parseFloat(c.dataset.fee||0);
     });
+    selRetIds.forEach(function(rId){
+      var rc=document.querySelector('.ar-ret-cb[data-ret-id="'+rId+'"]');
+      if(rc)returnTotal+=Math.abs(parseFloat(rc.dataset.amt||0));
+    });
+    var total=gross-returnTotal; // 净货款（扣退货后）
 
     // 扣减/附加
     var adjustments=[];

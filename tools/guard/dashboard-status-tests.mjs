@@ -24,8 +24,15 @@ test('dashboard color progress derives shipped display from actual roll shipment
 });
 
 test('dashboard archive logic treats fully shipped orders as done without mutating manual order status', () => {
-  assert(/calcShipStatus\(o\.id\)==='fully_out'/.test(html), 'fully shipped order should be considered done on dashboard');
+  assert(/function\s+isOrderFullyShipped\s*\(/.test(html), 'missing effective shipped helper');
+  assert(/isOrderFullyShipped\(o\)/.test(html), 'fully shipped order should be considered done on dashboard');
   assert(/status:\s*document\.getElementById\('o-st'\)\.value/.test(html), 'sales order status should still be saved from manual select');
+});
+
+test('dashboard due reminders ignore orders already closed by shipment records', () => {
+  assert(/function\s+effectiveShipStatus\s*\(/.test(html), 'missing effectiveShipStatus helper');
+  assert(/orderShipmentRecords\(o\)\.length/.test(html), 'shipment records should be used as fallback evidence');
+  assert(/!isOrderFullyShipped\(o\)/.test(html), 'due reminders should use effective shipped helper');
 });
 
 let passed = 0;

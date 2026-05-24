@@ -639,18 +639,41 @@ function sBx(s){
   return m[s]||s;
 }
 // ── 自动计算出货进度（纯读取，不改任何数据）──
+function isInactiveFgRoll(r){
+  return r&&['returned','voided','repaired','written_off'].indexOf(r.status)>=0;
+}
+function orderShipmentRecords(o){
+  if(!o)return[];
+  return (DB.fgouts||[]).filter(function(x){return x&&(x.ordId===o.id||x.ordNo===o.no);});
+}
+function hasUnshippedActiveRolls(o){
+  if(!o)return false;
+  return fgRolls().some(function(r){
+    return r&&(r.ordId===o.id||r.ordNo===o.no)&&!isInactiveFgRoll(r)&&r.status!=='out';
+  });
+}
 function calcShipStatus(ordId){
   var rolls=fgRolls();
-  var ordRolls=rolls.filter(function(r){return r.ordId===ordId;});
+  var ordRolls=rolls.filter(function(r){return r.ordId===ordId&&!isInactiveFgRoll(r);});
   if(!ordRolls.length)return null;
   var outRolls=ordRolls.filter(function(r){return r.status==='out';});
   if(outRolls.length===0)return 'stocked';
   if(outRolls.length>=ordRolls.length)return 'fully_out';
   return 'partial_out';
 }
+function effectiveShipStatus(o){
+  if(!o)return null;
+  var st=calcShipStatus(o.id);
+  if(st==='fully_out')return 'fully_out';
+  if(orderShipmentRecords(o).length&&!hasUnshippedActiveRolls(o))return 'fully_out';
+  return st;
+}
+function isOrderFullyShipped(o){
+  return effectiveShipStatus(o)==='fully_out';
+}
 function calcColorShipStatus(ordId,colorNm){
   var rolls=fgRolls();
-  var ordRolls=rolls.filter(function(r){return r.ordId===ordId&&(!colorNm||r.colorNm===colorNm);});
+  var ordRolls=rolls.filter(function(r){return r.ordId===ordId&&(!colorNm||r.colorNm===colorNm)&&!isInactiveFgRoll(r);});
   if(!ordRolls.length)return null;
   var outRolls=ordRolls.filter(function(r){return r.status==='out';});
   if(outRolls.length===0)return 'stocked';
@@ -675,7 +698,7 @@ function shipBx(s){
 function lifecycleOf(o){
   if(!o)return{hasProd:false,hasShip:false,partialShip:false,shipSt:null,hasArec:false,hasPaid:false};
   var hasProd=(DB.trks||[]).some(function(t){return t&&t.ordId===o.id;});
-  var shipSt=calcShipStatus(o.id);
+  var shipSt=effectiveShipStatus(o);
   var hasShip=shipSt==='fully_out'||shipSt==='partial_out';
   var partialShip=shipSt==='partial_out';
   // 对账：该订单的任意一笔fgout是否出现在某个arec的outIds里
@@ -2170,7 +2193,7 @@ function pgDash(){
   }
 
   // ── KPI 卡片（3张，去掉「客户/工厂」）──
-  var fullyOutIds=active.filter(function(o){return calcShipStatus(o.id)==='fully_out';}).map(function(o){return o.id;});
+  var fullyOutIds=active.filter(function(o){return isOrderFullyShipped(o);}).map(function(o){return o.id;});
   var activeCount=active.length-fullyOutIds.length;
   var activeHint='共'+orders.length+'张'+(fullyOutIds.length?'·出货'+fullyOutIds.length+'张':'');
   var sr=document.createElement('div');sr.className='sr';
@@ -2237,17 +2260,17 @@ function pgDash(){
     var warnArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='warning';});
     var overdueOrds=orders.filter(function(o){
       if(!o||o.paid||o.status==='cancelled'||o.status==='draft'||o.status==='completed')return false;
-      return o.delDate&&new Date(o.delDate)<today&&calcShipStatus(o.id)!=='fully_out';
+      return o.delDate&&new Date(o.delDate)<today&&!isOrderFullyShipped(o);
     });
     var todayOrds=active.filter(function(o){
       if(!o.delDate)return false;
       var dd=new Date(o.delDate);
-      return dd>=today&&dd<new Date(today.getTime()+86400000)&&calcShipStatus(o.id)!=='fully_out';
+      return dd>=today&&dd<new Date(today.getTime()+86400000)&&!isOrderFullyShipped(o);
     });
     var soonOrds=active.filter(function(o){
       if(!o.delDate)return false;
       var dd=new Date(o.delDate);
-      return dd>=new Date(today.getTime()+86400000)&&dd<=in7d&&calcShipStatus(o.id)!=='fully_out';
+      return dd>=new Date(today.getTime()+86400000)&&dd<=in7d&&!isOrderFullyShipped(o);
     });
     // 跳转销售订单页 → 搜索定位 → 自动展开该订单
     function goToOrd(id,no){
@@ -2389,7 +2412,7 @@ function pgDash(){
   var showArchived=localStorage.getItem('gjr5_dash_show_archived')==='1';
   var boardCol=localStorage.getItem('gjr5_dash_board_col')==='1';
   function isOrderDone(o){
-    if(calcShipStatus(o.id)==='fully_out')return true;
+    if(isOrderFullyShipped(o))return true;
     var cls=o.colors||[];if(!cls.length)return false;
     return cls.every(function(c){return c.clrStatus==='shipped'||c.clrStatus==='done';});
   }
@@ -2526,8 +2549,8 @@ function openCustSummary(custId){
   var arecs=DB.arecs||[];
 
   // 汇总计算
-  var activeOrds=custOrders.filter(function(o){return o.status!=='completed'&&o.status!=='cancelled'&&calcShipStatus(o.id)!=='fully_out';});
-  var shippedOrds=custOrders.filter(function(o){return calcShipStatus(o.id)==='fully_out'||o.status==='completed';});
+  var activeOrds=custOrders.filter(function(o){return o.status!=='completed'&&o.status!=='cancelled'&&!isOrderFullyShipped(o);});
+  var shippedOrds=custOrders.filter(function(o){return isOrderFullyShipped(o)||o.status==='completed';});
   var custRolls=rolls.filter(function(r){return r.custNm===cust.nm;});
   var outRolls=custRolls.filter(function(r){return r.status==='out';});
   var totalInKG=custRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
@@ -2599,7 +2622,7 @@ function openCustSummary(custId){
         +'<td style="padding:7px 10px;color:#1e3a8a;font-size:11px">'+esc(fabShort)+'</td>'
         +'<td style="padding:7px 10px;text-align:center;font-size:11px;'+dcls+'">'+esc(o.delDate||'—')+'</td>'
         +'<td style="padding:7px 10px;text-align:center">'+sBx(o.status)+'</td>'
-        +'<td style="padding:7px 10px;text-align:center">'+shipBx(calcShipStatus(o.id))+'</td>';
+        +'<td style="padding:7px 10px;text-align:center">'+shipBx(effectiveShipStatus(o))+'</td>';
       tbody.appendChild(tr);
     });
     tbl.appendChild(tbody);body.appendChild(tbl);
@@ -4125,7 +4148,7 @@ function fOrd(){
     }
     if(searchHit([(o.no||''),(o.prodNo||''),(o.custNm||''),(o.custNo||''),(o.fab||''),(o.fabB||''),(o.sty||''),(o.follower||''),(o.colors||[]).map(function(c){return (c.nm||'')+' '+(c.code||'');}).join(' ')].join(' '),q)){
       if(s&&o.status!==s)return false;
-      if(hideCompleted&&(o.status==='completed'||o.status==='cancelled'||calcShipStatus(o.id)==='fully_out'))return false;
+      if(hideCompleted&&(o.status==='completed'||o.status==='cancelled'||isOrderFullyShipped(o)))return false;
       return true;
     }
     return false;
@@ -11523,7 +11546,7 @@ function openFGInM(id){
       var showAll=cbTog.checked;
       var filtered=ords.filter(function(o){
         // 只有「已全部出货」的订单才默认隐藏，避免把「货在库未出货」的订单漏掉
-        if(!showAll&&calcShipStatus(o.id)==='fully_out')return false;
+        if(!showAll&&isOrderFullyShipped(o))return false;
         return _ordMatchesSearch(o,q);
       });
       cbList.innerHTML='';

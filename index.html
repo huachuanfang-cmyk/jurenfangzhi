@@ -1013,6 +1013,15 @@ async function pullFromSupabase(){
         (function(_t,_rows,_conflict){_supabaseData.from(_t).upsert(_rows,{onConflict:_conflict,ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],_localOnly.map(camelToSnake),key==='dd'?'ord_id':'id');
       }
       var _merged=camelData.concat(_localOnly);
+      // ── 安全阀：关键表若云端合并结果 < 本地现有数量，拒绝覆盖并标脏重推
+      // 防止 Supabase 表意外被清空或数据比本地少时覆盖本地完整数据
+      var _criticalKeys={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1};
+      if(_criticalKeys[key]&&_localPre.length>0&&_merged.length<_localPre.length){
+        console.warn('[Sync 安全阀] '+key+' 云端('+_merged.length+') < 本地('+_localPre.length+')，放弃覆盖，标记为脏数据重推');
+        localStorage.setItem('gjr5_dirty_'+key,'1');
+        loaded+=camelData.length;
+        continue;
+      }
       if(_merged.length>0){localStorage.setItem('gjr5_'+key,JSON.stringify(_merged));DB._c[key]=_merged;}
       loaded+=camelData.length;
     }catch(e){ fails.push(TABLE_MAP[key]); }

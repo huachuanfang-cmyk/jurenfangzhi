@@ -5,7 +5,7 @@
 //   3. 测试模式不触发云同步
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
-import { simulateSyncFlow, computeSyncPlanWithVersion, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -294,6 +294,26 @@ test('online retry: 重推期间版本变化则不清 dirty', () => {
   if (result.clearedDirty.length !== 0) throw new Error(
     'no dirty should be cleared when version changed during retry'
   );
+});
+
+test('cloud payload removes UI-only underscore fields before Supabase upsert', () => {
+  var row = {
+    id: 'out-001',
+    no: 'DH20260001',
+    ordNo: 'G20260674',
+    totalKG: 40.6,
+    _isLegacy: true,
+    _uiExpanded: true,
+  };
+
+  var cleaned = stripTransientFieldsForCloud(row);
+
+  if (cleaned._isLegacy !== undefined || cleaned._uiExpanded !== undefined) {
+    throw new Error('underscore UI fields should not be present in cloud payload');
+  }
+  if (cleaned.id !== row.id || cleaned.ordNo !== row.ordNo || cleaned.totalKG !== row.totalKG) {
+    throw new Error('business fields should be preserved while removing UI fields');
+  }
 });
 
 // ══ 运行 ══

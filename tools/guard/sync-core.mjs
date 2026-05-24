@@ -12,6 +12,21 @@ export const TABLE_MAP = {
 export const ALL_KEYS = Object.keys(TABLE_MAP);
 
 /**
+ * 去掉只属于界面的临时字段，避免把 _isLegacy / _uiExpanded 等不存在的列上传到 Supabase。
+ * 业务字段即使是 false / 0 / 空字符串也必须保留。
+ */
+export function stripTransientFieldsForCloud(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+  var cleaned = {};
+  Object.keys(row).forEach(function(key){
+    if (key.charAt(0) === '_') return;
+    if (typeof row[key] === 'function') return;
+    cleaned[key] = row[key];
+  });
+  return cleaned;
+}
+
+/**
  * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
  * 哪些 dirty flag 应清除、哪些应保留。
  *

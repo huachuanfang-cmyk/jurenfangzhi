@@ -3745,6 +3745,19 @@ function pgBackup(){
 
 // ═══ ORDERS ═══
 var _cc=1;
+function showAllOrders(){
+  window._ordHideCompleted=false;
+  window._ordWarnFilter='';
+  var q=document.getElementById('oq');if(q)q.value='';
+  var s=document.getElementById('os');if(s)s.value='';
+  fOrd();
+  var b=document.getElementById('ord-hide-btn');
+  if(b){
+    b.textContent='🙈 隐藏已完成/全部出货';
+    b.style.background='';
+    b.style.borderColor='';
+  }
+}
 function pgOrders(){
   var pg=document.getElementById('pg');pg.innerHTML='';
   var sb2=document.createElement('div');sb2.className='sb2';
@@ -3760,6 +3773,7 @@ function pgOrders(){
   hideBtn.textContent=_hc?'👁 显示全部':'🙈 隐藏已完成/全部出货';
   if(_hc){hideBtn.style.background='#FFF8E1';hideBtn.style.borderColor='#F9A825';}
   hideBtn.onclick=function(){
+    if(window._ordHideCompleted){showAllOrders();return;}
     window._ordHideCompleted=!window._ordHideCompleted;
     fOrd();
     var b=document.getElementById('ord-hide-btn');

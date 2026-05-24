@@ -14,6 +14,8 @@ export function createGuardStore() {
     fgr: [],
     ret: [],
     ar: [],
+    yn: [],
+    yo: [],
   };
   const deleteIntents = [];
 
@@ -283,6 +285,66 @@ export function createGuardStore() {
         balanceAmt: Math.round(balance * 100) / 100,
         status: balance <= 0 ? 'settled' : 'pending',
       };
+    },
+
+    saveYarnPurchase(input, editId = '') {
+      const existing = editId ? byId(data.yn, editId) : null;
+      if (editId && !existing) throw new Error(`yarn purchase not found: ${editId}`);
+
+      const order = input.ordId ? byId(data.o, input.ordId) : null;
+      const ordKg = input.ordKg || '';
+      const unitPr = input.unitPr || '';
+      const amount = input.amt !== undefined
+        ? input.amt
+        : ((parseFloat(ordKg) || 0) * (parseFloat(unitPr) || 0) || '');
+      const record = {
+        id: editId || input.id,
+        poNo: existing ? existing.poNo : (input.poNo || ''),
+        ordId: input.ordId || '',
+        ordNo: order ? order.no : (input.ordNo || ''),
+        supplier: input.supplier || '',
+        spec: input.spec || '',
+        ordKg: ordKg,
+        unitPr: unitPr,
+        amt: amount ? Number(amount).toFixed(2) : '',
+        delDate: input.delDate || '',
+        arrDate: input.arrDate || '',
+        paid: !!input.paid,
+      };
+
+      const idx = editId ? data.yn.findIndex((item) => item.id === editId) : -1;
+      if (idx >= 0) data.yn[idx] = record;
+      else data.yn = data.yn.filter((item) => item.id !== record.id).concat(record);
+      return clone(record);
+    },
+
+    getYarnPurchase(id) {
+      const record = byId(data.yn, id);
+      return record ? clone(record) : null;
+    },
+
+    getYarnPurchases() {
+      return clone(data.yn);
+    },
+
+    createYarnMovement(input) {
+      const record = {
+        id: input.id,
+        yarnId: input.yarnId || '',
+        type: input.type || 'out',
+        kg: input.kg || '',
+      };
+      data.yo = data.yo.filter((item) => item.id !== record.id).concat(record);
+      return clone(record);
+    },
+
+    deleteYarnPurchase(id) {
+      if (data.yo.some((item) => item.yarnId === id)) {
+        throw new Error(`linked yarn movement exists: ${id}`);
+      }
+      data.yn = data.yn.filter((item) => item.id !== id);
+      deleteIntents.push({ key: 'yn', id });
+      return true;
     },
   };
 }

@@ -9049,7 +9049,7 @@ function pgYarn(){
   } else {
     var yarnWrap=document.createElement('div');yarnWrap.className='qt-wrap';
     var yTbl=document.createElement('table');yTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-    var yCols=[['采购单号',110],['供应商',130],['纱支规格',150],['颜色',70],['纱批号',80],['订购KG',80],['实收KG',80],['单价',70],['金额',90],['付款',70],['到货日期',90],['操作',130]];
+    var yCols=[['采购单号',110],['供应商',130],['纱支规格',150],['颜色',70],['纱批号',80],['订购KG',80],['实收KG',80],['单价',70],['金额',90],['付款',70],['到货日期',90],['操作',165]];
     var yThead=document.createElement('thead');var yThRow=document.createElement('tr');
     yCols.forEach(function(col){
       var th=document.createElement('th');th.textContent=col[0];
@@ -9084,6 +9084,7 @@ function pgYarn(){
       if(!r.paid){opTd.appendChild(mkBtn('✓付款','btn bsm bgn',(function(id){return function(){yarnMarkPaid(id);};})(r.id)));}
       opTd.appendChild(mkBtn('编辑','btn bsm bq',(function(id){return function(){openYarnM(id);};})(r.id)));
       opTd.appendChild(mkBtn('🖨 合同','btn bsm bs',(function(id){return function(){yarnPrintContract(id);};})(r.id)));
+      opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){deleteYarnPurchase(id);};})(r.id)));
       tr.appendChild(opTd);yTbody.appendChild(tr);
     });
     yTbl.appendChild(yTbody);yarnWrap.appendChild(yTbl);cb.appendChild(yarnWrap);
@@ -9100,9 +9101,32 @@ function yarnMarkPaid(id){
   pgYarn();
 }
 
+function deleteYarnPurchase(id){
+  if(!Array.isArray(DB.yarns))DB.yarns=[];
+  if(!Array.isArray(DB.yarnouts))DB.yarnouts=[];
+  var r=DB.yarns.find(function(x){return x.id===id;});
+  if(!r){alert('这张采购单已不存在，请刷新页面后再看。');pgYarn();return;}
+  var linked=DB.yarnouts.filter(function(x){return x.yarnId===id;});
+  if(linked.length){
+    alert('不能直接删除：此采购单已有 '+linked.length+' 条发料/回仓记录。\n大企业 ERP 通常会先处理关联发料/回仓，再作废或冲销源单，避免库存账被破坏。');
+    return;
+  }
+  var msg='确认删除纱线采购单 '+(r.poNo||'')+'？\n\n供应商：'+(r.supplier||'—')+'\n规格：'+(r.spec||'—')+'\n数量：'+(r.ordKg||'—')+' KG\n金额：'+(r.amt?('¥'+r.amt):'—')+'\n\n删除后会同步从云端删除。';
+  if(r.paid)msg+='\n\n注意：这张单标记为“已付款”，请确认它确实是重复或误录。';
+  if(!confirm(msg))return;
+  if(DB.remove('yn',id)){
+    pgYarn();
+    showToast('纱线采购单已删除 ✓','success');
+  }
+}
+
 function openYarnM(id){
   if(!Array.isArray(DB.yarns))DB.yarns=[];
-  var r=(id&&DB.yarns.find(function(x){return x.id===id;}))||{};
+  var r={};
+  if(id){
+    r=DB.yarns.find(function(x){return x.id===id;});
+    if(!r){alert('原采购记录不存在，已停止保存。\n请刷新后重新进入，避免把编辑误保存成新采购单。');pgYarn();return;}
+  }
   var modal=buildModal((id?'编辑':'新增')+'原料订购合同','mxl',function(body){
 
     // ══ 顶部：关联销售订单 + 日期 ══
@@ -9352,9 +9376,30 @@ function saveYarn(id){
     var ordSelEl=document.getElementById('y-ordid');
     var ordId=ordSelEl?ordSelEl.value:'';
     var ordRec=ordId?(DB.orders||[]).find(function(o){return o.id===ordId;}):null;
+    var existingYarn=null;
+    if(id){
+      existingYarn=DB.yarns.find(function(x){return x.id===id;});
+      if(!existingYarn){
+        alert('原采购记录不存在，已停止保存。\n请刷新后重新进入，避免把编辑误保存成新采购单。');
+        pgYarn();
+        return;
+      }
+    }else{
+      var norm=function(v){return String(v||'').trim();};
+      var dup=DB.yarns.find(function(x){
+        return norm(x.ordId)===norm(ordId)
+          && norm(x.supplier)===norm(sup)
+          && norm(x.spec)===norm(spec)
+          && norm(x.ordKg)===norm(ordKg)
+          && norm(x.unitPr)===norm(unitPr)
+          && norm(x.color)===norm((document.getElementById('y-color')||{value:''}).value)
+          && norm(x.batchNo)===norm((document.getElementById('y-batchNo')||{value:''}).value);
+      });
+      if(dup&&!confirm('检测到可能重复的纱线采购单：'+(dup.poNo||'')+'\n\n如果只是补交期/到货日期，请取消后点原记录【编辑】。\n仍然要新增一张相同采购单吗？'))return;
+    }
     var d={
       id:id||uid(),
-      poNo:id?(DB.yarns.find(function(x){return x.id===id;})||{poNo:yarnPoNo()}).poNo:yarnPoNo(),
+      poNo:existingYarn?existingYarn.poNo:yarnPoNo(),
       ordId:ordId, ordNo:ordRec?ordRec.no:'',
       supplier:sup,spec:spec,
       brand:(document.getElementById('y-brand')||{value:''}).value,

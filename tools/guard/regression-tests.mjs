@@ -416,6 +416,72 @@ test('退货后布卷不回到普通可用库存', () => {
   assert.equal(pending[0].id, 'roll-033a');
 });
 
+// ══ 纱线采购：编辑不能变新增 ══
+
+test('editing yarn purchase updates existing record without creating duplicate PO', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-yarn-001', no: 'G20260675' });
+  store.saveYarnPurchase({
+    id: 'yn-001',
+    poNo: 'PO20260001',
+    ordId: 'ord-yarn-001',
+    supplier: '沃马纺织',
+    spec: '32S/1精棉',
+    ordKg: '1675',
+    unitPr: '23.5',
+    delDate: '',
+    arrDate: '2026-05-08',
+  });
+
+  const edited = store.saveYarnPurchase({
+    id: 'yn-001',
+    ordId: 'ord-yarn-001',
+    supplier: '沃马纺织',
+    spec: '32S/1精棉',
+    ordKg: '1675',
+    unitPr: '23.5',
+    delDate: '2026-05-08',
+    arrDate: '2026-05-08',
+  }, 'yn-001');
+
+  assert.equal(edited.poNo, 'PO20260001', '编辑应保留原采购单号');
+  assert.equal(store.getYarnPurchases().length, 1, '编辑补交期不应新增第二张采购单');
+  assert.equal(store.getYarnPurchase('yn-001').delDate, '2026-05-08');
+});
+
+test('stale yarn edit id is rejected instead of being saved as a new purchase', () => {
+  const store = createGuardStore();
+
+  assert.throws(
+    () => store.saveYarnPurchase({
+      id: 'missing-yarn',
+      supplier: '沃马纺织',
+      spec: '32S/1精棉',
+      ordKg: '1675',
+      unitPr: '23.5',
+    }, 'missing-yarn'),
+    /yarn purchase not found/
+  );
+  assert.equal(store.getYarnPurchases().length, 0);
+});
+
+test('yarn purchase delete is blocked when issue or return records reference it', () => {
+  const store = createGuardStore();
+  store.saveYarnPurchase({
+    id: 'yn-002',
+    poNo: 'PO20260002',
+    supplier: '沃马纺织',
+    spec: '32S/1精棉',
+    ordKg: '1675',
+    unitPr: '23.5',
+  });
+  store.createYarnMovement({ id: 'yo-001', yarnId: 'yn-002', type: 'out', kg: '100' });
+
+  assert.throws(() => store.deleteYarnPurchase('yn-002'), /linked yarn movement/);
+  assert.equal(store.getYarnPurchase('yn-002').poNo, 'PO20260002');
+  assert.deepEqual(store.getDeleteIntents(), []);
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

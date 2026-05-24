@@ -10557,7 +10557,7 @@ function pgFGStock(){
         if(!retGroup[vk]){
           var ord2=orders.find(function(x){return x.id===r.ordId;})||{};
           var clrObj2=(ord2.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
-          retGroup[vk]={vatNo:r.vatNo||'—',ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,rollIds:[],reason:retReasonMap[r.retId]||''};
+          retGroup[vk]={vatNo:r.vatNo||'—',ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,rollIds:[],reason:retReasonMap[r.retId]||'',retId:r.retId||''};
         }
         if(!retGroup[vk].reason&&r.retId)retGroup[vk].reason=retReasonMap[r.retId]||'';
         retGroup[vk].cnt++;
@@ -10592,27 +10592,61 @@ function pgFGStock(){
         tr.appendChild(mkRetTd(esc(g.colorNm||''),'font-weight:600;font-size:11px;color:#7F1D1D'));
         tr.appendChild(mkRetTd(g.cnt+'匹 / '+g.kg.toFixed(1)+'KG','text-align:center;font-weight:700;color:#DC2626'));
         tr.appendChild(mkRetTd(esc(g.reason||'—'),'color:#B91C1C;font-size:11px'));
-        var opTd=mkRetTd('','text-align:center;white-space:nowrap');
-        opTd.appendChild(mkBtn('回修入库','btn bsm bs',(function(gk){return function(){
-          var gd=retGroup[gk];if(!gd)return;
-          window._fgTab='stock';
-          openFGInM(null);
-          setTimeout(function(){
-            var ordSel=document.getElementById('fgi-ord');
-            if(ordSel&&gd.ordId){for(var i=0;i<ordSel.options.length;i++){if(ordSel.options[i].value===gd.ordId){ordSel.value=gd.ordId;ordSel.onchange&&ordSel.onchange();break;}}}
-            var clrSel=document.getElementById('fgi-clr');
-            if(clrSel&&gd.colorNm){for(var i=0;i<clrSel.options.length;i++){if(clrSel.options[i].textContent===gd.colorNm){clrSel.value=clrSel.options[i].value;clrSel.onchange&&clrSel.onchange();break;}}}
-          },400);
-        };})(k)));
-        opTd.appendChild(mkBtn('恢复在库','btn bsm bq',(function(gk){return function(){
-          var gd=retGroup[gk];if(!gd)return;
-          if(!confirm('确认将缸号 '+esc(gd.vatNo)+' 的 '+gd.cnt+'匹全部恢复在库？'))return;
+        var opTd=mkRetTd('','text-align:center;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap;justify-content:center');
+        // ── 辅助：关闭旧疋 + 更新退货单状态 ──
+        function resolveRetGroup(gd, newRollStatus, retStatus, retExt){
+          var now=new Date().toISOString();
           var allR=fgRolls();
           gd.rollIds.forEach(function(rid){
             var rl=allR.find(function(x){return x.id===rid;});
-            if(rl){rl.status='in';rl.outId='';rl.retId='';rl.grade='';rl.returned=false;}
+            if(rl){rl.status=newRollStatus;rl.resolvedAt=now;}
           });
-          saveFgRolls(allR);pgFGStock();showToast('已恢复 '+gd.cnt+'匹 在库','success');
+          saveFgRolls(allR);
+          // 更新 fgreturns 记录状态
+          if(gd.retId){
+            var fgrets=DB.fgreturns||[];
+            var fr=fgrets.find(function(x){return x.id===gd.retId;});
+            if(fr){fr.status=retStatus;fr.resolvedAt=now;if(retExt)Object.assign(fr,retExt);}
+            DB.fgreturns=fgrets;
+          }
+        }
+        // ── ① 回修入库（送回工厂修，重量可能变化，重新登记入库）──
+        opTd.appendChild(mkBtn('🔧 回修入库','btn bsm bs',(function(gk){return function(){
+          var gd=retGroup[gk];if(!gd)return;
+          if(!confirm('确认「回修入库」？\n\n旧的 '+gd.cnt+'匹将标记为"已回修"，\n系统会打开登记入库弹窗，请填写回修后的实际重量重新入库。'))return;
+          resolveRetGroup(gd,'repaired','repaired',{repairNote:'回修后重新登记入库'});
+          // 打开登记入库，预填订单/颜色
+          cm();
+          setTimeout(function(){
+            window._fgTab='stock';
+            openFGInM(null);
+            setTimeout(function(){
+              var ordSel=document.getElementById('fgi-ord');
+              if(ordSel&&gd.ordId){for(var i=0;i<ordSel.options.length;i++){if(ordSel.options[i].value===gd.ordId){ordSel.value=gd.ordId;ordSel.onchange&&ordSel.onchange();break;}}}
+              setTimeout(function(){
+                var clrSel=document.getElementById('fgi-clr');
+                if(clrSel&&gd.colorNm){for(var i=0;i<clrSel.options.length;i++){if(clrSel.options[i].textContent===gd.colorNm){clrSel.value=clrSel.options[i].value;clrSel.onchange&&clrSel.onchange();break;}}}
+                var rmEl=document.getElementById('fgi-rm');if(rmEl)rmEl.value='回修入库（原退货：'+esc(gd.reason||'')+'）';
+              },300);
+            },400);
+          },200);
+          showToast('旧疋已标记回修，请在弹窗中填写回修后的实际重量','info');
+        };})(k)));
+        // ── ② 恢复在库（货原封退回，重量无变化）──
+        opTd.appendChild(mkBtn('↩ 恢复在库','btn bsm bq',(function(gk){return function(){
+          var gd=retGroup[gk];if(!gd)return;
+          if(!confirm('确认「恢复在库」？\n缸号 '+esc(gd.vatNo)+' 的 '+gd.cnt+'匹（'+gd.kg.toFixed(1)+'KG）以原重量放回库存。\n\n适用于：客户误退或货物完好无需修改重量。'))return;
+          resolveRetGroup(gd,'in','restored',null);
+          pgFGStock();showToast('已恢复 '+gd.cnt+'匹 在库','success');
+        };})(k)));
+        // ── ③ 确认扣损（修不了，报废）──
+        opTd.appendChild(mkBtn('✂ 确认扣损','btn bsm br',(function(gk){return function(){
+          var gd=retGroup[gk];if(!gd)return;
+          var reason=window.prompt('确认扣损（报废）？\n\n缸号 '+gd.vatNo+' 共 '+gd.cnt+'匹 '+gd.kg.toFixed(1)+'KG 将标记为报废，无法恢复。\n\n请填写扣损原因（如：染色失败/破损严重）：','');
+          if(reason===null)return;
+          if(!reason.trim()){showToast('请填写扣损原因','error');return;}
+          resolveRetGroup(gd,'written_off','deducted',{deductNote:reason});
+          pgFGStock();showToast('已确认扣损 '+gd.cnt+'匹，退货单保留记录','info');
         };})(k)));
         tr.appendChild(opTd);
         retRolTbody.appendChild(tr);
@@ -10640,7 +10674,7 @@ function pgFGStock(){
     }else{
       var rwrap=document.createElement('div');rwrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
       var rtbl=document.createElement('table');rtbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
-      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',90],['回仓KG',65],['扣损KG',65],['备注',90],['操作',65]];
+      var rcols=[['退货单号',100],['日期',88],['原送货单',100],['客户',110],['订单号',100],['退货原因',90],['回仓KG',65],['扣损KG',65],['处理结果',80],['备注',90],['操作',65]];
       var rthead=document.createElement('thead');
       var rthRow=document.createElement('tr');
       rcols.forEach(function(col){
@@ -10666,14 +10700,23 @@ function pgFGStock(){
         tr.appendChild(mkRTd(esc(ret.reason||''),'color:#B91C1C'));
         tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
         tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
+        // 处理结果状态
+        var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废'};
+        var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700'};
+        var retSt=ret.status||'pending';
+        var retStLabel=retStatusMap[retSt]||retSt;
+        var retStStyle=retStatusStyle[retSt]||'';
+        tr.appendChild(mkRTd(retStLabel,retStStyle+';font-size:10px'));
         tr.appendChild(mkRTd(esc(ret.rm||''),'color:var(--t3)'));
         var opTd=mkRTd('','text-align:center');
         opTd.appendChild(mkBtn('打印','btn bsm bs',function(retId){return function(){printFGReturn(retId);};}(ret.id)));
-        opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
-          if(!confirm('确认删除退货单 '+esc(retId)+'？'))return;
-          DB.remove('ret',retId);
-          pgFGStock();showToast('已删除','success');
-        };}(ret.id)));
+        if(!ret.status||ret.status==='pending'){
+          opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
+            if(!confirm('确认删除退货单 '+esc(retId)+'？\n注意：删除后退货记录无法恢复。'))return;
+            DB.remove('ret',retId);
+            pgFGStock();showToast('已删除','success');
+          };}(ret.id)));
+        }
         tr.appendChild(opTd);
         rtbody.appendChild(tr);
       });

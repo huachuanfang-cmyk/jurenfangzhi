@@ -11119,7 +11119,13 @@ function openRollList(k,grp,rolls){
       tr.style.borderBottom='1px solid var(--bd)';
       var stBadge=r.status==='in'
         ?'<span class="bx bxg">在库</span>'
-        :'<span class="bx" style="background:#e67e2218;color:#e67e22;border:1px solid #e67e2240">已出货</span>';
+        :r.status==='out'
+        ?'<span class="bx" style="background:#e67e2218;color:#e67e22;border:1px solid #e67e2240">已出货</span>'
+        :r.status==='returned'
+        ?'<span class="bx" style="background:#EDE9FE;color:#7C3AED;border:1px solid #C4B5FD">已退货</span>'
+        :r.status==='repaired'
+        ?'<span class="bx" style="background:#DCFCE7;color:#166534;border:1px solid #86EFAC">回修中</span>'
+        :'<span class="bx" style="background:#F3F4F6;color:#9CA3AF;border:1px solid #E5E7EB">'+r.status+'</span>';
 
       function renderStatic(){
         tr.innerHTML=
@@ -11128,8 +11134,8 @@ function openRollList(k,grp,rolls){
           '<td style="padding:6px 10px;text-align:center;color:var(--t2)">'+esc(r.m||'—')+'</td>'+
           '<td style="padding:6px 10px;text-align:center">'+stBadge+'</td>'+
           '<td style="padding:6px 10px;font-size:10.5px;color:var(--t3)">'+esc(r.rm||'')+'</td>'+
-          '<td style="padding:6px 10px;text-align:center">'+(r.status==='in'?'<button type="button" class="btn bsm bs" style="font-size:10.5px">✏️ 修改</button>':'')+'</td>';
-        if(r.status==='in'){
+          '<td style="padding:6px 10px;text-align:center">'+(r.status==='in'?'<button type="button" class="btn bsm bs" style="font-size:10.5px">✏️ 修改</button>':r.status==='out'?'<button type="button" class="btn bsm" style="font-size:10.5px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B">🔑 修改重量</button>':'')+'</td>';
+        if(r.status==='in'||r.status==='out'){
           tr.querySelector('button').onclick=renderEdit;
         }
         // 修改后更新合计行
@@ -11148,20 +11154,33 @@ function openRollList(k,grp,rolls){
           '<td style="padding:4px 8px;text-align:center;white-space:nowrap">'+
             '<button type="button" class="btn bsm bp" id="sv-'+r.id+'" style="font-size:10.5px">✓ 保存</button> '+
             '<button type="button" class="btn bsm bs" id="cx-'+r.id+'" style="font-size:10.5px">取消</button>'+
+            (r.status==='out'?'<div style="font-size:9px;color:#92400E;margin-top:3px">⚠️ 已出货·需密码</div>':'')+
           '</td>';
         tr.querySelector('#sv-'+r.id).onclick=function(){
           var nkg=tr.querySelector('#ekg-'+r.id).value.trim();
           var nm=tr.querySelector('#em-'+r.id).value.trim();
           var nrm=tr.querySelector('#erm-'+r.id).value.trim();
           if(!nkg){showToast('重量不能为空','error');return;}
-          var allR=fgRolls();
-          var roll=allR.find(function(x){return x.id===r.id;});
-          if(!roll){showToast('找不到该疋记录','error');return;}
-          roll.kg=nkg;if(nm)roll.m=nm;roll.rm=nrm;
-          r.kg=nkg;r.m=nm;r.rm=nrm; // 更新本地引用，合计行刷新用
-          saveFgRolls(allR);
-          showToast('疋 '+r.rollNo+' 已修改 → '+nkg+' KG','success');
-          renderStatic();
+          function _doRollSave(){
+            var allR=fgRolls();
+            var roll=allR.find(function(x){return x.id===r.id;});
+            if(!roll){showToast('找不到该疋记录','error');return;}
+            var oldKg=roll.kg;
+            roll.kg=nkg;if(nm)roll.m=nm;roll.rm=nrm;
+            r.kg=nkg;r.m=nm;r.rm=nrm; // 更新本地引用，合计行刷新用
+            saveFgRolls(allR);
+            if(r.status==='out'){
+              showToast('疋 '+r.rollNo+' 重量已修正：'+oldKg+'→'+nkg+' KG。出货单金额自动更新，若对账单已保存请重新打开对账单后再保存一次。','success');
+            } else {
+              showToast('疋 '+r.rollNo+' 已修改 → '+nkg+' KG','success');
+            }
+            renderStatic();
+          }
+          if(r.status==='out'){
+            verifyPwd(_doRollSave);
+          } else {
+            _doRollSave();
+          }
         };
         tr.querySelector('#cx-'+r.id).onclick=renderStatic;
         tr.querySelector('#ekg-'+r.id).focus();

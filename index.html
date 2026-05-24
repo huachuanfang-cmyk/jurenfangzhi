@@ -9784,7 +9784,8 @@ function pgFGStock(){
   var orders=DB.orders||[];
 
   // ── 一次性修复：将点击回修入库后关闭弹窗未保存导致的孤立'repaired'疋料恢复为'returned' ──
-  if(!DB.load('_repair_fix_1')){
+  // 注意：必须用 localStorage.getItem 而非 DB.load，因为 DB.load 对不存在的 key 返回 []（空数组为 truthy）
+  if(!localStorage.getItem(DB.k('_repair_fix_1'))){
     var _mRolls=fgRolls();var _mFixed=0;
     _mRolls.forEach(function(r){if(r.status==='repaired'){r.status='returned';delete r.resolvedAt;_mFixed++;}});
     if(_mFixed){

@@ -5,6 +5,7 @@
 //   3. 测试模式不触发云同步
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
+import { readFileSync } from 'node:fs';
 import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
@@ -313,6 +314,17 @@ test('cloud payload removes UI-only underscore fields before Supabase upsert', (
   }
   if (cleaned.id !== row.id || cleaned.ordNo !== row.ordNo || cleaned.totalKG !== row.totalKG) {
     throw new Error('business fields should be preserved while removing UI fields');
+  }
+});
+
+test('production sync reuses the authenticated Supabase client session', () => {
+  var src = readFileSync('index.html', 'utf8');
+
+  if (!src.includes('_supabaseData = _supabase')) {
+    throw new Error('data sync should reuse the logged-in Supabase client');
+  }
+  if (src.includes("_supabaseData = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}})")) {
+    throw new Error('data sync must not use a separate unauthenticated Supabase client');
   }
 });
 

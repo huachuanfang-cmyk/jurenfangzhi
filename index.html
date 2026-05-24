@@ -966,7 +966,7 @@ function isOnline(){return navigator.onLine!==false;}
 function initSupabase(){
   if(!_supabase && window.supabase){
     _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:true}});
-    _supabaseData = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}});
+    _supabaseData = _supabase;
   }
   return _supabase;
 }
@@ -1008,6 +1008,16 @@ function rowsToCloudPayload(rows){
   return (rows||[]).map(function(x){return camelToSnake(stripTransientFieldsForCloud(x));});
 }
 
+function recordSyncError(key,msg){
+  if(!key) return;
+  try{localStorage.setItem('gjr5_syncerr_'+key,String(msg||'同步失败'));}catch(e){}
+}
+
+function clearSyncError(key){
+  if(!key) return;
+  try{localStorage.removeItem('gjr5_syncerr_'+key);}catch(e){}
+}
+
 async function pullFromSupabase(){
   if(_testMode) return;
   initSupabase();
@@ -1024,9 +1034,9 @@ async function pullFromSupabase(){
         try{
           var conflictKey=key==='dd'?'ord_id':'id';
           var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayload(localData), {onConflict:conflictKey, ignoreDuplicates:false});
-          if(!error) pushedKeys.push(key);
-          else console.warn('推送失败['+key+']:', error.message);
-        }catch(e){ console.warn('推送异常['+key+']:', e.message); }
+          if(!error){ pushedKeys.push(key); clearSyncError(key); }
+          else { recordSyncError(key,error.message); console.warn('推送失败['+key+']:', error.message); }
+        }catch(e){ recordSyncError(key,e.message); console.warn('推送异常['+key+']:', e.message); }
       }
     }
   }
@@ -1053,7 +1063,8 @@ async function pullFromSupabase(){
     try{
       var table = TABLE_MAP[key];
       var {data, error} = await _supabaseData.from(table).select('*');
-      if(error){ fails.push(table); continue; }
+      if(error){ recordSyncError(key,error.message); fails.push(table); continue; }
+      clearSyncError(key);
       // ── 安全合并：云端数据 + 本地独有记录（防止推送失败后 pull 覆盖丢失本地新数据）──
       var camelData = (data||[]).map(snakeToCamel);
       if(key === 'o') camelData.sort(function(a,b){ return (a.no||'') < (b.no||'') ? 1 : -1; });
@@ -1074,7 +1085,7 @@ async function pullFromSupabase(){
       }
       if(_merged.length>0){localStorage.setItem('gjr5_'+key,JSON.stringify(_merged));DB._c[key]=_merged;}
       loaded+=camelData.length;
-    }catch(e){ fails.push(TABLE_MAP[key]); }
+    }catch(e){ recordSyncError(key,e.message); fails.push(TABLE_MAP[key]); }
   }
   // Step 3 — 拉取全部完成后，清除成功推送表的 dirty flag（带版本保险：推送期间版本未变才清除）
   for(var i=0;i<pushedKeys.length;i++){
@@ -1166,10 +1177,11 @@ function getSyncSafetyRows(){
   for(var k in SYNC_SAFETY_KEYS){
     var local=DB.load(k)||[];
     var dirty=localStorage.getItem('gjr5_dirty_'+k)==='1';
+    var err=localStorage.getItem('gjr5_syncerr_'+k)||'';
     var snap=[];
     var raw=localStorage.getItem('gjr5_snap_'+k);
     if(raw){try{snap=JSON.parse(raw)||[];}catch(e){snap=[];}}
-    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,snap:snap.length,dirty:dirty});
+    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,snap:snap.length,dirty:dirty,err:err});
   }
   return rows;
 }
@@ -1196,6 +1208,7 @@ function openSyncSafetyModal(){
     +rows.map(function(r){
       var st=r.dirty?'<span style="color:#DC2626;font-weight:800">未同步</span>':(r.local>0?'<span style="color:#16A34A;font-weight:800">暂无未同步</span>':'<span style="color:#94A3B8">无本机数据</span>');
       var adv=r.dirty?'先等同步或重试后再刷新':(r.local>0&&r.snap>=r.local?'可刷新，快照有保护':(r.local>0?'可刷新，但建议先导出备份':'无数据'));
+      if(r.err) adv += '；失败原因：'+r.err;
       return '<tr style="border-top:1px solid #EEF2F7">'
         +'<td style="padding:8px;font-weight:700">'+esc(r.label)+'</td>'
         +'<td style="padding:8px;text-align:right">'+r.local+'</td>'
@@ -1256,6 +1269,7 @@ DB.save = function(n, v){
             // 只有版本未变（期间没有新的本地保存）才清理 dirty flag
             if(_syncVersions[n] === preSyncVer){
               localStorage.removeItem('gjr5_dirty_'+n);
+              clearSyncError(n);
             }
             return;
           }
@@ -1266,6 +1280,7 @@ DB.save = function(n, v){
         }
         await new Promise(function(r){ setTimeout(r, 2000 * (attempt + 1)); });
       }
+      recordSyncError(n,'已重试'+maxRetries+'次仍失败');
       console.warn('Supabase同步失败['+n+']: 已重试'+maxRetries+'次');
       showToast(TABLE_MAP[n]+' 同步失败', 'error');
     })();
@@ -1290,8 +1305,10 @@ window.addEventListener('online', function(){
             var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayload(v), {onConflict:conflictKey, ignoreDuplicates:false});
             if(!error && (_syncVersions[key] || 0) === ver){
               localStorage.removeItem('gjr5_dirty_'+key);
+              clearSyncError(key);
               console.log('上线重推成功['+key+']');
             }
+            if(error) recordSyncError(key,error.message);
           })(key, _syncVersions[key] || 0);
         }
       });

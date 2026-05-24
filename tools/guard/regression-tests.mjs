@@ -553,6 +553,94 @@ test('weaving doc saved factory is not overwritten by yarn issue suggestion', ()
   assert.equal(defaults.source, 'saved');
 });
 
+// ══ 软删除（撤销入库）：voided 疋不影响库存统计 ══
+
+test('voided rolls are excluded from stock count and KG', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-v01', no: 'G20260701' });
+  store.receiveFinishedGoods({ id: 'in-v01', ordId: 'ord-v01', rolls: [
+    { id: 'roll-v01a', kg: '40' },
+    { id: 'roll-v01b', kg: '30' },
+    { id: 'roll-v01c', kg: '20' },
+  ]});
+
+  // 撤销前：3匹在库
+  const before = store.getStockSummary();
+  assert.equal(before.inStockRolls, 3, '撤销前应有3匹在库');
+  assert.equal(before.stockKG, 90, '撤销前在库KG=90');
+
+  // 撤销 in-v01 批次
+  store.voidReceiptRolls('in-v01', '数量录错');
+
+  // 撤销后：0匹在库，KG=0
+  const after = store.getStockSummary();
+  assert.equal(after.inStockRolls, 0, '撤销后在库匹数应为0');
+  assert.equal(after.stockKG, 0, '撤销后在库KG应为0');
+  assert.equal(after.totalRolls, 0, '撤销后总活动匹数为0（voided不计入）');
+});
+
+test('voided rolls do not count as in-stock in calcShipStatus', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-v02', no: 'G20260702' });
+  store.receiveFinishedGoods({ id: 'in-v02', ordId: 'ord-v02', rolls: [
+    { id: 'roll-v02a', kg: '50' },
+  ]});
+
+  // 有在库疋时状态为 stocked
+  assert.equal(store.calcShipStatus('ord-v02'), 'stocked');
+
+  // 撤销后：没有任何活动疋，状态应为 null 而非 stocked
+  store.voidReceiptRolls('in-v02', '录错');
+  assert.equal(store.calcShipStatus('ord-v02'), null, '所有疋voided后状态应为null');
+});
+
+test('voided rolls are physically preserved for audit trail', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-v03', no: 'G20260703' });
+  store.receiveFinishedGoods({ id: 'in-v03', ordId: 'ord-v03', rolls: [
+    { id: 'roll-v03a', kg: '60' },
+    { id: 'roll-v03b', kg: '40' },
+  ]});
+
+  store.voidReceiptRolls('in-v03', '审计测试原因');
+
+  // 记录仍然存在（软删除，不是硬删除）
+  const rollA = store.getRoll('roll-v03a');
+  assert.ok(rollA, 'voided疋记录应保留在数据库中');
+  assert.equal(rollA.status, 'voided', '状态应为voided');
+  assert.equal(rollA.voidReason, '审计测试原因', '撤销原因应记录');
+  assert.ok(rollA.voidedAt, '撤销时间戳应记录');
+
+  // voided 疋不出现在可出货库存中
+  const inventory = store.getInventoryRolls();
+  assert.equal(inventory.find((r) => r.id === 'roll-v03a'), undefined, 'voided疋不在可出货库存');
+});
+
+test('mix of voided and normal rolls: only active rolls counted', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-v04', no: 'G20260704' });
+  // 批次1：正常
+  store.receiveFinishedGoods({ id: 'in-v04a', ordId: 'ord-v04', rolls: [
+    { id: 'roll-v04a', kg: '50' },
+    { id: 'roll-v04b', kg: '50' },
+  ]});
+  // 批次2：撤销
+  store.receiveFinishedGoods({ id: 'in-v04b', ordId: 'ord-v04', rolls: [
+    { id: 'roll-v04c', kg: '80' },
+  ]});
+  store.voidReceiptRolls('in-v04b', '录错批次');
+
+  const s = store.getStockSummary();
+  assert.equal(s.inStockRolls, 2, '只有正常批次的2匹在库');
+  assert.equal(s.stockKG, 100, '只统计正常批次的100KG');
+
+  // 出货时只能选正常批次
+  store.shipFinishedGoods({ id: 'out-v04', ordId: 'ord-v04', rollIds: ['roll-v04a'] });
+  const s2 = store.getStockSummary();
+  assert.equal(s2.inStockRolls, 1, '出货1匹后剩1匹');
+  assert.equal(s2.stockKG, 50);
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

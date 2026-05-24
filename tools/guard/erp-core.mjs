@@ -205,8 +205,27 @@ export function createGuardStore() {
       return clone(deleteIntents);
     },
 
+    // 软删除：将入库批次标记为 voided，不物理删除
+    voidReceiptRolls(inId, reason) {
+      const now = new Date().toISOString();
+      let voided = 0;
+      data.fgr.forEach((r) => {
+        if (r.inId === inId) {
+          r.status = 'voided';
+          r.voidReason = reason || '录错撤销';
+          r.voidedAt = now;
+          voided++;
+        }
+      });
+      // 对应 fgi 批次也标记 voided
+      const receipt = byId(data.fgi, inId);
+      if (receipt) { receipt.status = 'voided'; receipt.voidReason = reason || '录错撤销'; receipt.voidedAt = now; }
+      return voided;
+    },
+
     calcShipStatus(ordId) {
-      const ordRolls = data.fgr.filter((r) => r.ordId === ordId);
+      // voided 疋不计入出货状态判断
+      const ordRolls = data.fgr.filter((r) => r.ordId === ordId && r.status !== 'voided');
       if (!ordRolls.length) return null;
       const outRolls = ordRolls.filter((r) => r.status === 'out');
       if (!outRolls.length) return 'stocked';
@@ -215,17 +234,19 @@ export function createGuardStore() {
     },
 
     getStockSummary() {
-      var inRolls = data.fgr.filter((r) => r.status !== 'returned');
-      var outRolls = data.fgr.filter((r) => r.status === 'out');
-      var totalKG = inRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
-      var outKG = outRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
+      // voided 和 returned 疋均不计入库存统计
+      var activeRolls = data.fgr.filter((r) => r.status !== 'returned' && r.status !== 'voided');
+      var inRolls  = activeRolls.filter((r) => r.status === 'in');
+      var outRolls = activeRolls.filter((r) => r.status === 'out');
+      var totalKG = activeRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
+      var outKG   = outRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);
       return {
-        totalKG: Math.round(totalKG * 10) / 10,
-        outKG: Math.round(outKG * 10) / 10,
-        stockKG: Math.round((totalKG - outKG) * 10) / 10,
-        totalRolls: inRolls.length,
-        outRolls: outRolls.length,
-        inStockRolls: inRolls.length - outRolls.length,
+        totalKG:      Math.round(totalKG * 10) / 10,
+        outKG:        Math.round(outKG * 10) / 10,
+        stockKG:      Math.round((totalKG - outKG) * 10) / 10,
+        totalRolls:   activeRolls.length,
+        outRolls:     outRolls.length,
+        inStockRolls: inRolls.length,
       };
     },
 

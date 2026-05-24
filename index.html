@@ -9782,6 +9782,23 @@ function pgFGStock(){
   var fgins=DB.fgins||[];
   var fgouts=DB.fgouts||[];
   var orders=DB.orders||[];
+
+  // ── 一次性修复：将点击回修入库后关闭弹窗未保存导致的孤立'repaired'疋料恢复为'returned' ──
+  if(!DB.load('_repair_fix_1')){
+    var _mRolls=fgRolls();var _mFixed=0;
+    _mRolls.forEach(function(r){if(r.status==='repaired'){r.status='returned';delete r.resolvedAt;_mFixed++;}});
+    if(_mFixed){
+      saveFgRolls(_mRolls);
+      rolls=_mRolls; // 更新本次使用的rolls引用
+      var _mFgrets=DB.fgreturns||[];
+      _mFgrets.forEach(function(ret){if(ret.status==='repaired'){ret.status='completed';delete ret.resolvedAt;delete ret.repairNote;}});
+      DB.fgreturns=_mFgrets;
+      console.log('[修复] 恢复 '+_mFixed+' 条中断的回修疋料至退货待处理状态');
+      showToast('已自动恢复 '+_mFixed+' 条回修中断的退货记录至"退货待处理"','info');
+    }
+    DB.save('_repair_fix_1',true);
+  }
+
   var now=new Date();
   var thisMonth=now.getFullYear()+'-'+(String(now.getMonth()+1).padStart(2,'0'));
   var lmD=new Date(now.getFullYear(),now.getMonth()-1,1);
@@ -9986,7 +10003,7 @@ function pgFGStock(){
     // ── 按订单分组 ──
     var ordMap={};
     rolls.forEach(function(r){
-      if(r.status==='returned'||r.status==='voided')return;
+      if(r.status==='returned'||r.status==='voided'||r.status==='repaired'||r.status==='written_off')return;
       var oid=r.ordId||'__none__';
       if(!ordMap[oid]){
         var ord=orders.find(function(x){return x.id===r.ordId;})||{};
@@ -10149,7 +10166,7 @@ function pgFGStock(){
             e.stopPropagation();
             // 收集该订单所有疋料
             var allR=fgRolls();
-            var ordRolls=allR.filter(function(r){return r.ordId===og2.ordId&&r.status!=='returned';});
+            var ordRolls=allR.filter(function(r){return r.ordId===og2.ordId&&r.status!=='returned'&&r.status!=='voided'&&r.status!=='repaired'&&r.status!=='written_off';});
             if(!ordRolls.length){showToast('暂无疋料记录','info');return;}
             // 若只有一个颜色/缸号组，直接打开；否则展示所有
             var colorKeys=[...new Set(ordRolls.map(function(r){return (r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'');}))];
@@ -10611,10 +10628,12 @@ function pgFGStock(){
           }
         }
         // ── ① 回修入库（送回工厂修，重量可能变化，重新登记入库）──
+        // 注意：旧疋状态改变延迟到登记入库弹窗保存成功后，避免弹窗取消导致数据不一致
         opTd.appendChild(mkBtn('🔧 回修入库','btn bsm bs',(function(gk){return function(){
           var gd=retGroup[gk];if(!gd)return;
-          if(!confirm('确认「回修入库」？\n\n旧的 '+gd.cnt+'匹将标记为"已回修"，\n系统会打开登记入库弹窗，请填写回修后的实际重量重新入库。'))return;
-          resolveRetGroup(gd,'repaired','repaired',{repairNote:'回修后重新登记入库'});
+          if(!confirm('确认「回修入库」？\n\n系统会打开登记入库弹窗，请填写回修后的实际重量，\n保存成功后原退货疋将自动标记为"已回修"。'))return;
+          // 仅存入上下文，不立即修改疋状态（防止弹窗取消后数据孤立）
+          window._fgiRepairContext=gd;
           // 打开登记入库，预填订单/颜色/缸号
           cm();
           setTimeout(function(){
@@ -10623,7 +10642,6 @@ function pgFGStock(){
             window._fgiRepairPrefill={ordId:gd.ordId,colorNm:gd.colorNm,vatNo:gd.vatNo,reason:gd.reason||''};
             openFGInM(null);
           },100);
-          showToast('旧疋已标记回修，请在弹窗中填写回修后的实际重量','info');
         };})(k)));
         // ── ② 恢复在库（货原封退回，重量无变化）──
         opTd.appendChild(mkBtn('↩ 恢复在库','btn bsm bq',(function(gk){return function(){
@@ -11269,6 +11287,10 @@ function fgInNo(){
 
 function openFGInM(id){
   var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled';});
+  // 捕获回修上下文（若从"回修入库"按钮进入）并立即清空全局变量，
+  // 防止弹窗取消后上下文残留污染下一次打开的普通入库弹窗
+  var _repairCtx=window._fgiRepairContext||null;
+  window._fgiRepairContext=null;
   var modal=buildModal('登记成品入库','mxl',function(body){
 
     // ── 第一步：选订单（组合式下拉 Combobox）──
@@ -11726,6 +11748,23 @@ function openFGInM(id){
       });
     });
     saveFgRolls(existRolls);
+    // 回修入库：保存成功后，才将原退货疋标记为"已回修"（避免取消弹窗时数据孤立）
+    if(_repairCtx){
+      var _rcNow=new Date().toISOString();
+      var _rcAllR=fgRolls(); // 重新读取（包含刚保存的新回修疋）
+      (_repairCtx.rollIds||[]).forEach(function(rid){
+        var rl=_rcAllR.find(function(x){return x.id===rid;});
+        if(rl){rl.status='repaired';rl.resolvedAt=_rcNow;}
+      });
+      saveFgRolls(_rcAllR);
+      if(_repairCtx.retId){
+        var _rcFgrets=DB.fgreturns||[];
+        var _rcFr=_rcFgrets.find(function(x){return x.id===_repairCtx.retId;});
+        if(_rcFr){_rcFr.status='repaired';_rcFr.resolvedAt=_rcNow;_rcFr.repairNote='回修后重新登记入库';}
+        DB.fgreturns=_rcFgrets;
+      }
+      _repairCtx=null; // 防止同一弹窗连续保存多缸时重复执行
+    }
     window._fgLastAction={type:'in',ordId:ordId,ordNo:o.no,custNm:o.custNm||'',ts:Date.now()};window._fgTab='stock';
     pgFGStock(); // 保存后立即刷新背后的库存列表，无需手动刷新
     // 自动推进颜色状态

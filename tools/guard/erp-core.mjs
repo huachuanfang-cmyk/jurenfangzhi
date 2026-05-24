@@ -224,8 +224,9 @@ export function createGuardStore() {
     },
 
     calcShipStatus(ordId) {
-      // voided 疋不计入出货状态判断
-      const ordRolls = data.fgr.filter((r) => r.ordId === ordId && r.status !== 'voided');
+      // voided / repaired / written_off 疋不计入出货状态判断
+      const INACTIVE = new Set(['voided', 'repaired', 'written_off', 'returned']);
+      const ordRolls = data.fgr.filter((r) => r.ordId === ordId && !INACTIVE.has(r.status));
       if (!ordRolls.length) return null;
       const outRolls = ordRolls.filter((r) => r.status === 'out');
       if (!outRolls.length) return 'stocked';
@@ -234,8 +235,9 @@ export function createGuardStore() {
     },
 
     getStockSummary() {
-      // voided 和 returned 疋均不计入库存统计
-      var activeRolls = data.fgr.filter((r) => r.status !== 'returned' && r.status !== 'voided');
+      // voided / returned / repaired / written_off 疋均不计入库存统计
+      const INACTIVE = new Set(['returned', 'voided', 'repaired', 'written_off']);
+      var activeRolls = data.fgr.filter((r) => !INACTIVE.has(r.status));
       var inRolls  = activeRolls.filter((r) => r.status === 'in');
       var outRolls = activeRolls.filter((r) => r.status === 'out');
       var totalKG = activeRolls.reduce(function(s, r){ return s + (parseFloat(r.kg)||0); }, 0);

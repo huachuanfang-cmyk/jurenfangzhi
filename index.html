@@ -984,7 +984,8 @@ async function pullFromSupabase(){
       var localData = DB.load(key);
       if(localData && localData.length > 0){
         try{
-          var {error} = await _supabaseData.from(table).upsert(localData.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
+          var conflictKey=key==='dd'?'ord_id':'id';
+          var {error} = await _supabaseData.from(table).upsert(localData.map(camelToSnake), {onConflict:conflictKey, ignoreDuplicates:false});
           if(!error) pushedKeys.push(key);
           else console.warn('推送失败['+key+']:', error.message);
         }catch(e){ console.warn('推送异常['+key+']:', e.message); }
@@ -1009,7 +1010,7 @@ async function pullFromSupabase(){
       var _remSet={};camelData.forEach(function(x){if(x&&x.id)_remSet[x.id]=true;});
       var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id];});
       if(_localOnly.length>0){
-        (function(_t,_rows){_supabaseData.from(_t).upsert(_rows,{onConflict:'id',ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],_localOnly.map(camelToSnake));
+        (function(_t,_rows,_conflict){_supabaseData.from(_t).upsert(_rows,{onConflict:_conflict,ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],_localOnly.map(camelToSnake),key==='dd'?'ord_id':'id');
       }
       var _merged=camelData.concat(_localOnly);
       if(_merged.length>0){localStorage.setItem('gjr5_'+key,JSON.stringify(_merged));DB._c[key]=_merged;}
@@ -1106,7 +1107,8 @@ DB.save = function(n, v){
       var maxRetries = 3;
       for(var attempt = 0; attempt < maxRetries; attempt++){
         try{
-          var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:'id', ignoreDuplicates:false});
+          var conflictKey=n==='dd'?'ord_id':'id';
+          var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:conflictKey, ignoreDuplicates:false});
           if(!error){
             // 只有版本未变（期间没有新的本地保存）才清理 dirty flag
             if(_syncVersions[n] === preSyncVer){
@@ -1141,7 +1143,8 @@ window.addEventListener('online', function(){
         if(v && v.length){
           var table = TABLE_MAP[key];
           (async function(key, ver){
-            var {error} = await _supabaseData.from(table).upsert(v.map(camelToSnake), {onConflict:'id', ignoreDuplicates:false});
+            var conflictKey=key==='dd'?'ord_id':'id';
+            var {error} = await _supabaseData.from(table).upsert(v.map(camelToSnake), {onConflict:conflictKey, ignoreDuplicates:false});
             if(!error && (_syncVersions[key] || 0) === ver){
               localStorage.removeItem('gjr5_dirty_'+key);
               console.log('上线重推成功['+key+']');
@@ -1291,7 +1294,7 @@ async function onAuthSuccess(){
           var {data, count} = await _supabase.from(table).select('*', {count:'exact', head:true});
           var remoteCount = count || 0;
           if(remoteCount === 0){
-            await _supabase.from(table).upsert(localData, {onConflict:'id'});
+            await _supabase.from(table).upsert(localData.map(camelToSnake), {onConflict:key==='dd'?'ord_id':'id'});
             needMigrate = true;
           }
         } catch(e){}
@@ -5600,6 +5603,45 @@ function prvW(){
 function prtW(){var d=getWD();if(!d)return alert('请先选择订单');printDoc('织厂加工单',buildWH(d),d.ord.no);}
 
 // ═══ DOC: DYEING ═══
+function ddBaseOrdId(ordId){
+  return String(ordId||'').split('::')[0];
+}
+function ddTaskKey(ordId, taskId){
+  return String(ordId||'')+'::'+String(taskId||('task_'+Date.now()));
+}
+function ddNewTaskKey(ordId){
+  return ddTaskKey(ordId,'task_'+Date.now()+'_'+Math.random().toString(36).slice(2,6));
+}
+function getDDTasks(oid){
+  return (DB.ddocs||[]).filter(function(x){
+    return x && (x.ordId===oid || ddBaseOrdId(x.ordId)===oid);
+  });
+}
+function ddTaskLabel(cfg,idx){
+  if(!cfg)return '新工序单';
+  var p=(cfg.pj||'').trim();
+  var f=(cfg.facNm||'').trim();
+  if(p&&f)return p+' / '+f;
+  if(p)return p;
+  if(f)return f;
+  return '工序单 '+(idx+1);
+}
+function getActiveDDCfg(oid){
+  var tasks=getDDTasks(oid);
+  if(!tasks.length)return {};
+  var key=window._ddActiveTaskKey;
+  var hit=tasks.find(function(x){return x.ordId===key;});
+  return hit||tasks[0]||{};
+}
+function ensureDDTaskKey(oid){
+  if(!oid)return '';
+  var key=window._ddActiveTaskKey;
+  if(key&&ddBaseOrdId(key)===oid)return key;
+  var tasks=getDDTasks(oid);
+  key=tasks.length?tasks[0].ordId:ddNewTaskKey(oid);
+  window._ddActiveTaskKey=key;
+  return key;
+}
 function pgDD(){
   var pg=document.getElementById('pg');pg.innerHTML='';
   var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
@@ -5622,6 +5664,44 @@ function pgDD(){
   // ordSel.onchange will be set up later via _origDD
   var cb=document.createElement('div');cb.style.cssText='display:flex;flex-direction:column;gap:0';
   cb.appendChild(al);
+  var taskPanel=document.createElement('div');taskPanel.id='dd-task-panel';
+  taskPanel.style.cssText='display:none;padding:10px 18px;background:#F8FAFC;border-bottom:1px solid var(--bd);gap:8px;align-items:center;flex-wrap:wrap';
+  cb.appendChild(taskPanel);
+  function renderDDTaskPanel(oid){
+    var p=document.getElementById('dd-task-panel');if(!p)return;
+    if(!oid){p.style.display='none';p.innerHTML='';return;}
+    ensureDDTaskKey(oid);
+    var tasks=getDDTasks(oid);
+    p.style.display='flex';p.innerHTML='';
+    var title=document.createElement('span');
+    title.style.cssText='font-size:11px;font-weight:700;color:#334155;margin-right:4px';
+    title.textContent='本订单工序单：';
+    p.appendChild(title);
+    if(!tasks.length){
+      var empty=document.createElement('span');
+      empty.style.cssText='font-size:11px;color:#64748B';
+      empty.textContent='当前是新的工序单，保存后会独立保留';
+      p.appendChild(empty);
+    }
+    tasks.forEach(function(cfg,idx){
+      var btn=document.createElement('button');btn.type='button';
+      var active=cfg.ordId===window._ddActiveTaskKey;
+      btn.textContent=ddTaskLabel(cfg,idx);
+      btn.style.cssText='padding:5px 10px;border:1px solid '+(active?'#2563EB':'#CBD5E1')+';background:'+(active?'#DBEAFE':'#fff')+';color:'+(active?'#1D4ED8':'#475569')+';border-radius:999px;font-size:11px;font-weight:700;cursor:pointer';
+      btn.onclick=function(){window._ddActiveTaskKey=cfg.ordId;if(ordSel.onchange)ordSel.onchange();};
+      p.appendChild(btn);
+    });
+    var add=document.createElement('button');add.type='button';
+    add.textContent='+ 新增工序单';
+    add.style.cssText='margin-left:auto;padding:5px 12px;border:1px solid #2563EB;background:#2563EB;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer';
+    add.onclick=function(){
+      window._ddActiveTaskKey=ddNewTaskKey(oid);
+      if(ordSel.onchange)ordSel.onchange();
+      showToast('已新建一个独立工序单，填写后保存','info');
+    };
+    p.appendChild(add);
+  }
+  window._renderDDTaskPanel=renderDDTaskPanel;
 
   // helpers reuse dSec2 pattern inline
   function ddSec(title,bg,border,lbl,el){
@@ -5847,8 +5927,8 @@ function pgDD(){
     buildVatTable();
     var oid=this.value;if(!oid)return;
     var ord=DB.orders.find(function(o){return o.id===oid;});
-    var saved=DB.ddocs;
-    var cfg=saved?saved.find(function(x){return x.ordId===oid;}):{};cfg=cfg||{};
+    ensureDDTaskKey(oid);
+    var cfg=getActiveDDCfg(oid);cfg=cfg||{};
     var fields={'dd-f':cfg.facNm,'dd-ct':cfg.ct,'dd-ph':cfg.ph,'dd-du':cfg.due,
       'dd-wb':cfg.wb,'dd-ra':cfg.ra,'dd-rct':cfg.rct,'dd-rph':cfg.rph,
       'dd-da':cfg.da,'dd-dc':cfg.dc,'dd-dp':cfg.dp,
@@ -5868,6 +5948,8 @@ function pgDD(){
   var _origDD=ordSel.onchange;
   ordSel.onchange=function(){
     var oid=this.value;
+    ensureDDTaskKey(oid);
+    renderDDTaskPanel(oid);
     var ord=DB.orders.find(function(o){return o.id===oid;});
     var fabEl=document.getElementById('dd-fab-text');var cnoEl=document.getElementById('dd-cno-tag');
     if(fabEl)fabEl.textContent=ord?(ord.fab||'—'):'请先选择订单';
@@ -5875,7 +5957,7 @@ function pgDD(){
     // Auto spec tags
     var wdEl=document.getElementById('dd-wd');var wtEl=document.getElementById('dd-wt');var wuEl=document.getElementById('dd-wu');
     // ── 规格同步检测（方案B）──
-    var ddSaved=(DB.ddocs||[]).find(function(x){return x.ordId===oid;})||{};
+    var ddSaved=getActiveDDCfg(oid)||{};
     var ordWd=ord&&ord.width;var ordWt=ord&&ord.weight;
     var cfgWd=ddSaved.specWd;var cfgWt=ddSaved.specWt;
     var hasDDCfgSpec=!!(cfgWd||cfgWt);
@@ -5910,7 +5992,7 @@ function pgDD(){
       if(wuEl2&&_syncWu){wuEl2.dataset.u=_syncWu;wuEl2.textContent=_syncWu;}
     },50);
     // Load saved DD config
-    var ddCfg=(DB.ddocs||[]).find(function(x){return x.ordId===oid;})||{};
+    var ddCfg=getActiveDDCfg(oid)||{};
     if(ddCfg.due){var duEl=document.getElementById('dd-du');if(duEl)duEl.value=ddCfg.due;}
     if(ddCfg.facNm){var fEl=document.getElementById('dd-f');if(fEl)fEl.value=ddCfg.facNm;}
     if(ddCfg.ct){var ctEl2=document.getElementById('dd-ct');if(ctEl2)ctEl2.value=ddCfg.ct;}
@@ -5976,7 +6058,7 @@ function buildVatTable(){
   var wrap=document.getElementById('dd-vats');if(!wrap)return;wrap.innerHTML='';
   if(!ord||!ord.colors||!ord.colors.length)return;
   // Load saved vat remarks
-  var savedCfg=DB.load('ddcfg')||{};
+  var savedCfg=getActiveDDCfg(oid)||{};
   var savedVatRm=savedCfg.vatRm||[];
   var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse';
   var thead=document.createElement('thead');thead.innerHTML='<tr><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:28px">✓</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">颜色</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">色号</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;text-align:center;width:13%">落缸数(KG)</th><th style="padding:6px 8px;background:var(--p);border:1px solid var(--bd);font-size:11px;color:#fff;font-weight:700">备注 / 注意事项（重要！工厂必看）</th></tr>';
@@ -6327,9 +6409,10 @@ function buildProcessChecks(currentVal){
 function saveDDcfg(){
   var oid=(document.getElementById('dd-o')||{value:''}).value;
   if(!oid){showToast('请先选择订单','error');return;}
+  var taskKey=ensureDDTaskKey(oid);
   try{
   var cfg={
-    ordId:oid,
+    ordId:taskKey,
     facNm:(document.getElementById('dd-f')||{value:''}).value,
     ct:(document.getElementById('dd-ct')||{value:''}).value,
     ph:(document.getElementById('dd-ph')||{value:''}).value,
@@ -6366,10 +6449,14 @@ function saveDDcfg(){
   };
   var l=DB.ddocs||[];
   var existing = null, idx = -1;
-  l.forEach(function(x,i){if(x.ordId===oid){existing=x;idx=i;}});
+  l.forEach(function(x,i){if(x.ordId===taskKey){existing=x;idx=i;}});
   if(existing && existing.id) cfg.id = existing.id;
   if(idx>=0)l[idx]=cfg;else l.push(cfg);
   DB.ddocs=l;
+  if((document.getElementById('dd-task-panel')||{}).innerHTML!==undefined&&window._renderDDTaskPanel){
+    var oid2=(document.getElementById('dd-o')||{value:''}).value;
+    if(oid2)window._renderDDTaskPanel(oid2);
+  }
   }catch(e){showToast('保存失败: '+e.message,'error');console.error(e);}
 }
 

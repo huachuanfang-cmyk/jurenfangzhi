@@ -1162,7 +1162,7 @@ var _origSave = DB.save.bind(DB);
 // ── 全表自动快照：每个业务表每次保存时都在独立 key 留副本，刷新/同步都不会覆盖 ──
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
 var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1};
-var SYNC_SAFETY_KEYS={o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
+var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
 
 function countDirtySyncKeys(){
   var n=0;

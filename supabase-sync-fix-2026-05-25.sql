@@ -6,6 +6,26 @@
 -- 3. 不删除任何数据，可重复执行
 -- ============================================================
 
+CREATE TABLE IF NOT EXISTS public.fg_returns (
+  id TEXT PRIMARY KEY,
+  no TEXT DEFAULT '',
+  date TEXT DEFAULT '',
+  out_id TEXT DEFAULT '',
+  out_no TEXT DEFAULT '',
+  ord_id TEXT DEFAULT '',
+  ord_no TEXT DEFAULT '',
+  cust_nm TEXT DEFAULT '',
+  reason TEXT DEFAULT '',
+  roll_ids JSONB DEFAULT '[]',
+  total_kg NUMERIC DEFAULT 0,
+  deduct_kg NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'pending',
+  resolved_at TEXT DEFAULT '',
+  repair_note TEXT DEFAULT '',
+  rm TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 ALTER TABLE public.fg_ins
   ADD COLUMN IF NOT EXISTS color_code TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS wv_fac TEXT DEFAULT '',
@@ -59,6 +79,10 @@ BEGIN
     'weaving_docs','dyeing_docs'
   ]
   LOOP
+    IF to_regclass(format('public.%I', tbl)) IS NULL THEN
+      CONTINUE;
+    END IF;
+
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
     IF NOT EXISTS (
       SELECT 1
@@ -74,3 +98,5 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+NOTIFY pgrst, 'reload schema';

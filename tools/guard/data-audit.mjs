@@ -4,6 +4,7 @@ import path from 'node:path';
 const root = process.cwd();
 const indexPath = path.join(root, 'index.html');
 const mainSchemaPath = path.join(root, 'supabase-schema.sql');
+const syncFixPath = path.join(root, 'supabase-sync-fix-2026-05-25.sql');
 
 function read(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -102,6 +103,7 @@ function printSection(title, items) {
 
 const indexHtml = read(indexPath);
 const mainSchema = read(mainSchemaPath);
+const syncFixSql = fs.existsSync(syncFixPath) ? read(syncFixPath) : '';
 const tableMap = extractTableMap(indexHtml);
 const mainTables = extractCreateTables(mainSchema);
 const mainColumns = extractCreateTableColumns(mainSchema);
@@ -143,6 +145,14 @@ for (const [table, cols] of Object.entries(requiredColumns)) {
 
 if (!/GRANT\s+SELECT\s*,\s*INSERT\s*,\s*UPDATE\s*,\s*DELETE\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+TO\s+authenticated\s*;/i.test(mainSchema)) {
   errors.push('supabase-schema.sql must grant table privileges to authenticated');
+}
+
+if (!/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+public\.fg_returns\s*\(/i.test(syncFixSql)) {
+  errors.push('supabase-sync-fix-2026-05-25.sql must create missing fg_returns before altering it');
+}
+
+if (!/NOTIFY\s+pgrst\s*,\s*'reload schema'\s*;/i.test(syncFixSql)) {
+  errors.push('supabase-sync-fix-2026-05-25.sql must reload the PostgREST schema cache');
 }
 
 console.log('ERP data audit');

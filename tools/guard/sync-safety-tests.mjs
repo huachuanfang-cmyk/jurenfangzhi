@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const html = fs.readFileSync('index.html', 'utf8');
+const safetyKeysMatch = html.match(/var\s+SYNC_SAFETY_KEYS\s*=\s*\{([\s\S]*?)\};/);
+assert.ok(safetyKeysMatch, 'SYNC_SAFETY_KEYS must be present');
+const safetyKeysBody = safetyKeysMatch[1];
 
 const tests = [];
 function test(name, fn) {
@@ -15,7 +18,16 @@ test('dashboard exposes refresh safety check button', () => {
 
 test('refresh safety check covers critical business tables', () => {
   for (const key of ['o', 'fgi', 'fgr', 'fgo', 'ret', 'ar']) {
-    assert.match(html, new RegExp(`${key}\\s*:`));
+    assert.match(safetyKeysBody, new RegExp(`${key}\\s*:`));
+  }
+});
+
+test('refresh safety check covers base archive tables', () => {
+  for (const key of ['c', 'f', 'mat']) {
+    assert.match(safetyKeysBody, new RegExp(`${key}\\s*:`));
+  }
+  for (const label of ['客户档案', '加工厂档案', '物料档案']) {
+    assert.match(safetyKeysBody, new RegExp(label));
   }
 });
 

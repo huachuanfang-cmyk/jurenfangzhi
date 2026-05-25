@@ -9904,7 +9904,11 @@ function openYarnOutM(type, editId){
   var title=(isOut?'+ 发料出库':'↩ 余纱回仓');
   var modal=buildModal(title,'',function(body){
     var g=document.createElement('div');g.className='fg';
-    var factOpts=[{v:'',l:'— 请选择工厂 —'}].concat((DB.facts||[]).filter(function(f){return !f.type||f.type==='织布厂'||f.type==='工厂';}).map(function(f){return{v:f.nm,l:f.nm};}));
+    function isYarnIssueFactory(f){
+      var ps=f.prcs||[];
+      return ps.indexOf('织厂')>=0||ps.indexOf('织布厂')>=0;
+    }
+    var factOpts=[{v:'',l:'— 请选择织厂 —'}].concat((DB.facts||[]).filter(isYarnIssueFactory).map(function(f){return{v:f.nm,l:f.nm};}));
     function findYarnForOrder(ordNo){
       if(!ordNo)return null;
       var ord=(DB.orders||[]).find(function(o){return o.no===ordNo;})||{};
@@ -9920,7 +9924,11 @@ function openYarnOutM(type, editId){
     }
     function setIfEmpty(id,val){
       var el=document.getElementById(id);
-      if(el&&!el.value&&val!==undefined&&val!==null&&String(val)!=='')el.value=val;
+      if(!el||el.value||val===undefined||val===null||String(val)==='')return;
+      if(el.tagName==='SELECT'&&!Array.from(el.options).some(function(o){return o.value===String(val);})){
+        el.appendChild(new Option(String(val)+' · 采购记录',String(val)));
+      }
+      el.value=val;
     }
     function applyYarnToOutForm(y){
       if(!y)return;

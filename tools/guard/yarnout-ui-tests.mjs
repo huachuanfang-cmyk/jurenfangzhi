@@ -34,6 +34,13 @@ test('selecting a sales order can import linked yarn purchase fields', () => {
   assert.match(yarnOutModal, /delFacId/, 'auto-fill should reuse yarn purchase delivery factory when available');
 });
 
+test('yarn issue factory selector only lists weaving factories', () => {
+  assert.match(yarnOutModal, /function\s+isYarnIssueFactory\s*\(/, 'missing yarn issue factory filter');
+  assert.match(yarnOutModal, /ps\.indexOf\('织厂'\)\s*>=\s*0/, 'factory filter should include 织厂 process');
+  assert.match(yarnOutModal, /ps\.indexOf\('织布厂'\)\s*>=\s*0/, 'factory filter should include 织布厂 process');
+  assert.doesNotMatch(yarnOutModal, /!f\.type\|\|f\.type==='织布厂'\|\|f\.type==='工厂'/, 'should not list all legacy generic factories');
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

@@ -201,6 +201,8 @@ CREATE TABLE fg_ins (
   wv_fac TEXT DEFAULT '',
   roll_count INTEGER DEFAULT 0,
   status TEXT DEFAULT '',
+  void_reason TEXT DEFAULT '',
+  voided_at TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -258,6 +260,9 @@ CREATE TABLE fg_rolls (
   returned BOOLEAN DEFAULT FALSE,
   ret_id TEXT DEFAULT '',
   resolved_at TEXT DEFAULT '',
+  repair_note TEXT DEFAULT '',
+  void_reason TEXT DEFAULT '',
+  voided_at TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

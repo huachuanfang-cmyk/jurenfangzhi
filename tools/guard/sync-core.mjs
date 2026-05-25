@@ -30,15 +30,35 @@ export function cloudConflictKey(key) {
   return key === 'dd' || key === 'wd' ? 'ord_id' : 'id';
 }
 
+export function hasInvalidCloudSerialId(value) {
+  if (value === null || value === undefined || value === '') return true;
+  var text = String(value).trim().toLowerCase();
+  return text === 'null' || text === 'undefined' || text === 'nan' || !Number.isFinite(Number(value));
+}
+
 export function prepareCloudRow(key, row) {
   var cleaned = stripTransientFieldsForCloud(row);
   if (!cleaned || typeof cleaned !== 'object' || Array.isArray(cleaned)) return cleaned;
-  if ((key === 'dd' || key === 'wd') && (cleaned.id === null || cleaned.id === undefined || cleaned.id === '' || !Number.isFinite(Number(cleaned.id)))) {
+  if ((key === 'dd' || key === 'wd') && hasInvalidCloudSerialId(cleaned.id)) {
     var copy = { ...cleaned };
     delete copy.id;
     return copy;
   }
   return cleaned;
+}
+
+export function normalizeLocalRowsBeforeSave(key, rows) {
+  if (!Array.isArray(rows)) return rows;
+  if (key !== 'dd' && key !== 'wd') return rows.map(stripTransientFieldsForCloud);
+  return rows.map(function(row) {
+    var cleaned = stripTransientFieldsForCloud(row);
+    if (cleaned && typeof cleaned === 'object' && !Array.isArray(cleaned) && hasInvalidCloudSerialId(cleaned.id)) {
+      var copy = { ...cleaned };
+      delete copy.id;
+      return copy;
+    }
+    return cleaned;
+  });
 }
 
 /**

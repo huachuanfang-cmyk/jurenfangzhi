@@ -1012,15 +1012,35 @@ function cloudConflictKey(key){
   return (key==='dd'||key==='wd')?'ord_id':'id';
 }
 
+function hasInvalidCloudSerialId(value){
+  if(value===null||value===undefined||value==='')return true;
+  var text=String(value).trim().toLowerCase();
+  return text==='null'||text==='undefined'||text==='nan'||!isFinite(Number(value));
+}
+
 function prepareCloudRow(key,row){
   var cleaned=stripTransientFieldsForCloud(row);
   if(!cleaned||typeof cleaned!=='object'||Array.isArray(cleaned))return cleaned;
-  if((key==='dd'||key==='wd')&&(cleaned.id===null||cleaned.id===undefined||cleaned.id===''||!isFinite(Number(cleaned.id)))){
+  if((key==='dd'||key==='wd')&&hasInvalidCloudSerialId(cleaned.id)){
     var copy={};
     for(var k in cleaned){if(k!=='id')copy[k]=cleaned[k];}
     return copy;
   }
   return cleaned;
+}
+
+function normalizeLocalRowsBeforeSave(key,rows){
+  if(!Array.isArray(rows))return rows;
+  if(key!=='dd'&&key!=='wd')return rows.map(stripTransientFieldsForCloud);
+  return rows.map(function(row){
+    var cleaned=stripTransientFieldsForCloud(row);
+    if(cleaned&&typeof cleaned==='object'&&!Array.isArray(cleaned)&&hasInvalidCloudSerialId(cleaned.id)){
+      var copy={};
+      for(var k in cleaned){if(k!=='id')copy[k]=cleaned[k];}
+      return copy;
+    }
+    return cleaned;
+  });
 }
 
 function rowsToCloudPayloadForKey(key,rows){
@@ -1258,7 +1278,7 @@ function openSyncSafetyModal(){
 
 DB.save = function(n, v){
   if(Array.isArray(v)){
-    v=v.map(stripTransientFieldsForCloud);
+    v=normalizeLocalRowsBeforeSave(n,v);
   }
   _origSave(n, v);
   // 自动快照：每次写入关键表都在独立位置留副本

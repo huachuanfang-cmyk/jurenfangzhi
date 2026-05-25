@@ -127,8 +127,8 @@ for (const finding of riskyDeletes) {
 }
 
 const requiredColumns = {
-  fg_ins: ['color_code', 'wv_fac', 'roll_count', 'status'],
-  fg_rolls: ['fab', 'color_code', 'wv_fac', 'resolved_at', 'grade'],
+  fg_ins: ['color_code', 'wv_fac', 'roll_count', 'status', 'void_reason', 'voided_at'],
+  fg_rolls: ['fab', 'color_code', 'wv_fac', 'resolved_at', 'grade', 'returned', 'ret_id', 'repair_note', 'void_reason', 'voided_at'],
   fg_outs: ['cust_ord_no', 'cust_no', 'approx_m', 'fee_nm', 'fee_amt', 'is_quick', 'fab', 'clr', 'color_nm', 'lot', 'width', 'gsm', 'pr_unit', 'unit_pr', 'pcs_data'],
   fg_returns: ['resolved_at', 'repair_note', 'deduct_kg'],
   ar_records: ['ret_ids', 'ship_fee_total', 'return_total'],

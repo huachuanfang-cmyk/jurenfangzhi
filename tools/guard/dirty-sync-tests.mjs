@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -331,15 +331,31 @@ test('production sync reuses the authenticated Supabase client session', () => {
 test('weaving and dyeing cloud payload omits invalid serial id and uses order conflict key', () => {
   var weaving = prepareCloudRow('wd', { id: null, ordId: 'ord-001', facNm: '织厂' });
   var dyeing = prepareCloudRow('dd', { id: '', ordId: 'ord-002', facNm: '染厂' });
+  var weavingStringNull = prepareCloudRow('wd', { id: 'null', ordId: 'ord-003', facNm: '织厂2' });
+  var dyeingStringUndefined = prepareCloudRow('dd', { id: 'undefined', ordId: 'ord-004', facNm: '染厂2' });
 
-  if ('id' in weaving || 'id' in dyeing) {
-    throw new Error('serial table payload should omit null/blank id');
+  if ('id' in weaving || 'id' in dyeing || 'id' in weavingStringNull || 'id' in dyeingStringUndefined) {
+    throw new Error('serial table payload should omit null/blank/string-null id');
   }
   if (cloudConflictKey('wd') !== 'ord_id' || cloudConflictKey('dd') !== 'ord_id') {
     throw new Error('weaving/dyeing docs should upsert by ord_id');
   }
   if (cloudConflictKey('fgo') !== 'id') {
     throw new Error('normal tables should continue upserting by id');
+  }
+});
+
+test('weaving and dyeing local save strips invalid serial id before future sync attempts', () => {
+  var rows = normalizeLocalRowsBeforeSave('wd', [
+    { id: 'null', ordId: 'ord-001', facNm: '织厂' },
+    { id: '12', ordId: 'ord-002', facNm: '织厂2' },
+  ]);
+
+  if ('id' in rows[0]) {
+    throw new Error('invalid serial id should not remain in local weaving config');
+  }
+  if (rows[1].id !== '12') {
+    throw new Error('valid serial id should be preserved');
   }
 });
 

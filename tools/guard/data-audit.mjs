@@ -127,10 +127,10 @@ for (const finding of riskyDeletes) {
 }
 
 const requiredColumns = {
-  fg_ins: ['color_code', 'wv_fac', 'roll_count'],
-  fg_rolls: ['fab', 'color_code', 'wv_fac', 'resolved_at'],
-  fg_outs: ['cust_ord_no', 'cust_no', 'approx_m', 'fee_nm', 'fee_amt', 'is_quick', 'fab', 'clr', 'lot', 'width', 'gsm', 'pr_unit', 'unit_pr', 'pcs_data'],
-  fg_returns: ['resolved_at', 'repair_note'],
+  fg_ins: ['color_code', 'wv_fac', 'roll_count', 'status'],
+  fg_rolls: ['fab', 'color_code', 'wv_fac', 'resolved_at', 'grade'],
+  fg_outs: ['cust_ord_no', 'cust_no', 'approx_m', 'fee_nm', 'fee_amt', 'is_quick', 'fab', 'clr', 'color_nm', 'lot', 'width', 'gsm', 'pr_unit', 'unit_pr', 'pcs_data'],
+  fg_returns: ['resolved_at', 'repair_note', 'deduct_kg'],
   ar_records: ['ret_ids', 'ship_fee_total', 'return_total'],
 };
 
@@ -139,6 +139,10 @@ for (const [table, cols] of Object.entries(requiredColumns)) {
   for (const col of cols) {
     if (!known.has(col)) {
       errors.push(`schema table ${table} is missing required column ${col}`);
+    }
+    const alterPattern = new RegExp(`ALTER\\s+TABLE\\s+public\\.${table}[\\s\\S]*?ADD\\s+COLUMN\\s+IF\\s+NOT\\s+EXISTS\\s+${col}\\b`, 'i');
+    if (!alterPattern.test(syncFixSql)) {
+      errors.push(`supabase-sync-fix-2026-05-25.sql must add missing column ${table}.${col}`);
     }
   }
 }

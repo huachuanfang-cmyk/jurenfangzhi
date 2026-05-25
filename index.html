@@ -1008,6 +1008,25 @@ function rowsToCloudPayload(rows){
   return (rows||[]).map(function(x){return camelToSnake(stripTransientFieldsForCloud(x));});
 }
 
+function cloudConflictKey(key){
+  return (key==='dd'||key==='wd')?'ord_id':'id';
+}
+
+function prepareCloudRow(key,row){
+  var cleaned=stripTransientFieldsForCloud(row);
+  if(!cleaned||typeof cleaned!=='object'||Array.isArray(cleaned))return cleaned;
+  if((key==='dd'||key==='wd')&&(cleaned.id===null||cleaned.id===undefined||cleaned.id===''||!isFinite(Number(cleaned.id)))){
+    var copy={};
+    for(var k in cleaned){if(k!=='id')copy[k]=cleaned[k];}
+    return copy;
+  }
+  return cleaned;
+}
+
+function rowsToCloudPayloadForKey(key,rows){
+  return (rows||[]).map(function(x){return camelToSnake(prepareCloudRow(key,x));});
+}
+
 function recordSyncError(key,msg){
   if(!key) return;
   try{localStorage.setItem('gjr5_syncerr_'+key,String(msg||'同步失败'));}catch(e){}
@@ -1032,8 +1051,8 @@ async function pullFromSupabase(){
       var localData = DB.load(key);
       if(localData && localData.length > 0){
         try{
-          var conflictKey=key==='dd'?'ord_id':'id';
-          var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayload(localData), {onConflict:conflictKey, ignoreDuplicates:false});
+          var conflictKey=cloudConflictKey(key);
+          var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayloadForKey(key,localData), {onConflict:conflictKey, ignoreDuplicates:false});
           if(!error){ pushedKeys.push(key); clearSyncError(key); }
           else { recordSyncError(key,error.message); console.warn('推送失败['+key+']:', error.message); }
         }catch(e){ recordSyncError(key,e.message); console.warn('推送异常['+key+']:', e.message); }
@@ -1073,7 +1092,7 @@ async function pullFromSupabase(){
       var _remSet={};camelData.forEach(function(x){if(x&&x.id)_remSet[x.id]=true;});
       var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id];});
       if(_localOnly.length>0){
-        (function(_t,_rows,_conflict){_supabaseData.from(_t).upsert(_rows,{onConflict:_conflict,ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],rowsToCloudPayload(_localOnly),key==='dd'?'ord_id':'id');
+        (function(_t,_rows,_conflict){_supabaseData.from(_t).upsert(_rows,{onConflict:_conflict,ignoreDuplicates:false}).catch(function(){});})(TABLE_MAP[key],rowsToCloudPayloadForKey(key,_localOnly),cloudConflictKey(key));
       }
       var _merged=camelData.concat(_localOnly);
       // ── 安全阀（兜底）：合并结果仍 < 本地，拒绝覆盖 ──
@@ -1255,7 +1274,7 @@ DB.save = function(n, v){
   if(_supabaseData && isOnline()){
     var table = TABLE_MAP[n];
     if(!table || !Array.isArray(v)) return;
-    var snakeData = rowsToCloudPayload(v);
+    var snakeData = rowsToCloudPayloadForKey(n,v);
     // 版本保险：记录当前版本，同步完成后只有版本未变才清理 dirty flag
     _syncVersions[n] = (_syncVersions[n] || 0) + 1;
     var preSyncVer = _syncVersions[n];
@@ -1263,7 +1282,7 @@ DB.save = function(n, v){
       var maxRetries = 3;
       for(var attempt = 0; attempt < maxRetries; attempt++){
         try{
-          var conflictKey=n==='dd'?'ord_id':'id';
+          var conflictKey=cloudConflictKey(n);
           var {error} = await _supabaseData.from(table).upsert(snakeData, {onConflict:conflictKey, ignoreDuplicates:false});
           if(!error){
             // 只有版本未变（期间没有新的本地保存）才清理 dirty flag
@@ -1301,8 +1320,8 @@ window.addEventListener('online', function(){
         if(v && v.length){
           var table = TABLE_MAP[key];
           (async function(key, ver){
-            var conflictKey=key==='dd'?'ord_id':'id';
-            var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayload(v), {onConflict:conflictKey, ignoreDuplicates:false});
+            var conflictKey=cloudConflictKey(key);
+            var {error} = await _supabaseData.from(table).upsert(rowsToCloudPayloadForKey(key,v), {onConflict:conflictKey, ignoreDuplicates:false});
             if(!error && (_syncVersions[key] || 0) === ver){
               localStorage.removeItem('gjr5_dirty_'+key);
               clearSyncError(key);
@@ -1454,7 +1473,7 @@ async function onAuthSuccess(){
           var {data, count} = await _supabase.from(table).select('*', {count:'exact', head:true});
           var remoteCount = count || 0;
           if(remoteCount === 0){
-            await _supabase.from(table).upsert(rowsToCloudPayload(localData), {onConflict:key==='dd'?'ord_id':'id'});
+            await _supabase.from(table).upsert(rowsToCloudPayloadForKey(key,localData), {onConflict:cloudConflictKey(key)});
             needMigrate = true;
           }
         } catch(e){}

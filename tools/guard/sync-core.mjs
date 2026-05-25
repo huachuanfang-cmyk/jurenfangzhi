@@ -26,6 +26,21 @@ export function stripTransientFieldsForCloud(row) {
   return cleaned;
 }
 
+export function cloudConflictKey(key) {
+  return key === 'dd' || key === 'wd' ? 'ord_id' : 'id';
+}
+
+export function prepareCloudRow(key, row) {
+  var cleaned = stripTransientFieldsForCloud(row);
+  if (!cleaned || typeof cleaned !== 'object' || Array.isArray(cleaned)) return cleaned;
+  if ((key === 'dd' || key === 'wd') && (cleaned.id === null || cleaned.id === undefined || cleaned.id === '' || !Number.isFinite(Number(cleaned.id)))) {
+    var copy = { ...cleaned };
+    delete copy.id;
+    return copy;
+  }
+  return cleaned;
+}
+
 /**
  * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
  * 哪些 dirty flag 应清除、哪些应保留。

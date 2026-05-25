@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -325,6 +325,21 @@ test('production sync reuses the authenticated Supabase client session', () => {
   }
   if (src.includes("_supabaseData = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}})")) {
     throw new Error('data sync must not use a separate unauthenticated Supabase client');
+  }
+});
+
+test('weaving and dyeing cloud payload omits invalid serial id and uses order conflict key', () => {
+  var weaving = prepareCloudRow('wd', { id: null, ordId: 'ord-001', facNm: '织厂' });
+  var dyeing = prepareCloudRow('dd', { id: '', ordId: 'ord-002', facNm: '染厂' });
+
+  if ('id' in weaving || 'id' in dyeing) {
+    throw new Error('serial table payload should omit null/blank id');
+  }
+  if (cloudConflictKey('wd') !== 'ord_id' || cloudConflictKey('dd') !== 'ord_id') {
+    throw new Error('weaving/dyeing docs should upsert by ord_id');
+  }
+  if (cloudConflictKey('fgo') !== 'id') {
+    throw new Error('normal tables should continue upserting by id');
   }
 });
 

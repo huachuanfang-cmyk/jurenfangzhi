@@ -22,7 +22,8 @@ test('dyeing docs support multiple process tasks under one sales order', () => {
 });
 
 test('dyeing doc cloud sync uses ord_id conflict key', () => {
-  must(/n==='dd'\?'ord_id':'id'/, 'dyeing_docs upsert conflict on ord_id');
+  must(/function\s+cloudConflictKey\s*\(/, 'cloud conflict helper');
+  must(/\(key==='dd'\|\|key==='wd'\)\?'ord_id':'id'/, 'dyeing/weaving docs upsert conflict on ord_id');
 });
 
 let passed = 0;

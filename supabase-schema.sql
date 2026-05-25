@@ -200,6 +200,7 @@ CREATE TABLE fg_ins (
   src_nm TEXT DEFAULT '',
   wv_fac TEXT DEFAULT '',
   roll_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -221,6 +222,7 @@ CREATE TABLE fg_outs (
   is_quick BOOLEAN DEFAULT FALSE,
   fab TEXT DEFAULT '',
   clr TEXT DEFAULT '',
+  color_nm TEXT DEFAULT '',
   lot TEXT DEFAULT '',
   width TEXT DEFAULT '',
   gsm TEXT DEFAULT '',

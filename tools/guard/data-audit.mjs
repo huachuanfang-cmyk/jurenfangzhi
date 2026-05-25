@@ -159,6 +159,14 @@ if (!/NOTIFY\s+pgrst\s*,\s*'reload schema'\s*;/i.test(syncFixSql)) {
   errors.push('supabase-sync-fix-2026-05-25.sql must reload the PostgREST schema cache');
 }
 
+for (const table of ['weaving_docs', 'dyeing_docs']) {
+  const seqPattern = new RegExp(`CREATE\\s+SEQUENCE\\s+IF\\s+NOT\\s+EXISTS\\s+public\\.${table}_id_seq`, 'i');
+  const defaultPattern = new RegExp(`ALTER\\s+TABLE\\s+public\\.${table}\\s+ALTER\\s+COLUMN\\s+id\\s+SET\\s+DEFAULT\\s+nextval`, 'i');
+  if (!seqPattern.test(syncFixSql) || !defaultPattern.test(syncFixSql)) {
+    errors.push(`supabase-sync-fix-2026-05-25.sql must repair ${table}.id auto numbering`);
+  }
+}
+
 console.log('ERP data audit');
 console.log(`TABLE_MAP entries: ${Object.keys(tableMap).length}`);
 console.log(`Main schema tables: ${mainTables.size}`);

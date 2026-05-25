@@ -73,6 +73,25 @@ ALTER TABLE public.ar_records
   ADD COLUMN IF NOT EXISTS ship_fee_total TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS return_total TEXT DEFAULT '';
 
+-- 织厂/染整加工单是按销售订单号唯一配置，id 只作为数据库内部流水号。
+-- 某些早期表可能存在 id NOT NULL 但没有自动编号默认值，导致前端按 ord_id upsert 时报 id=null。
+DO $$
+BEGIN
+  IF to_regclass('public.weaving_docs') IS NOT NULL THEN
+    CREATE SEQUENCE IF NOT EXISTS public.weaving_docs_id_seq;
+    ALTER SEQUENCE public.weaving_docs_id_seq OWNED BY public.weaving_docs.id;
+    ALTER TABLE public.weaving_docs ALTER COLUMN id SET DEFAULT nextval('public.weaving_docs_id_seq');
+    PERFORM setval('public.weaving_docs_id_seq', COALESCE((SELECT MAX(id) FROM public.weaving_docs), 0) + 1, false);
+  END IF;
+
+  IF to_regclass('public.dyeing_docs') IS NOT NULL THEN
+    CREATE SEQUENCE IF NOT EXISTS public.dyeing_docs_id_seq;
+    ALTER SEQUENCE public.dyeing_docs_id_seq OWNED BY public.dyeing_docs.id;
+    ALTER TABLE public.dyeing_docs ALTER COLUMN id SET DEFAULT nextval('public.dyeing_docs_id_seq');
+    PERFORM setval('public.dyeing_docs_id_seq', COALESCE((SELECT MAX(id) FROM public.dyeing_docs), 0) + 1, false);
+  END IF;
+END $$;
+
 -- Data API 权限。RLS 决定“能看哪些行”，GRANT 决定“能不能访问这张表”。
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;

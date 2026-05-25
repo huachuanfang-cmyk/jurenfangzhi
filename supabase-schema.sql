@@ -193,10 +193,13 @@ CREATE TABLE fg_ins (
   ord_no TEXT DEFAULT '',
   cust_nm TEXT DEFAULT '',
   color_nm TEXT DEFAULT '',
+  color_code TEXT DEFAULT '',
   vat_no TEXT DEFAULT '',
   kg TEXT DEFAULT '',
   date TEXT DEFAULT '',
   src_nm TEXT DEFAULT '',
+  wv_fac TEXT DEFAULT '',
+  roll_count INTEGER DEFAULT 0,
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -210,6 +213,20 @@ CREATE TABLE fg_outs (
   ord_no TEXT DEFAULT '',
   cust_nm TEXT DEFAULT '',
   dlv_no TEXT DEFAULT '',
+  cust_ord_no TEXT DEFAULT '',
+  cust_no TEXT DEFAULT '',
+  approx_m TEXT DEFAULT '',
+  fee_nm TEXT DEFAULT '',
+  fee_amt TEXT DEFAULT '',
+  is_quick BOOLEAN DEFAULT FALSE,
+  fab TEXT DEFAULT '',
+  clr TEXT DEFAULT '',
+  lot TEXT DEFAULT '',
+  width TEXT DEFAULT '',
+  gsm TEXT DEFAULT '',
+  pr_unit TEXT DEFAULT '',
+  unit_pr TEXT DEFAULT '',
+  pcs_data JSONB DEFAULT '[]',
   rm TEXT DEFAULT '',
   roll_ids JSONB DEFAULT '[]',
   voided TEXT DEFAULT '',
@@ -224,8 +241,11 @@ CREATE TABLE fg_rolls (
   ord_id TEXT DEFAULT '',
   ord_no TEXT DEFAULT '',
   cust_nm TEXT DEFAULT '',
+  fab TEXT DEFAULT '',
   color_nm TEXT DEFAULT '',
+  color_code TEXT DEFAULT '',
   vat_no TEXT DEFAULT '',
+  wv_fac TEXT DEFAULT '',
   roll_no TEXT DEFAULT '',
   kg TEXT DEFAULT '',
   m TEXT DEFAULT '',
@@ -235,6 +255,7 @@ CREATE TABLE fg_rolls (
   grade TEXT DEFAULT '',
   returned BOOLEAN DEFAULT FALSE,
   ret_id TEXT DEFAULT '',
+  resolved_at TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -253,6 +274,8 @@ CREATE TABLE fg_returns (
   total_kg NUMERIC DEFAULT 0,
   deduct_kg NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'pending',
+  resolved_at TEXT DEFAULT '',
+  repair_note TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -301,7 +324,10 @@ CREATE TABLE ar_records (
   pay_type TEXT DEFAULT '',
   due_date TEXT DEFAULT '',
   out_ids JSONB DEFAULT '[]',
+  ret_ids JSONB DEFAULT '[]',
   total_amt TEXT DEFAULT '',
+  ship_fee_total TEXT DEFAULT '',
+  return_total TEXT DEFAULT '',
   adjustments JSONB DEFAULT '[]',
   deduct_total TEXT DEFAULT '',
   add_total TEXT DEFAULT '',
@@ -439,6 +465,11 @@ CREATE POLICY "允许已登录用户所有操作" ON ar_records FOR ALL USING (a
 CREATE POLICY "允许已登录用户所有操作" ON ap_records FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON weaving_docs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON dyeing_docs FOR ALL USING (auth.role() = 'authenticated');
+
+-- Supabase Data API 表权限（RLS 控制行权限，GRANT 控制表是否可访问）
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
 -- ============================================================
 -- 创建索引（常用查询字段）

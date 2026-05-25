@@ -34,6 +34,28 @@ function extractCreateTables(sqlText) {
   return names;
 }
 
+function extractCreateTableColumns(sqlText) {
+  const result = new Map();
+  const re = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?public"?\.)?"?([A-Za-z0-9_]+)"?\s*\(([\s\S]*?)\);/gi;
+  let item;
+  while ((item = re.exec(sqlText))) {
+    const table = item[1];
+    const body = item[2];
+    const columns = new Set();
+    for (const rawLine of lines(body)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('--')) continue;
+      const match = line.match(/^"?([A-Za-z0-9_]+)"?\s+/);
+      if (!match) continue;
+      const col = match[1].toLowerCase();
+      if (['primary', 'unique', 'constraint', 'foreign', 'check'].includes(col)) continue;
+      columns.add(col);
+    }
+    result.set(table, columns);
+  }
+  return result;
+}
+
 function readExtraSqlTables() {
   const result = new Map();
   for (const entry of fs.readdirSync(root)) {
@@ -82,6 +104,7 @@ const indexHtml = read(indexPath);
 const mainSchema = read(mainSchemaPath);
 const tableMap = extractTableMap(indexHtml);
 const mainTables = extractCreateTables(mainSchema);
+const mainColumns = extractCreateTableColumns(mainSchema);
 const extraTables = readExtraSqlTables();
 
 const errors = [];
@@ -99,6 +122,27 @@ for (const [key, table] of Object.entries(tableMap)) {
 const riskyDeletes = findRiskyDeletePatterns(indexHtml);
 for (const finding of riskyDeletes) {
   warnings.push(`raw local delete pattern at index.html:${finding.line}: ${finding.text}`);
+}
+
+const requiredColumns = {
+  fg_ins: ['color_code', 'wv_fac', 'roll_count'],
+  fg_rolls: ['fab', 'color_code', 'wv_fac', 'resolved_at'],
+  fg_outs: ['cust_ord_no', 'cust_no', 'approx_m', 'fee_nm', 'fee_amt', 'is_quick', 'fab', 'clr', 'lot', 'width', 'gsm', 'pr_unit', 'unit_pr', 'pcs_data'],
+  fg_returns: ['resolved_at', 'repair_note'],
+  ar_records: ['ret_ids', 'ship_fee_total', 'return_total'],
+};
+
+for (const [table, cols] of Object.entries(requiredColumns)) {
+  const known = mainColumns.get(table) || new Set();
+  for (const col of cols) {
+    if (!known.has(col)) {
+      errors.push(`schema table ${table} is missing required column ${col}`);
+    }
+  }
+}
+
+if (!/GRANT\s+SELECT\s*,\s*INSERT\s*,\s*UPDATE\s*,\s*DELETE\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+TO\s+authenticated\s*;/i.test(mainSchema)) {
+  errors.push('supabase-schema.sql must grant table privileges to authenticated');
 }
 
 console.log('ERP data audit');

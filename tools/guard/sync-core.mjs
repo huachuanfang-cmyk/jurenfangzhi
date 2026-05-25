@@ -61,6 +61,40 @@ export function normalizeLocalRowsBeforeSave(key, rows) {
   });
 }
 
+export function stableCloudSerialId(key, row, idx) {
+  var seed = key + '|' + (row.ord_id || row.ordId || row.no || row.id || idx || 0);
+  var hash = 2166136261;
+  String(seed).split('').forEach(function(ch) {
+    hash ^= ch.charCodeAt(0);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  });
+  return 1000000 + (Math.abs(hash >>> 0) % 1900000000);
+}
+
+export function withFallbackSerialIds(key, payload) {
+  if (key !== 'wd' && key !== 'dd') return payload;
+  return (payload || []).map(function(row, idx) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    if (!hasInvalidCloudSerialId(row.id)) return row;
+    return { ...row, id: stableCloudSerialId(key, row, idx) };
+  });
+}
+
+export function withoutCloudColumns(payload, columns) {
+  var skip = {};
+  (columns || []).forEach(function(column) {
+    skip[column] = true;
+  });
+  return (payload || []).map(function(row) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    var copy = {};
+    Object.keys(row).forEach(function(key) {
+      if (!skip[key]) copy[key] = row[key];
+    });
+    return copy;
+  });
+}
+
 /**
  * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
  * 哪些 dirty flag 应清除、哪些应保留。

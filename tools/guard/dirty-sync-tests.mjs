@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
 
 const tests = [];
 
@@ -356,6 +356,39 @@ test('weaving and dyeing local save strips invalid serial id before future sync 
   }
   if (rows[1].id !== '12') {
     throw new Error('valid serial id should be preserved');
+  }
+});
+
+test('weaving and dyeing fallback payload supplies stable serial id for legacy cloud tables', () => {
+  var payload = [
+    { ord_id: 'ord-001', fac_nm: '织厂' },
+    { id: '', ord_id: 'ord-001', fac_nm: '织厂' },
+    { id: 15, ord_id: 'ord-002', fac_nm: '织厂2' },
+  ];
+  var fixed = withFallbackSerialIds('wd', payload);
+
+  if (!Number.isInteger(fixed[0].id) || fixed[0].id <= 0) {
+    throw new Error('fallback should generate positive integer id');
+  }
+  if (fixed[0].id !== fixed[1].id) {
+    throw new Error('fallback id should be stable for the same order');
+  }
+  if (fixed[2].id !== 15) {
+    throw new Error('valid cloud serial id should not be changed');
+  }
+});
+
+test('return fallback payload can omit missing deduct_kg column without changing local data', () => {
+  var payload = [
+    { id: 'ret-001', out_id: 'out-001', deduct_kg: 12.5, reason: '品质问题' },
+  ];
+  var fixed = withoutCloudColumns(payload, ['deduct_kg']);
+
+  if ('deduct_kg' in fixed[0]) {
+    throw new Error('fallback payload should omit schema-missing deduct_kg');
+  }
+  if (payload[0].deduct_kg !== 12.5) {
+    throw new Error('fallback must not mutate local payload source');
   }
 });
 

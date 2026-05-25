@@ -987,7 +987,7 @@ function camelToSnake(obj){
   if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   var r = {};
   for(var k in obj){
-    var sk = k.replace(/([a-z])([A-Z])/g, function(m, a, b){return a+'_'+b.toLowerCase();});
+    var sk = k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toLowerCase();
     r[sk] = obj[k];
   }
   return r;
@@ -1046,7 +1046,7 @@ function normalizeLocalRowsBeforeSave(key,rows){
 function rowsToCloudPayloadForKey(key,rows){
   var payload = (rows||[]).map(function(x){return camelToSnake(prepareCloudRow(key,x));});
   // ret: deductKG 只存本地用于对账，云端 fg_returns 表尚未有该列（或 schema 缓存为 deduct_kG），避免错误
-  if(key==='ret') payload = withoutCloudColumns(payload, ['deduct_kg']);
+  if(key==='ret') payload = withoutCloudColumns(payload, ['deduct_kg','deduct_kG']);
   return payload;
 }
 
@@ -1092,8 +1092,8 @@ async function upsertCloudRows(key,table,rows){
   if((key==='wd'||key==='dd')&&msg.indexOf('null value in column "id"')>=0){
     return await _supabaseData.from(table).upsert(withFallbackSerialIds(key,payload),{onConflict:conflictKey,ignoreDuplicates:false});
   }
-  if(key==='ret'&&msg.indexOf("'deduct_kg' column")>=0){
-    return await _supabaseData.from(table).upsert(withoutCloudColumns(payload,['deduct_kg']),{onConflict:conflictKey,ignoreDuplicates:false});
+  if(key==='ret'&&msg.toLowerCase().indexOf("'deduct_kg' column")>=0){
+    return await _supabaseData.from(table).upsert(withoutCloudColumns(payload,['deduct_kg','deduct_kG']),{onConflict:conflictKey,ignoreDuplicates:false});
   }
   return result;
 }

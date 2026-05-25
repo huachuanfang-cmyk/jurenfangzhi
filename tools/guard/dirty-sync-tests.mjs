@@ -378,14 +378,48 @@ test('weaving and dyeing fallback payload supplies stable serial id for legacy c
   }
 });
 
+test('camelToSnake handles consecutive uppercase letters correctly', () => {
+  // 验证 camelToSnake 实现：deductKG → deduct_kg, totalKG → total_kg 而非 deduct_kG
+  function camelToSnake(obj){
+    if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    var r = {};
+    for(var k in obj){
+      var sk = k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').toLowerCase();
+      r[sk] = obj[k];
+    }
+    return r;
+  }
+  var result = camelToSnake({ deductKG: 12.5, totalKG: 100, fgoNo: 'FGO001' });
+  var keys = Object.keys(result);
+  if (!keys.includes('deduct_kg')) throw new Error(
+    'deductKG should become deduct_kg, got keys: ' + keys.join(', ')
+  );
+  if (!keys.includes('total_kg')) throw new Error(
+    'totalKG should become total_kg, got: ' + keys.join(', ')
+  );
+  if (!keys.includes('fgo_no')) throw new Error(
+    'fgoNo should become fgo_no, got: ' + keys.join(', ')
+  );
+  // Also verify no capital-G versions exist
+  if (keys.includes('deduct_kG')) throw new Error(
+    'deduct_kG should NOT appear in keys: ' + keys.join(', ')
+  );
+  if (keys.includes('total_kG')) throw new Error(
+    'total_kG should NOT appear in keys: ' + keys.join(', ')
+  );
+});
+
 test('return fallback payload can omit missing deduct_kg column without changing local data', () => {
   var payload = [
-    { id: 'ret-001', out_id: 'out-001', deduct_kg: 12.5, reason: '品质问题' },
+    { id: 'ret-001', out_id: 'out-001', deduct_kg: 12.5, deduct_kG: 12.5, reason: '品质问题' },
   ];
-  var fixed = withoutCloudColumns(payload, ['deduct_kg']);
+  var fixed = withoutCloudColumns(payload, ['deduct_kg', 'deduct_kG']);
 
   if ('deduct_kg' in fixed[0]) {
     throw new Error('fallback payload should omit schema-missing deduct_kg');
+  }
+  if ('deduct_kG' in fixed[0]) {
+    throw new Error('fallback payload should omit legacy malformed deduct_kG');
   }
   if (payload[0].deduct_kg !== 12.5) {
     throw new Error('fallback must not mutate local payload source');

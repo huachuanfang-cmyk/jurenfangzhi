@@ -9904,6 +9904,35 @@ function openYarnOutM(type, editId){
   var title=(isOut?'+ 发料出库':'↩ 余纱回仓');
   var modal=buildModal(title,'',function(body){
     var g=document.createElement('div');g.className='fg';
+    var factOpts=[{v:'',l:'— 请选择工厂 —'}].concat((DB.facts||[]).filter(function(f){return !f.type||f.type==='织布厂'||f.type==='工厂';}).map(function(f){return{v:f.nm,l:f.nm};}));
+    function findYarnForOrder(ordNo){
+      if(!ordNo)return null;
+      var ord=(DB.orders||[]).find(function(o){return o.no===ordNo;})||{};
+      var matches=(DB.yarns||[]).filter(function(y){
+        return y.ordNo===ordNo||(ord.id&&y.ordId===ord.id);
+      });
+      return matches.length?matches[matches.length-1]:null;
+    }
+    function yarnDeliveryFactory(y){
+      if(!y||!y.delFacId)return '';
+      var f=(DB.facts||[]).find(function(x){return x.id===y.delFacId||x.nm===y.delFacId;});
+      return f?f.nm:'';
+    }
+    function setIfEmpty(id,val){
+      var el=document.getElementById(id);
+      if(el&&!el.value&&val!==undefined&&val!==null&&String(val)!=='')el.value=val;
+    }
+    function applyYarnToOutForm(y){
+      if(!y)return;
+      setIfEmpty('yo-yarn',y.id||'');
+      setIfEmpty('yo-spec',y.spec||'');
+      setIfEmpty('yo-batch',y.batchNo||'');
+      setIfEmpty('yo-kg',y.actKg||y.ordKg||'');
+      setIfEmpty('yo-fact',yarnDeliveryFactory(y));
+    }
+    var ordOpts=[{v:'',l:'— 关联销售订单（优先）—'}].concat((DB.orders||[]).map(function(o){return{v:o.no,l:o.no+' — '+(o.custNm||'')};}));
+    var ordSel=mkSelect('yo-ord',ordOpts,rec.ordNo||'');
+    g.appendChild(fv('关联销售订单（优先）',ordSel));
     // 纱支选择
     var yarnOpts=[{v:'',l:'— 请选择纱支 —'}].concat(DB.yarns.map(function(y){
       return{v:y.id,l:(y.spec||'未知规格')+(y.batchNo?' [批:'+y.batchNo+']':'')+(y.color?' '+y.color:'')};
@@ -9911,25 +9940,23 @@ function openYarnOutM(type, editId){
     var yarnSel=mkSelect('yo-yarn',yarnOpts,rec.yarnId||'');
     yarnSel.onchange=function(){
       var y=DB.yarns.find(function(x){return x.id===this.value;}.bind(this));
-      if(!y)return;
-      var sp=document.getElementById('yo-spec');if(sp&&!sp.value)sp.value=y.spec||'';
-      var bn=document.getElementById('yo-batch');if(bn&&!bn.value)bn.value=y.batchNo||'';
+      applyYarnToOutForm(y);
     };
     g.appendChild(fv('纱支（从采购库选）',yarnSel,true));
     g.appendChild(fv('纱支规格',mkInput('yo-spec',rec.spec||'','如：32S精梳棉')));
     g.appendChild(fv('纱批号',mkInput('yo-batch',rec.batchNo||'','自动带入可修改')));
     // 织厂选择
-    var factOpts=[{v:'',l:'— 请选择工厂 —'}].concat((DB.facts||[]).filter(function(f){return !f.type||f.type==='织布厂'||f.type==='工厂';}).map(function(f){return{v:f.nm,l:f.nm};}));
     g.appendChild(fv(isOut?'发往工厂':'来源工厂',mkSelect('yo-fact',factOpts,rec.factory||''),true));
-    // 关联订单
-    var ordOpts=[{v:'',l:'— 关联销售订单（选填）—'}].concat((DB.orders||[]).map(function(o){return{v:o.no,l:o.no+' — '+(o.custNm||'')};}));
-    g.appendChild(fv('关联销售订单',mkSelect('yo-ord',ordOpts,rec.ordNo||'')));
     // 数量+日期
     g.appendChild(fv('数量 (KG)',mkInput('yo-kg',rec.kg||'','','number'),true));
     var dateInp=mkInput('yo-date',rec.date||new Date().toISOString().slice(0,10),'','date');
     g.appendChild(fv('日期',dateInp));
     g.appendChild(fvFull('备注',mkInput('yo-rm',rec.rm||'',isOut?'如：发往XX厂，用于XX订单':'如：余纱XX KG退回仓库')));
     body.appendChild(g);
+    ordSel.onchange=function(){applyYarnToOutForm(findYarnForOrder(this.value));};
+    if(ordSel.value&&!rec.yarnId){
+      setTimeout(function(){applyYarnToOutForm(findYarnForOrder(ordSel.value));},0);
+    }
   },function(){
     var yarnId=document.getElementById('yo-yarn').value;
     var spec=document.getElementById('yo-spec').value.trim();

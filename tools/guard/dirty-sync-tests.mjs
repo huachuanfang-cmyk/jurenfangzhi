@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS, pendingDeleteIdsForKey, filterRowsPendingDelete } from './sync-core.mjs';
 
 const tests = [];
 
@@ -89,6 +89,31 @@ test('test mode does not trigger any cloud sync', () => {
   if (!testModeActive) throw new Error(
     'test mode should be active'
   );
+});
+
+test('pending delete queue prevents cloud rows from being restored during pull', () => {
+  const rows = [
+    { id: 'yn-old', poNo: 'PO20260007' },
+    { id: 'yn-new', poNo: 'PO20260008' },
+  ];
+  const filtered = filterRowsPendingDelete(
+    'yn',
+    rows,
+    [{ key: 'yn', table: 'yarns', id: 'yn-old' }],
+    { yn: 'yarns' }
+  );
+  if (filtered.length !== 1 || filtered[0].id !== 'yn-new') {
+    throw new Error('pending-deleted cloud row should be filtered out before merge');
+  }
+});
+
+test('pending delete queue can match table name when key is missing', () => {
+  const ids = pendingDeleteIdsForKey(
+    'yn',
+    [{ table: 'yarns', id: 'yn-old' }],
+    { yn: 'yarns' }
+  );
+  if (!ids['yn-old']) throw new Error('delete queue item should match by cloud table name');
 });
 
 // ══ 测试 4：推送成功的表在 pull 后被清除 dirty flag ══

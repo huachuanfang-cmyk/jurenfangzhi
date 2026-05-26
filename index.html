@@ -883,13 +883,21 @@ var DB={
     var table=TABLE_MAP[key];
     if(table&&_supabaseData&&isOnline()){
       (async function(){
-        var{error}=await _supabaseData.from(table).delete().eq('id',id);
-        if(error)console.warn('Supabase删除失败['+key+']:',error.message);
+        try{
+          var{error}=await _supabaseData.from(table).delete().eq('id',id);
+          if(error){
+            queueCloudDelete(key,id,table);
+            recordSyncError(key,error.message||'删除同步失败');
+            console.warn('Supabase删除失败['+key+']:',error.message);
+          }
+        }catch(e){
+          queueCloudDelete(key,id,table);
+          recordSyncError(key,(e&&e.message)||'删除同步异常');
+          console.warn('Supabase删除异常['+key+']:',e);
+        }
       })();
     }else if(table){
-      var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
-      dq.push({key:key,id:id,table:table});
-      localStorage.setItem('gjr5_delq',JSON.stringify(dq));
+      queueCloudDelete(key,id,table);
     }
     return true;
   },
@@ -1262,6 +1270,54 @@ function clearSyncError(key){
   try{localStorage.removeItem('gjr5_syncerr_'+key);}catch(e){}
 }
 
+function readDeleteQueue(){
+  try{
+    var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
+    return Array.isArray(dq)?dq:[];
+  }catch(e){return [];}
+}
+
+function writeDeleteQueue(dq){
+  try{localStorage.setItem('gjr5_delq',JSON.stringify(dq||[]));}catch(e){}
+}
+
+function queueCloudDelete(key,id,table){
+  if(!key||!id||!table)return;
+  var dq=readDeleteQueue();
+  var exists=dq.some(function(x){return x&&x.id===id&&(x.key===key||x.table===table);});
+  if(!exists){dq.push({key:key,id:id,table:table});writeDeleteQueue(dq);}
+}
+
+function pendingDeleteIdsForKey(key){
+  var table=TABLE_MAP[key];
+  var ids={};
+  readDeleteQueue().forEach(function(x){
+    if(x&&x.id&&(x.key===key||x.table===table))ids[x.id]=true;
+  });
+  return ids;
+}
+
+function filterRowsPendingDelete(key,rows){
+  var ids=pendingDeleteIdsForKey(key);
+  return (rows||[]).filter(function(x){return !(x&&x.id&&ids[x.id]);});
+}
+
+async function processDeleteQueue(){
+  if(_testMode||!_supabaseData)return readDeleteQueue();
+  var dq=readDeleteQueue();
+  if(!dq.length)return dq;
+  for(var i=dq.length-1;i>=0;i--){
+    try{
+      var item=dq[i];
+      if(!item||!item.table||!item.id){dq.splice(i,1);continue;}
+      var{error}=await _supabaseData.from(item.table).delete().eq('id',item.id);
+      if(!error)dq.splice(i,1);
+    }catch(e){}
+  }
+  writeDeleteQueue(dq);
+  return dq;
+}
+
 async function pullFromSupabase(){
   if(_testMode) return;
   initSupabase();
@@ -1284,6 +1340,8 @@ async function pullFromSupabase(){
       }
     }
   }
+  // 先处理待删队列，再拉云端，避免已删除记录从 Supabase 回弹。
+  await processDeleteQueue();
   // Step 2 — 拉取云端数据（跳过脏表 以及 刚推送成功的表——后者本地已是最新，拉取可能带回旧数据）
   var loaded = 0;
   var fails = [];
@@ -1310,12 +1368,13 @@ async function pullFromSupabase(){
       if(error){ recordSyncError(key,error.message); fails.push(table); continue; }
       clearSyncError(key);
       // ── 安全合并：云端数据 + 本地独有记录（防止推送失败后 pull 覆盖丢失本地新数据）──
-      var camelData = (data||[]).map(snakeToCamel);
+      var camelData = filterRowsPendingDelete(key,(data||[]).map(snakeToCamel));
       if(key === 'o') camelData.sort(function(a,b){ return (a.no||'') < (b.no||'') ? 1 : -1; });
       else if(['c','f','mat','qt','yn'].indexOf(key)>=0) camelData.sort(function(a,b){ var an=a.nm||a.name||''; var bn=b.nm||b.name||''; return an<bn?-1:an>bn?1:0; });
       var _localPre=DB.load(key)||[];
       var _remSet={};camelData.forEach(function(x){if(x&&x.id)_remSet[x.id]=true;});
-      var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id];});
+      var _pendingDeleteIds=pendingDeleteIdsForKey(key);
+      var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id]&&!_pendingDeleteIds[x.id];});
       if(_localOnly.length>0){
         (function(_key,_t,_rows){upsertCloudRows(_key,_t,_rows).catch(function(){});})(key,TABLE_MAP[key],_localOnly);
       }
@@ -1338,17 +1397,7 @@ async function pullFromSupabase(){
       localStorage.removeItem('gjr5_dirty_'+key);
     }
   }
-  // 处理离线删除队列
-  var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
-  if(dq.length){
-    for(var i=dq.length-1;i>=0;i--){
-      try{
-        var{error}=await _supabaseData.from(dq[i].table).delete().eq('id',dq[i].id);
-        if(!error)dq.splice(i,1);
-      }catch(e){}
-    }
-    localStorage.setItem('gjr5_delq',JSON.stringify(dq));
-  }
+  await processDeleteQueue();
   if(fails.length) showToast('加载失败: '+fails.join(', '), 'error');
   else if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
   else showToast('未加载到数据','warning');
@@ -1601,21 +1650,8 @@ window.addEventListener('online', function(){
       });
     }, 1000);
   }
-  // 重试离线删除队列
-  var dq = JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
-  if(dq.length){
-    setTimeout(function(){
-      dq.slice().reverse().forEach(function(item){
-        (async function(){
-          var {error} = await _supabaseData.from(item.table).delete().eq('id', item.id);
-          if(!error){
-            var idx = dq.findIndex(function(x){ return x.key === item.key && x.id === item.id; });
-            if(idx >= 0) dq.splice(idx, 1);
-            localStorage.setItem('gjr5_delq', JSON.stringify(dq));
-          }
-        })();
-      });
-    }, 2000);
+  if(readDeleteQueue().length){
+    setTimeout(function(){ processDeleteQueue(); }, 2000);
   }
 });
 

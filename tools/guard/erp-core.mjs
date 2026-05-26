@@ -6,6 +6,18 @@ function byId(items, id) {
   return items.find((item) => item.id === id) || null;
 }
 
+function isVoidedPayment(payment) {
+  return Boolean(payment && (payment.voided || payment.status === 'voided' || payment.voidAt));
+}
+
+function activePaymentTotal(payments, fallback = 0) {
+  if (!Array.isArray(payments) || payments.length === 0) return parseFloat(fallback) || 0;
+  return payments.reduce((sum, payment) => {
+    if (isVoidedPayment(payment)) return sum;
+    return sum + (parseFloat(payment.amt) || 0);
+  }, 0);
+}
+
 export function createGuardStore() {
   const data = {
     o: [],
@@ -226,6 +238,7 @@ export function createGuardStore() {
         no: receivable.no || '',
         outIds: clone(receivable.outIds || []),
         paidTotal: receivable.paidTotal || 0,
+        payments: clone(receivable.payments || []),
       };
       data.ar = data.ar.filter((item) => item.id !== record.id).concat(record);
       return clone(record);
@@ -484,7 +497,8 @@ export function createGuardStore() {
         };
       }, this).filter(Boolean);
       var returnTotal = returns.reduce(function(s, ret){ return s + ret.amt; }, 0);
-      var balance = Math.max(0, totalAmt + shipFeeTotal - returnTotal - (parseFloat(ar.paidTotal) || 0));
+      var paidTotal = activePaymentTotal(ar.payments, ar.paidTotal);
+      var balance = Math.max(0, totalAmt + shipFeeTotal - returnTotal - paidTotal);
 
       return {
         id: ar.id,
@@ -495,7 +509,7 @@ export function createGuardStore() {
         shipFeeTotal: Math.round(shipFeeTotal * 100) / 100,
         returnTotal: Math.round(returnTotal * 100) / 100,
         returns: returns,
-        paidTotal: parseFloat(ar.paidTotal) || 0,
+        paidTotal: Math.round(paidTotal * 100) / 100,
         balanceAmt: Math.round(balance * 100) / 100,
         status: balance <= 0 ? 'settled' : 'pending',
       };

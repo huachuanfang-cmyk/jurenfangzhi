@@ -95,6 +95,23 @@ export function withoutCloudColumns(payload, columns) {
   });
 }
 
+export function pendingDeleteIdsForKey(key, deleteQueue, tableMap = TABLE_MAP) {
+  var table = tableMap[key];
+  var ids = {};
+  (deleteQueue || []).forEach(function(item) {
+    if (!item || !item.id) return;
+    if (item.key === key || item.table === table) ids[item.id] = true;
+  });
+  return ids;
+}
+
+export function filterRowsPendingDelete(key, rows, deleteQueue, tableMap = TABLE_MAP) {
+  var ids = pendingDeleteIdsForKey(key, deleteQueue, tableMap);
+  return (rows || []).filter(function(row) {
+    return !(row && row.id && ids[row.id]);
+  });
+}
+
 /**
  * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
  * 哪些 dirty flag 应清除、哪些应保留。

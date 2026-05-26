@@ -385,6 +385,30 @@ test('receivable details show pending status when partially paid', () => {
   assert.equal(details.status, 'pending');
 });
 
+test('receivable details ignore voided duplicate payments', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-028v', no: 'G20260028V', prUnit: 'KG', unitPr: 10 });
+  store.receiveFinishedGoods({ id: 'in-028v', ordId: 'ord-028v',
+    rolls: [{ id: 'roll-028v-a', kg: '100', colorNm: 'White' }] });
+  store.shipFinishedGoods({ id: 'out-028v', ordId: 'ord-028v', rollIds: ['roll-028v-a'] });
+  store.createReceivable({
+    id: 'ar-028v',
+    no: 'AR20260028V',
+    outIds: ['out-028v'],
+    paidTotal: 1000,
+    payments: [
+      { id: 'pay-void', amt: '1000', date: '2026-05-26', method: '转账', status: 'voided', voidReason: '重复录入' },
+      { id: 'pay-active', amt: '200', date: '2026-05-26', method: '转账' },
+    ],
+  });
+
+  const details = store.getReceivableDetails('ar-028v');
+  assert.equal(details.totalAmt, 1000);
+  assert.equal(details.paidTotal, 200);
+  assert.equal(details.balanceAmt, 800);
+  assert.equal(details.status, 'pending');
+});
+
 test('receivable details include shipment extra fee in balance', () => {
   const store = createGuardStore();
   store.createOrder({ id: 'ord-029', no: 'G20260029', prUnit: 'KG', unitPr: 10 });

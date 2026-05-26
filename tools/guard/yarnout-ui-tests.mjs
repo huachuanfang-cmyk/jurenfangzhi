@@ -11,6 +11,7 @@ function extractFunction(name) {
 }
 
 const yarnOutModal = extractFunction('openYarnOutM');
+const yarnPurchaseSave = extractFunction('saveYarn');
 
 const tests = [];
 function test(name, fn) {
@@ -39,6 +40,11 @@ test('yarn issue factory selector only lists weaving factories', () => {
   assert.match(yarnOutModal, /ps\.indexOf\('织厂'\)\s*>=\s*0/, 'factory filter should include 织厂 process');
   assert.match(yarnOutModal, /ps\.indexOf\('织布厂'\)\s*>=\s*0/, 'factory filter should include 织布厂 process');
   assert.doesNotMatch(yarnOutModal, /!f\.type\|\|f\.type==='织布厂'\|\|f\.type==='工厂'/, 'should not list all legacy generic factories');
+});
+
+test('yarn purchase save requires linked sales order before writing', () => {
+  assert.match(yarnPurchaseSave, /if\s*\(!ordId\)\s*return\s+alert\('请选择关联销售订单'\)/, 'saveYarn should reject purchases without a linked sales order');
+  assert.match(yarnPurchaseSave, /if\s*\(!ordRec\)\s*return\s+alert\('关联销售订单不存在，请重新选择'\)/, 'saveYarn should reject stale order selections');
 });
 
 let passed = 0;

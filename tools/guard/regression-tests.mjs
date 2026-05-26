@@ -133,6 +133,87 @@ test('delete operations produce delete intents instead of only local filtering',
   assert.deepEqual(store.getDeleteIntents(), [{ key: 'o', id: 'ord-001' }]);
 });
 
+test('linked sales order cannot be hard deleted', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-linked', no: 'G20260088', custNm: 'Linked Customer' });
+  store.receiveFinishedGoods({
+    id: 'in-linked',
+    ordId: 'ord-linked',
+    rolls: [{ id: 'roll-linked', kg: '20.5' }],
+  });
+
+  assert.equal(store.canDeleteOrder('ord-linked').ok, false);
+  assert.match(store.canDeleteOrder('ord-linked').message, /成品入库/);
+});
+
+test('unlinked draft sales order can still be hard deleted', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-draft', no: 'G20260089', status: '草稿' });
+
+  assert.equal(store.canDeleteOrder('ord-draft').ok, true);
+});
+
+test('linked sales order can be cancelled without deleting linked records', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-linked-cancel', no: 'G20260090', custNm: 'Linked Customer' });
+  store.receiveFinishedGoods({
+    id: 'in-linked-cancel',
+    ordId: 'ord-linked-cancel',
+    rolls: [{ id: 'roll-linked-cancel', kg: '20.5' }],
+  });
+
+  const cancelled = store.cancelOrder('ord-linked-cancel');
+
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(store.getOrder('ord-linked-cancel').status, 'cancelled');
+  assert.equal(store.getRoll('roll-linked-cancel').status, 'in');
+  assert.equal(store.canDeleteOrder('ord-linked-cancel').ok, false);
+});
+
+test('integrity scan reports orphan finished-goods records', () => {
+  const store = createGuardStore();
+  store.injectRecord('fgr', {
+    id: 'roll-orphan',
+    ordId: 'missing-order',
+    rollNo: '1',
+    kg: '18',
+    status: 'in',
+  });
+
+  const issues = store.findDataIntegrityIssues();
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /不存在的销售订单/);
+});
+
+test('integrity scan reports broken roll references across stock flow', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-030', no: 'G20260030' });
+  store.injectRecord('fgi', { id: 'in-broken', ordId: 'ord-030', rollIds: ['missing-roll'] });
+  store.injectRecord('fgo', { id: 'out-broken', ordId: 'ord-030', rollIds: ['missing-roll'] });
+  store.injectRecord('ret', { id: 'ret-broken', ordId: 'ord-030', outId: 'out-broken', rollIds: ['missing-roll'] });
+  store.injectRecord('ar', { id: 'ar-broken', outIds: ['out-broken'], retIds: ['missing-ret'] });
+
+  const messages = store.findDataIntegrityIssues().map((issue) => issue.message).join('\n');
+  assert.match(messages, /成品入库.*不存在的布卷 missing-roll/);
+  assert.match(messages, /成品出货单.*不存在的布卷 missing-roll/);
+  assert.match(messages, /退货单.*不存在的布卷 missing-roll/);
+  assert.match(messages, /应收对账单.*不存在的退货单 missing-ret/);
+});
+
+test('integrity scan reports rolls linked to wrong shipment or order', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-a', no: 'G20260031' });
+  store.createOrder({ id: 'ord-b', no: 'G20260032' });
+  store.injectRecord('fgr', { id: 'roll-a', ordId: 'ord-a', status: 'out', outId: 'out-a' });
+  store.injectRecord('fgo', { id: 'out-b', ordId: 'ord-b', rollIds: ['roll-a'] });
+  store.injectRecord('ret', { id: 'ret-b', ordId: 'ord-b', outId: 'out-b', rollIds: ['roll-a'] });
+
+  const messages = store.findDataIntegrityIssues().map((issue) => issue.message).join('\n');
+  assert.match(messages, /布卷 roll-a 已关联到其他送货单 out-a/);
+  assert.match(messages, /布卷 roll-a 不属于该销售订单/);
+  assert.match(messages, /退货单 ret-b 的布卷 roll-a 不属于原送货单 out-b/);
+});
+
 // ══ 订单核心字段护栏 ══
 
 test('order core fields are preserved: fabric code, price unit, delivery date', () => {
@@ -491,11 +572,29 @@ test('stale yarn edit id is rejected instead of being saved as a new purchase', 
   assert.equal(store.getYarnPurchases().length, 0);
 });
 
+test('yarn purchase requires a linked sales order', () => {
+  const store = createGuardStore();
+
+  assert.throws(
+    () => store.saveYarnPurchase({
+      id: 'yn-no-order',
+      supplier: '沃马纺织',
+      spec: '32S/1精棉',
+      ordKg: '1675',
+      unitPr: '23.5',
+    }),
+    /linked sales order required/
+  );
+  assert.equal(store.getYarnPurchases().length, 0);
+});
+
 test('yarn purchase delete is blocked when issue or return records reference it', () => {
   const store = createGuardStore();
+  store.createOrder({ id: 'ord-yarn-002', no: 'G20260676' });
   store.saveYarnPurchase({
     id: 'yn-002',
     poNo: 'PO20260002',
+    ordId: 'ord-yarn-002',
     supplier: '沃马纺织',
     spec: '32S/1精棉',
     ordKg: '1675',

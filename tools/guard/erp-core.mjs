@@ -9,6 +9,12 @@ function byId(items, id) {
 export function createGuardStore() {
   const data = {
     o: [],
+    c: [],
+    f: [],
+    mat: [],
+    t: [],
+    wd: [],
+    dd: [],
     fgi: [],
     fgo: [],
     fgr: [],
@@ -25,7 +31,28 @@ export function createGuardStore() {
     return record;
   }
 
+  function orderRefMatches(record, order) {
+    if (!record || !order) return false;
+    const ordId = String(record.ordId || record.ord_id || record.orderId || '').split('::')[0];
+    const ordNo = String(record.ordNo || record.ord_no || record.orderNo || '');
+    return (!!ordId && ordId === order.id) || (!!ordNo && ordNo === order.no);
+  }
+
+  function orderExistsForRecord(record) {
+    if (!record) return true;
+    const ordId = String(record.ordId || record.ord_id || record.orderId || '').split('::')[0];
+    const ordNo = String(record.ordNo || record.ord_no || record.orderNo || '');
+    if (!ordId && !ordNo) return true;
+    return data.o.some((order) => (!!ordId && order.id === ordId) || (!!ordNo && order.no === ordNo));
+  }
+
   return {
+    injectRecord(key, record) {
+      if (!Object.hasOwn(data, key)) throw new Error(`unknown data key: ${key}`);
+      data[key] = data[key].filter((item) => item.id !== record.id).concat(clone(record));
+      return clone(record);
+    },
+
     createOrder(order) {
       const record = {
         id: order.id,
@@ -35,6 +62,8 @@ export function createGuardStore() {
         prUnit: order.prUnit || '',
         unitPr: order.unitPr || 0,
         delDate: order.delDate || '',
+        status: order.status || 'draft',
+        cancelledAt: order.cancelledAt || '',
         colors: clone(order.colors || []),
       };
       data.o = data.o.filter((item) => item.id !== record.id).concat(record);
@@ -49,6 +78,13 @@ export function createGuardStore() {
     updateOrderColors(id, colors) {
       const order = requireRecord('o', id, 'order');
       order.colors = clone(colors);
+      return clone(order);
+    },
+
+    cancelOrder(id) {
+      const order = requireRecord('o', id, 'order');
+      order.status = 'cancelled';
+      order.cancelledAt = order.cancelledAt || new Date().toISOString();
       return clone(order);
     },
 
@@ -201,6 +237,134 @@ export function createGuardStore() {
       deleteIntents.push({ key, id });
     },
 
+    canDeleteOrder(id) {
+      const order = byId(data.o, id);
+      if (!order) return { ok: false, refs: [], message: `销售订单不存在: ${id}` };
+
+      const refs = [];
+      const addIf = (label, key, matcher = (item) => orderRefMatches(item, order)) => {
+        const count = data[key].filter(matcher).length;
+        if (count) refs.push({ label, count });
+      };
+
+      addIf('纱线采购', 'yn');
+      addIf('发料/回仓', 'yo');
+      addIf('加工跟踪', 't');
+      addIf('织厂加工单', 'wd');
+      addIf('染整加工单', 'dd');
+      addIf('成品入库', 'fgi');
+      addIf('成品配料/库存', 'fgr');
+      addIf('成品出货单', 'fgo');
+      addIf('退货单', 'ret');
+
+      const orderShipmentIds = new Set(data.fgo.filter((item) => orderRefMatches(item, order)).map((item) => item.id));
+      const orderReturnIds = new Set(data.ret.filter((item) => orderRefMatches(item, order)).map((item) => item.id));
+      addIf('应收对账单', 'ar', (item) =>
+        (item.outIds || []).some((outId) => orderShipmentIds.has(outId)) ||
+        (item.retIds || []).some((retId) => orderReturnIds.has(retId))
+      );
+
+      if (!refs.length) return { ok: true, refs: [], message: '' };
+      const labels = refs.map((ref) => `${ref.label}${ref.count}条`).join('、');
+      return {
+        ok: false,
+        refs,
+        message: `订单 ${order.no || id} 已关联 ${labels}，不能直接删除。建议改为已取消/作废，保留历史追踪。`,
+      };
+    },
+
+    findDataIntegrityIssues() {
+      const issues = [];
+      const noMap = new Map();
+      data.o.forEach((order) => {
+        if (!order.no) return;
+        const list = noMap.get(order.no) || [];
+        list.push(order.id);
+        noMap.set(order.no, list);
+      });
+      for (const [no, ids] of noMap.entries()) {
+        if (ids.length > 1) issues.push({ type: 'duplicate_order_no', message: `重复订单号 ${no}: ${ids.join(', ')}` });
+      }
+
+      const checks = [
+        ['yn', '纱线采购'],
+        ['yo', '发料/回仓'],
+        ['t', '加工跟踪'],
+        ['wd', '织厂加工单'],
+        ['dd', '染整加工单'],
+        ['fgi', '成品入库'],
+        ['fgr', '成品配料/库存'],
+        ['fgo', '成品出货单'],
+        ['ret', '退货单'],
+      ];
+      checks.forEach(([key, label]) => {
+        data[key].forEach((item) => {
+          if (!orderExistsForRecord(item)) {
+            issues.push({ type: 'orphan_order_ref', key, id: item.id, message: `${label} ${item.id || ''} 引用了不存在的销售订单` });
+          }
+        });
+      });
+
+      const shipmentIds = new Set(data.fgo.map((item) => item.id));
+      data.ret.forEach((ret) => {
+        if (ret.outId && !shipmentIds.has(ret.outId)) {
+          issues.push({ type: 'orphan_shipment_ref', key: 'ret', id: ret.id, message: `退货单 ${ret.id || ''} 引用了不存在的送货单` });
+        }
+      });
+      data.ar.forEach((ar) => {
+        (ar.outIds || []).forEach((outId) => {
+          if (!shipmentIds.has(outId)) {
+            issues.push({ type: 'orphan_shipment_ref', key: 'ar', id: ar.id, message: `应收对账单 ${ar.id || ''} 引用了不存在的送货单 ${outId}` });
+          }
+        });
+      });
+
+      const rollIds = new Set(data.fgr.map((item) => item.id));
+      data.fgi.forEach((receipt) => {
+        (receipt.rollIds || []).forEach((rollId) => {
+          if (rollId && !rollIds.has(rollId)) {
+            issues.push({ type: 'orphan_roll_ref', key: 'fgi', id: receipt.id, message: `成品入库 ${receipt.id || ''} 引用了不存在的布卷 ${rollId}` });
+          }
+        });
+      });
+      data.fgo.forEach((shipment) => {
+        (shipment.rollIds || []).forEach((rollId) => {
+          const roll = byId(data.fgr, rollId);
+          if (!roll) {
+            issues.push({ type: 'orphan_roll_ref', key: 'fgo', id: shipment.id, message: `成品出货单 ${shipment.id || ''} 引用了不存在的布卷 ${rollId}` });
+            return;
+          }
+          if (roll.outId && roll.outId !== shipment.id) {
+            issues.push({ type: 'roll_shipment_mismatch', key: 'fgo', id: shipment.id, message: `成品出货单 ${shipment.id || ''} 的布卷 ${rollId} 已关联到其他送货单 ${roll.outId}` });
+          }
+          if (shipment.ordId && roll.ordId && roll.ordId !== shipment.ordId) {
+            issues.push({ type: 'roll_order_mismatch', key: 'fgo', id: shipment.id, message: `成品出货单 ${shipment.id || ''} 的布卷 ${rollId} 不属于该销售订单` });
+          }
+        });
+      });
+      data.ret.forEach((ret) => {
+        (ret.rollIds || []).forEach((rollId) => {
+          const roll = byId(data.fgr, rollId);
+          if (!roll) {
+            issues.push({ type: 'orphan_roll_ref', key: 'ret', id: ret.id, message: `退货单 ${ret.id || ''} 引用了不存在的布卷 ${rollId}` });
+            return;
+          }
+          if (ret.outId && roll.outId && roll.outId !== ret.outId) {
+            issues.push({ type: 'return_roll_mismatch', key: 'ret', id: ret.id, message: `退货单 ${ret.id || ''} 的布卷 ${rollId} 不属于原送货单 ${ret.outId}` });
+          }
+        });
+      });
+      const returnIds = new Set(data.ret.map((item) => item.id));
+      data.ar.forEach((ar) => {
+        (ar.retIds || []).forEach((retId) => {
+          if (retId && !returnIds.has(retId)) {
+            issues.push({ type: 'orphan_return_ref', key: 'ar', id: ar.id, message: `应收对账单 ${ar.id || ''} 引用了不存在的退货单 ${retId}` });
+          }
+        });
+      });
+      return issues;
+    },
+
     getDeleteIntents() {
       return clone(deleteIntents);
     },
@@ -341,7 +505,10 @@ export function createGuardStore() {
       const existing = editId ? byId(data.yn, editId) : null;
       if (editId && !existing) throw new Error(`yarn purchase not found: ${editId}`);
 
-      const order = input.ordId ? byId(data.o, input.ordId) : null;
+      const order = input.ordId
+        ? byId(data.o, input.ordId)
+        : data.o.find((item) => item.no && item.no === input.ordNo);
+      if (!order) throw new Error('linked sales order required');
       const ordKg = input.ordKg || '';
       const unitPr = input.unitPr || '';
       const amount = input.amt !== undefined
@@ -350,8 +517,8 @@ export function createGuardStore() {
       const record = {
         id: editId || input.id,
         poNo: existing ? existing.poNo : (input.poNo || ''),
-        ordId: input.ordId || '',
-        ordNo: order ? order.no : (input.ordNo || ''),
+        ordId: order.id || input.ordId || '',
+        ordNo: order.no || input.ordNo || '',
         supplier: input.supplier || '',
         spec: input.spec || '',
         ordKg: ordKg,

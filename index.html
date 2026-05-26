@@ -803,6 +803,11 @@ var DB={
     var rolls=this.load('fgr')||[];
     var fgouts=this.fgouts;
     var custs=this.custs;
+    if(typeof findDataIntegrityIssues==='function'){
+      (findDataIntegrityIssues()||[]).slice(0,30).forEach(function(issue){
+        issues.push(typeof issue==='string'?issue:(issue.message||String(issue)));
+      });
+    }
     orders.forEach(function(o){
       (o.colors||[]).forEach(function(c){
         if(!c.code&&!c.nm)issues.push('订单 '+o.no+' 存在空颜色项');
@@ -960,6 +965,155 @@ var TABLE_MAP = {
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
   fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns'
 };
+
+function textVal(v){return v===null||v===undefined?'':String(v).trim();}
+function orderRefMatches(row,ord){
+  if(!row||!ord)return false;
+  var rid=textVal(row.ordId||row.ord_id||row.orderId||row.order_id).split('::')[0];
+  var rno=textVal(row.ordNo||row.ord_no||row.orderNo||row.order_no);
+  return (!!rid&&rid===textVal(ord.id)) || (!!rno&&rno===textVal(ord.no));
+}
+function orderExistsForRow(row){
+  var rid=textVal(row&& (row.ordId||row.ord_id||row.orderId||row.order_id)).split('::')[0];
+  var rno=textVal(row&& (row.ordNo||row.ord_no||row.orderNo||row.order_no));
+  if(!rid&&!rno)return true;
+  return (DB.orders||[]).some(function(o){return (!!rid&&textVal(o.id)===rid)|| (!!rno&&textVal(o.no)===rno);});
+}
+function addRefCount(refs,label,key,matcher){
+  var rows=DB.load(key)||[];
+  var count=rows.filter(matcher).length;
+  if(count)refs.push({label:label,count:count});
+}
+function buildDeleteBlockMessage(entityLabel,name,refs){
+  var detail=refs.map(function(r){return r.label+r.count+'条';}).join('、');
+  return entityLabel+'「'+(name||'未命名')+'」已被业务单据引用：'+detail+'。\n\n为避免库存、出货、对账断链，不能直接删除。建议改为停用/已取消/作废，保留历史追踪。';
+}
+function findOrderDeleteRefs(ordId){
+  var ord=(DB.orders||[]).find(function(o){return o.id===ordId;});
+  if(!ord)return {ok:false,refs:[],message:'销售订单不存在，无法删除。'};
+  var refs=[];
+  ['yn','yo','t','wd','dd','fgi','fgr','fgo','ret'].forEach(function(key){
+    var labels={yn:'纱线采购',yo:'发料/回仓',t:'加工跟踪',wd:'织厂加工单',dd:'染整加工单',fgi:'成品入库批次',fgr:'成品配料/库存',fgo:'成品出货单',ret:'退货单'};
+    addRefCount(refs,labels[key],key,function(row){return orderRefMatches(row,ord);});
+  });
+  var outIds={};
+  (DB.fgouts||[]).forEach(function(out){if(orderRefMatches(out,ord)&&out.id)outIds[out.id]=true;});
+  var retIds={};
+  (DB.fgreturns||[]).forEach(function(ret){if(orderRefMatches(ret,ord)&&ret.id)retIds[ret.id]=true;});
+  addRefCount(refs,'应收对账单','ar',function(ar){
+    return (ar.outIds||[]).some(function(id){return outIds[id];}) || (ar.retIds||[]).some(function(id){return retIds[id];});
+  });
+  return refs.length?{ok:false,refs:refs,message:buildDeleteBlockMessage('销售订单',ord.no||ordId,refs)}:{ok:true,refs:[],message:''};
+}
+function canDeleteOrder(ordId){return findOrderDeleteRefs(ordId);}
+function canDeleteCustomer(id){
+  var c=(DB.custs||[]).find(function(x){return x.id===id;});
+  if(!c)return {ok:false,refs:[],message:'客户不存在，无法删除。'};
+  var name=textVal(c.nm);
+  var refs=[];
+  addRefCount(refs,'销售订单','o',function(o){return textVal(o.custNm||o.customer)===name;});
+  addRefCount(refs,'报价单','qt',function(q){return textVal(q.custNm||q.customer||q.cust)===name;});
+  addRefCount(refs,'成品出货单','fgo',function(x){return textVal(x.custNm||x.customer)===name;});
+  addRefCount(refs,'退货单','ret',function(x){return textVal(x.custNm||x.customer)===name;});
+  addRefCount(refs,'应收对账单','ar',function(x){return textVal(x.custNm||x.customer)===name;});
+  return refs.length?{ok:false,refs:refs,message:buildDeleteBlockMessage('客户',name,refs)}:{ok:true,refs:[],message:''};
+}
+function rowHasFactory(row,id,name){
+  if(!row)return false;
+  var keys=['factory','factoryNm','facNm','factNm','wvFac','dyFac','delFacId','supplier','weaver','dyer','printer'];
+  return keys.some(function(k){return textVal(row[k])===id||textVal(row[k])===name;});
+}
+function canDeleteFactory(id){
+  var f=(DB.facts||[]).find(function(x){return x.id===id;});
+  if(!f)return {ok:false,refs:[],message:'工厂不存在，无法删除。'};
+  var name=textVal(f.nm);
+  var refs=[];
+  [['yn','纱线采购'],['yo','发料/回仓'],['t','加工跟踪'],['wd','织厂加工单'],['dd','染整加工单'],['gfy','坯布发货'],['mat','物料档案']].forEach(function(pair){
+    addRefCount(refs,pair[1],pair[0],function(row){return rowHasFactory(row,id,name);});
+  });
+  return refs.length?{ok:false,refs:refs,message:buildDeleteBlockMessage('工厂',name,refs)}:{ok:true,refs:[],message:''};
+}
+function materialTokens(mat){
+  return [mat.id,mat.mid,mat.fab,mat.alias,mat.name].map(textVal).filter(function(x,i,a){return x&&a.indexOf(x)===i;});
+}
+function rowHasMaterial(row,tokens){
+  if(!row)return false;
+  var keys=['matId','mid','prodNo','fab','fabB','fabric','fabNm','name','alias'];
+  return keys.some(function(k){return tokens.indexOf(textVal(row[k]))>=0;});
+}
+function canDeleteMaterial(id){
+  var mat=(DB.mats||[]).find(function(x){return x.id===id;});
+  if(!mat)return {ok:false,refs:[],message:'物料不存在，无法删除。'};
+  var tokens=materialTokens(mat);
+  var refs=[];
+  [['o','销售订单'],['qt','报价单'],['fgi','成品入库批次'],['fgr','成品配料/库存'],['fgo','成品出货单'],['cnotices','打办通知单']].forEach(function(pair){
+    addRefCount(refs,pair[1],pair[0],function(row){return rowHasMaterial(row,tokens);});
+  });
+  return refs.length?{ok:false,refs:refs,message:buildDeleteBlockMessage('物料',mat.mid||mat.fab||id,refs)}:{ok:true,refs:[],message:''};
+}
+function findDataIntegrityIssues(){
+  var issues=[];
+  var noMap={};
+  (DB.orders||[]).forEach(function(o){
+    if(!o.no)return;
+    if(!noMap[o.no])noMap[o.no]=[];
+    noMap[o.no].push(o.id||'无ID');
+  });
+  Object.keys(noMap).forEach(function(no){
+    if(noMap[no].length>1)issues.push({type:'duplicate_order_no',message:'重复订单号 '+no+'：'+noMap[no].join('、')});
+  });
+  [
+    ['yn','纱线采购'],['yo','发料/回仓'],['t','加工跟踪'],['wd','织厂加工单'],['dd','染整加工单'],
+    ['fgi','成品入库批次'],['fgr','成品配料/库存'],['fgo','成品出货单'],['ret','退货单']
+  ].forEach(function(pair){
+    (DB.load(pair[0])||[]).forEach(function(row){
+      if(!orderExistsForRow(row))issues.push({type:'orphan_order_ref',message:pair[1]+' '+(row.no||row.id||'')+' 引用了不存在的销售订单'});
+    });
+  });
+  var outIds={};
+  (DB.fgouts||[]).forEach(function(x){if(x.id)outIds[x.id]=true;});
+  (DB.fgreturns||[]).forEach(function(ret){
+    if(ret.outId&&!outIds[ret.outId])issues.push({type:'orphan_shipment_ref',message:'退货单 '+(ret.no||ret.id||'')+' 引用了不存在的送货单 '+ret.outId});
+  });
+  (DB.arecs||[]).forEach(function(ar){
+    (ar.outIds||[]).forEach(function(id){if(!outIds[id])issues.push({type:'orphan_shipment_ref',message:'应收对账单 '+(ar.no||ar.id||'')+' 引用了不存在的送货单 '+id});});
+  });
+  var rolls=DB.load('fgr')||[];
+  var rollById={};
+  rolls.forEach(function(r){if(r&&r.id)rollById[r.id]=r;});
+  (DB.fgins||[]).forEach(function(receipt){
+    (receipt.rollIds||[]).forEach(function(rollId){
+      if(rollId&&!rollById[rollId])issues.push({type:'orphan_roll_ref',message:'成品入库 '+(receipt.no||receipt.id||'')+' 引用了不存在的布卷 '+rollId});
+    });
+  });
+  (DB.fgouts||[]).forEach(function(out){
+    (out.rollIds||[]).forEach(function(rollId){
+      var roll=rollById[rollId];
+      if(!roll){
+        issues.push({type:'orphan_roll_ref',message:'成品出货单 '+(out.no||out.id||'')+' 引用了不存在的布卷 '+rollId});
+        return;
+      }
+      if(roll.outId&&roll.outId!==out.id)issues.push({type:'roll_shipment_mismatch',message:'成品出货单 '+(out.no||out.id||'')+' 的布卷 '+rollId+' 已关联到其他送货单 '+roll.outId});
+      if(out.ordId&&roll.ordId&&roll.ordId!==out.ordId)issues.push({type:'roll_order_mismatch',message:'成品出货单 '+(out.no||out.id||'')+' 的布卷 '+rollId+' 不属于该销售订单'});
+    });
+  });
+  (DB.fgreturns||[]).forEach(function(ret){
+    (ret.rollIds||[]).forEach(function(rollId){
+      var roll=rollById[rollId];
+      if(!roll){
+        issues.push({type:'orphan_roll_ref',message:'退货单 '+(ret.no||ret.id||'')+' 引用了不存在的布卷 '+rollId});
+        return;
+      }
+      if(ret.outId&&roll.outId&&roll.outId!==ret.outId)issues.push({type:'return_roll_mismatch',message:'退货单 '+(ret.no||ret.id||'')+' 的布卷 '+rollId+' 不属于原送货单 '+ret.outId});
+    });
+  });
+  var returnIds={};
+  (DB.fgreturns||[]).forEach(function(ret){if(ret&&ret.id)returnIds[ret.id]=true;});
+  (DB.arecs||[]).forEach(function(ar){
+    (ar.retIds||[]).forEach(function(id){if(id&&!returnIds[id])issues.push({type:'orphan_return_ref',message:'应收对账单 '+(ar.no||ar.id||'')+' 引用了不存在的退货单 '+id});});
+  });
+  return issues;
+}
 
 function isOnline(){return navigator.onLine!==false;}
 
@@ -1262,7 +1416,7 @@ function countDirtySyncKeys(){
   return n;
 }
 
-function getSyncSafetyRows(){
+async function getSyncSafetyRows(){
   var rows=[];
   for(var k in SYNC_SAFETY_KEYS){
     var local=DB.load(k)||[];
@@ -1271,44 +1425,87 @@ function getSyncSafetyRows(){
     var snap=[];
     var raw=localStorage.getItem('gjr5_snap_'+k);
     if(raw){try{snap=JSON.parse(raw)||[];}catch(e){snap=[];}}
-    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,snap:snap.length,dirty:dirty,err:err});
+    var cloud=null, cloudErr='';
+    var table=TABLE_MAP[k];
+    if(table&&_supabaseData&&isOnline()){
+      try{
+        var res=await _supabaseData.from(table).select('*', {count:'exact', head:true});
+        if(res&&res.error) cloudErr=res.error.message||String(res.error);
+        else cloud=(res&&typeof res.count==='number')?res.count:0;
+      }catch(e){
+        cloudErr=e.message||String(e);
+      }
+    }else if(table&&!_supabaseData){
+      cloudErr='未连接云端';
+    }else if(table&&!isOnline()){
+      cloudErr='当前离线';
+    }
+    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,cloud:cloud,cloudErr:cloudErr,snap:snap.length,dirty:dirty,err:err});
   }
   return rows;
 }
 
-function openSyncSafetyModal(){
-  var rows=getSyncSafetyRows();
-  var dirtyRows=rows.filter(function(r){return r.dirty;});
+async function openSyncSafetyModal(){
+  var rows=await getSyncSafetyRows();
+  var problemRows=rows.filter(function(r){
+    if(r.dirty||r.err||r.cloudErr)return true;
+    if(r.cloud!==null&&r.local!==r.cloud)return true;
+    return false;
+  });
   var snapTs=parseInt(localStorage.getItem('gjr5_snap_ts')||'0');
   var snapTime=snapTs?new Date(snapTs).toLocaleString('zh-CN'):'暂无快照';
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px';
   var box=document.createElement('div');
-  box.style.cssText='background:#fff;border-radius:12px;max-width:760px;width:96%;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden';
-  var danger=dirtyRows.length>0;
+  box.style.cssText='background:#fff;border-radius:12px;max-width:860px;width:96%;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden';
+  var danger=problemRows.length>0;
   box.innerHTML='<div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">'
     +'<div><div style="font-size:15px;font-weight:800;color:#1e3a8a">刷新前安全检查</div><div style="font-size:11px;color:#64748B;margin-top:3px">只读检查，不会修改数据。快照时间：'+esc(snapTime)+'</div></div>'
     +'<button id="_syncsafe_close" style="background:none;border:none;font-size:22px;color:#94A3B8;cursor:pointer">×</button></div>'
     +'<div style="padding:16px 20px">'
     +'<div style="border:1px solid '+(danger?'#FCA5A5':'#86EFAC')+';background:'+(danger?'#FEF2F2':'#F0FDF4')+';color:'+(danger?'#991B1B':'#166534')+';border-radius:8px;padding:11px 13px;font-size:12px;margin-bottom:12px;line-height:1.6">'
-    +(danger?'发现 '+dirtyRows.length+' 个关键表仍有本地未同步标记。建议先不要刷新，等同步成功或点“重试同步”后再检查。':'关键业务表暂无未同步标记。当前页面刷新风险较低；本机快照也可用于急救找回。')
+    +(danger?'发现 '+problemRows.length+' 个关键表本机、云端或同步状态未完全对齐。建议先不要换电脑操作，点“重试同步”后再检查。':'本机与云端条数一致，关键业务表暂无未上传修改；当前页面刷新风险较低。')
     +'</div>'
     +'<div style="overflow:auto;border:1px solid #E5E7EB;border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">'
-    +'<thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left;color:#1e3a8a">业务表</th><th style="padding:8px;text-align:right;color:#1e3a8a">本机条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">快照条数</th><th style="padding:8px;text-align:center;color:#1e3a8a">同步状态</th><th style="padding:8px;text-align:left;color:#1e3a8a">刷新建议</th></tr></thead><tbody>'
+    +'<thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left;color:#1e3a8a">业务表</th><th style="padding:8px;text-align:right;color:#1e3a8a">本机条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">云端条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">快照条数</th><th style="padding:8px;text-align:center;color:#1e3a8a">同步状态</th><th style="padding:8px;text-align:left;color:#1e3a8a">刷新建议</th></tr></thead><tbody>'
     +rows.map(function(r){
-      var st=r.dirty?'<span style="color:#DC2626;font-weight:800">未同步</span>':(r.local>0?'<span style="color:#16A34A;font-weight:800">暂无未同步</span>':'<span style="color:#94A3B8">无本机数据</span>');
-      var adv=r.dirty?'先等同步或重试后再刷新':(r.local>0&&r.snap>=r.local?'可刷新，快照有保护':(r.local>0?'可刷新，但建议先导出备份':'无数据'));
+      var cloudText=r.cloud===null?'—':String(r.cloud);
+      var st='', adv='';
+      if(r.dirty){
+        st='<span style="color:#DC2626;font-weight:800">未同步</span>';
+        adv='先等同步或重试后再刷新';
+      }else if(r.err){
+        st='<span style="color:#DC2626;font-weight:800">同步失败</span>';
+        adv='先重试同步，成功后再刷新';
+      }else if(r.cloudErr){
+        st='<span style="color:#DC2626;font-weight:800">云端检查失败</span>';
+        adv='无法确认云端，请稍后重试';
+      }else if(r.cloud!==null&&r.local>r.cloud){
+        st='<span style="color:#DC2626;font-weight:800">云端少于本机</span>';
+        adv='先重试同步，成功后再换电脑';
+      }else if(r.cloud!==null&&r.local<r.cloud){
+        st='<span style="color:#D97706;font-weight:800">本机少于云端</span>';
+        adv='本机未拉全，先重试同步或 Ctrl+F5';
+      }else if(r.local>0){
+        st='<span style="color:#16A34A;font-weight:800">已一致</span>';
+        adv=r.snap>=r.local?'可刷新，云端与快照有保护':'可刷新，云端有保护；建议建立本机快照';
+      }else{
+        st='<span style="color:#94A3B8">无数据</span>';
+        adv='无数据';
+      }
       if(r.err) adv += '；失败原因：'+r.err;
+      if(r.cloudErr) adv += '；云端原因：'+r.cloudErr;
       return '<tr style="border-top:1px solid #EEF2F7">'
         +'<td style="padding:8px;font-weight:700">'+esc(r.label)+'</td>'
         +'<td style="padding:8px;text-align:right">'+r.local+'</td>'
+        +'<td style="padding:8px;text-align:right">'+esc(cloudText)+'</td>'
         +'<td style="padding:8px;text-align:right">'+r.snap+'</td>'
         +'<td style="padding:8px;text-align:center">'+st+'</td>'
         +'<td style="padding:8px;color:#64748B">'+esc(adv)+'</td>'
         +'</tr>';
     }).join('')
     +'</tbody></table></div>'
-    +'<div style="font-size:11px;color:#64748B;margin-top:12px;line-height:1.7">说明：这里看的是本机保存状态和本机快照。若出现红色“未同步”，表示这些数据还需要继续推到云端；不要用其它电脑核对，以当前录入电脑为准。</div>'
+    +'<div style="font-size:11px;color:#64748B;margin-top:12px;line-height:1.7">说明：本机条数=当前浏览器缓存；云端条数=Supabase；快照条数=本机急救快照。若出现红色或黄色状态，先以当前录入电脑为准，不要用其它电脑继续录入。</div>'
     +'</div>'
     +'<div style="padding:12px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px">'
     +'<button id="_syncsafe_retry" style="padding:7px 16px;border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:6px;font-size:12px;cursor:pointer">重试同步</button>'
@@ -1323,7 +1520,7 @@ function openSyncSafetyModal(){
     var btn=this;btn.disabled=true;btn.textContent='同步中...';
     await pullFromSupabase();
     close();
-    setTimeout(openSyncSafetyModal,300);
+    setTimeout(function(){openSyncSafetyModal();},300);
   };
 }
 
@@ -2867,7 +3064,12 @@ function openCM(id){
   });
   om(modal);
 }
-function delC(id){if(!confirm('删除客户？'))return;DB.remove('c',id);pgCusts();}
+function delC(id){
+  var guard=canDeleteCustomer(id);
+  if(!guard.ok){alert(guard.message);return;}
+  if(!confirm('删除客户？\n确认这是未被业务使用的空档案。'))return;
+  DB.remove('c',id);pgCusts();
+}
 function viewC(id){var c=DB.custs.find(function(x){return x.id===id;});if(!c)return;var modal=buildModal('客户详情','',function(body){var info='<div style=\"padding:8px;\"><table style=\"width:100%;line-height:1.8;\"><tr><td style=\"color:var(--t3);width:100px;\">客户名称</td><td><strong>'+esc(c.nm)+'</strong></td></tr><tr><td style=\"color:var(--t3);\">联系人</td><td>'+esc(c.ct||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">电话</td><td>'+esc(c.ph||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">微信</td><td>'+esc(c.wx||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">客户类型</td><td><span class=\"bx '+(c.tp==='外贸'?'bxb':'bxg')+'\">'+esc(c.tp||'内贸')+'</span></td></tr><tr><td style=\"color:var(--t3);\">账期</td><td>'+esc(c.tm||30)+'天</td></tr><tr><td style=\"color:var(--t3);\">付款方式</td><td>'+esc(c.pm||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">公司地址</td><td>'+esc(c.ad||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">备注</td><td>'+esc(c.rm||'—')+'</td></tr></table></div>';body.innerHTML=info;},function(){cm();openCM(id);},'编辑');om(modal);}
 
 // ═══ FACTORIES ═══
@@ -2991,7 +3193,12 @@ function openFM(id){
   });
   om(modal);
 }
-function delF(id){if(!confirm('删除工厂？'))return;DB.remove('f',id);pgFacts();}
+function delF(id){
+  var guard=canDeleteFactory(id);
+  if(!guard.ok){alert(guard.message);return;}
+  if(!confirm('删除工厂？\n确认这是未被业务使用的空档案。'))return;
+  DB.remove('f',id);pgFacts();
+}
 
 // ═══ 物料档案 ═══
 // 幅宽单位选项
@@ -3428,7 +3635,9 @@ function pgMat(){
       delB.textContent='删除';
       delB.style.cssText='padding:2px 8px;border-radius:5px;font-size:10.5px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;cursor:pointer;font-weight:600';
       delB.onclick=(function(id){return function(){
-        if(!confirm('确认删除物料「'+((DB.mats||[]).find(function(x){return x.id===id;})||{}).mid+'」？\n删除后无法恢复！'))return;
+        var guard=canDeleteMaterial(id);
+        if(!guard.ok){alert(guard.message);return;}
+        if(!confirm('确认删除物料「'+((DB.mats||[]).find(function(x){return x.id===id;})||{}).mid+'」？\n确认这是未被业务使用的空档案，删除后无法恢复！'))return;
         DB.remove('mat',id);
         renderMatList();showToast('已删除','success');
       };})(m.id);
@@ -4193,7 +4402,14 @@ function renderOrds(list){
       opTd.style.cssText='padding:4px 6px;border-bottom:1px solid #ECEAF8;white-space:nowrap;vertical-align:middle;background:inherit';
       opTd.appendChild(mkBtn('详情','btn bsm bs',(function(id){return function(){openOD(id,true);};})(o.id)));
       opTd.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openOM(id);};})(o.id)));
-      opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delO(id);};})(o.id)));
+      if(o.status!=='cancelled'){
+        var delGuard=canDeleteOrder(o.id);
+        if(delGuard.ok){
+          opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delO(id);};})(o.id)));
+        }else{
+          opTd.appendChild(mkBtn('作废','btn bsm boo',(function(id){return function(){cancelOrder(id);};})(o.id)));
+        }
+      }
       tr.appendChild(opTd);
 
       tr.onclick=function(e){
@@ -4919,7 +5135,25 @@ function openOD(id,readonly){
   },cm,'关闭');
   om(modal);
 }
-function delO(id){if(!confirm('删除订单？'))return;DB.remove('o',id);pgOrders();}
+function delO(id){
+  var guard=canDeleteOrder(id);
+  if(!guard.ok){alert(guard.message);return;}
+  if(!confirm('删除订单？\n确认这是没有入库、出货、对账等关联记录的空订单。'))return;
+  DB.remove('o',id);pgOrders();
+}
+function cancelOrder(id){
+  var list=DB.orders;
+  var o=list.find(function(x){return x.id===id;});
+  if(!o){alert('销售订单不存在');return;}
+  if(o.status==='cancelled'){showToast('该订单已是取消状态','warning');return;}
+  var no=o.no||id;
+  if(!confirm('确认作废/取消订单 '+no+'？\n这不会删除入库、出货、对账等历史记录，只把销售订单状态改为“已取消”。'))return;
+  o.status='cancelled';
+  o.cancelledAt=new Date().toISOString();
+  DB.orders=list;
+  pgOrders();
+  showToast('订单已作废/取消，历史记录已保留','success');
+}
 
 // ── 销售合同打印 ──
 // 米数转KG：幅宽×克重换算，取整（去小数保留到个位）
@@ -9789,6 +10023,8 @@ function saveYarn(id){
     var ordSelEl=document.getElementById('y-ordid');
     var ordId=ordSelEl?ordSelEl.value:'';
     var ordRec=ordId?(DB.orders||[]).find(function(o){return o.id===ordId;}):null;
+    if(!ordId)return alert('请选择关联销售订单');
+    if(!ordRec)return alert('关联销售订单不存在，请重新选择');
     var existingYarn=null;
     if(id){
       existingYarn=DB.yarns.find(function(x){return x.id===id;});

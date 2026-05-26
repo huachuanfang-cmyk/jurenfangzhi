@@ -38,6 +38,14 @@ test('refresh safety check reports dirty flags and local snapshots', () => {
   assert.match(html, /快照/);
 });
 
+test('refresh safety check compares local, cloud, and snapshot counts', () => {
+  assert.match(html, /async\s+function\s+getSyncSafetyRows\s*\(/);
+  assert.match(html, /云端条数/);
+  assert.match(html, /select\('\*',\s*\{count:'exact',\s*head:true\}\)/);
+  assert.match(html, /本机少于云端/);
+  assert.match(html, /云端少于本机/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

@@ -8212,8 +8212,9 @@ function pgARec(){
         opTd.appendChild(mkBtn('录收款','btn bsm bgn',function(id){return function(){openPaymentModal(id);};}(r.id)));
       }
       opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
-        if(!confirm('确认删除此对账单？\n删除后出货记录将恢复为未对账状态。'))return;
         var delRec=(DB.arecs||[]).find(function(x){return x.id===id;});
+        if(delRec&&delRec.payments&&delRec.payments.some(function(p){return p.amt&&!p.voided;}))return alert('此对账单已有收款记录，不能删除。如需作废请到对账单详情中使用「撤销」功能。');
+        if(!confirm('确认删除此对账单？\n删除后出货记录将恢复为未对账状态。'))return;
         if(delRec&&delRec.outIds){
           var fgoutsDB=DB.fgouts||[];
           delRec.outIds.forEach(function(oid){
@@ -13604,7 +13605,9 @@ function pgGreyFab(){
     opTd.appendChild(mkBtn('编辑','btn bsm bp',function(rid){return function(){openGreyFabM(rid);};}(r.id)));
     opTd.appendChild(mkBtn('打印','btn bsm boo',function(rid){return function(){prtGreyFab(rid);};}(r.id)));
     opTd.appendChild(mkBtn('删除','btn bsm br',function(rid){return function(){
-      if(!confirm('确认删除此胚布采购合同？'))return;
+      var rec=(DB.greyfabs||[]).find(function(x){return x.id===rid;});
+      if(rec&&rec.paid)return alert('此采购合同已标记「已付款」，不能删除。');
+      if(!confirm('确认删除此胚布采购合同？\n合同号：'+(rec?rec.contractNo:'')+'\n供应商：'+(rec?rec.supplier||'':'')+'\n金额：¥'+(rec?rec.totalAmt||'0':'0')))return;
       DB.remove('gfy',rid);
       pgGreyFab();showToast('已删除','success');
     };}(r.id)));

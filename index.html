@@ -10935,7 +10935,7 @@ function pgFGStock(){
 
           dtr.appendChild(mkDTd(dEmpty
             ?'<span style="color:#D1D5DB">—</span>'
-            :'<b>'+dN+'匹</b> / <span style="color:#065F46">'+dKG+'KG</span>'+(hasDM?' / <span style="color:#7C3AED">'+dM.toFixed(1)+'M</span>':''));
+            :'<b>'+dN+'匹</b> / <span style="color:#065F46">'+dKG+'KG</span>'+(hasDM?' / <span style="color:#7C3AED">'+dM.toFixed(1)+'M</span>':'')));
           dtr.appendChild(mkDTd('<span style="color:#94A3B8">'+cv.inCount+'匹 / '+cv.inKG.toFixed(1)+'KG'+(hasCvInM?' / '+cv.inM.toFixed(1)+'M':'')+'</span>'));
           dtr.appendChild(mkDTd(dEmpty
             ?'<span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 6px;border-radius:99px">已出完</span>'

@@ -11123,6 +11123,7 @@ function pgFGStock(){
           };}(r.id)));
           if(!hasRetD)opDTd2.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
           opDTd2.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
+            if(rSnap&&rSnap.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再删除。');
             var _ov2=document.createElement('div');
             _ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
             var _box2=document.createElement('div');

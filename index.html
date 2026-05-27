@@ -9353,8 +9353,8 @@ function pgRecon(){
   pg.appendChild(sr);
 
   // 筛选tab
-  var tabs=['全部','待核对','待付款','已付款'];
-  var tabKeys=['','pending','confirmed','paid'];
+  var tabs=['全部','待核对','待付款','已付款','已作废'];
+  var tabKeys=['','pending','confirmed','paid','voided'];
   var activeTab=0;
   var tabBar=document.createElement('div');
   tabBar.style.cssText='display:flex;gap:0;margin-bottom:12px;border:0.5px solid var(--bd);border-radius:6px;overflow:hidden';
@@ -9376,7 +9376,8 @@ function pgRecon(){
       tr.style.cssText='cursor:pointer;transition:background .12s';
       tr.onmouseover=function(){this.style.background='var(--b3)';};
       tr.onmouseout=function(){this.style.background='';};
-      var stBadge={pending:'<span class="bx" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">待核对</span>',confirmed:'<span class="bx" style="background:#DBEAFE;color:#1e3a8a;border:1px solid #BFDBFE">待付款</span>',paid:'<span class="bx bxg">已付款</span>'}[r.status]||'—';
+      if(r.status==='voided'){tr.style.background='#f2f2f2';tr.style.opacity='.6';tr.style.cursor='default';tr.onmouseover=null;tr.onmouseout=null;}
+      var stBadge={pending:'<span class="bx" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">待核对</span>',confirmed:'<span class="bx" style="background:#DBEAFE;color:#1e3a8a;border:1px solid #BFDBFE">待付款</span>',paid:'<span class="bx bxg">已付款</span>',voided:'<span class="bx" style="background:#e5e7eb;color:#6b7280">已作废</span>'}[r.status]||'—';
       var typeTag={dyeing:'<span class="bx" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0">染厂</span>',finishing:'<span class="bx" style="background:#EFF6FF;color:#1e3a8a;border:1px solid #BFDBFE">后整理</span>',weaving:'<span class="bx" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">织厂</span>'}[r.factType]||'<span class="bx">其他</span>';
       var deductAmt=parseFloat(r.deductTotal)||0;
       var actualAmt=parseFloat(r.actualAmt)||0;
@@ -9400,13 +9401,13 @@ function pgRecon(){
           }
         };}(r.id)));
       }
-      opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
+      if(!r.voided){opTd.appendChild(mkBtn('作废','btn bsm br',function(id){return function(){
         var rec=(DB.recons||[]).find(function(x){return x.id===id;});
-        if(rec&&rec.status==='paid')return alert('此对账单已标记「已付款」，不能删除。');
-        if(!confirm('确认删除此对账单？\n工厂：'+(rec?rec.factNm:'')+'\n月份：'+(rec?rec.month:'')+'\n金额：¥'+(rec?rec.actualAmt||'0':'0')))return;
-        DB.remove('rc',id);
-        pgRecon();showToast('已删除','success');
-      };}(r.id)));
+        if(rec&&rec.status==='paid')return alert('此对账单已标记「已付款」，不能作废。');
+        if(!confirm('确认作废此对账单？\n工厂：'+(rec?rec.factNm:'')+'\n月份：'+(rec?rec.month:'')+'\n金额：¥'+(rec?rec.actualAmt||'0':'0')))return;
+        rec.status='voided';DB.save('rc',DB.recons);
+        pgRecon();showToast('已作废','success');
+      };}(r.id)));}
       tr.appendChild(opTd);
       tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openReconModal(r.id);});
       return tr;

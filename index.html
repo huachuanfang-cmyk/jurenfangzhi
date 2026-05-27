@@ -8445,6 +8445,7 @@ function exportARecExcel(id){
 
   // 收款（浅绿文字，白底）
   (r.payments||[]).forEach(function(p){
+    if(p.voided)return;
     if(!parseFloat(p.amt))return;
     var payRow=ws.addRow([p.date||'','','','','','','  已收：'+(p.method||'转账')+(p.rm?' ('+p.rm+')':''),'',-(parseFloat(p.amt)),'']);
     payRow.height=21;
@@ -8610,6 +8611,7 @@ function printARec(id){
   var payRows='';
   var paidTotal=parseFloat(r.paidTotal)||0;
   (r.payments||[]).forEach(function(p){
+    if(p.voided)return;
     if(!parseFloat(p.amt))return;
     payRows+='<tr style="background:#F0FDF4">'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:9.5px;color:#16a34a;white-space:nowrap">'+esc(p.date||'')+'</td>'
@@ -9064,12 +9066,36 @@ function openARecModal(id){
     function addPayRow(p){
       var row=document.createElement('div');row.className='ar-pay-row';row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px;background:#F0FDF4;padding:6px 8px;border-radius:6px;border:1px solid #A7F3D0';
       var dateInp=document.createElement('input');dateInp.className='ar-pay-date';dateInp.type='date';dateInp.value=p?p.date||'':'';dateInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #A7F3D0;border-radius:6px;font-size:11px;background:#fff;outline:none';
-      var amtInp=document.createElement('input');amtInp.className='ar-pay-amt';amtInp.type='number';amtInp.step='0.01';amtInp.placeholder='收款金额';amtInp.value=p?p.amt||'':'';amtInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #A7F3D0;border-radius:6px;font-size:11px;color:#16a34a;font-weight:700;text-align:right;background:#fff;outline:none';
+      var amtInp=document.createElement('input');amtInp.className='ar-pay-amt';amtInp.type='number';amtInp.step='0.01';amtInp.placeholder='收款金额';amtInp.value=p?p.amt||'':'';amtInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #A7F3D0;border-radius:6px;font-size:11px;color:#16a34a;font-weight:700;text-align:right;background:#fff;outline:none';(p?amtInp.disabled=true:null);
       amtInp.oninput=recalcBalance;
       var methInp=document.createElement('input');methInp.className='ar-pay-meth';methInp.placeholder='方式（转账/现金）';methInp.value=p?p.method||'':'';methInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #A7F3D0;border-radius:6px;font-size:11px;background:#fff;outline:none';
       var rmInp=document.createElement('input');rmInp.className='ar-pay-rm';rmInp.placeholder='备注';rmInp.value=p?p.rm||'':'';rmInp.style.cssText='flex:2;padding:5px 8px;border:1.5px solid #A7F3D0;border-radius:6px;font-size:11px;background:#fff;outline:none';
-      var del=mkBtn('×','btn bsm br',function(){row.remove();recalcBalance();});
-      row.appendChild(dateInp);row.appendChild(amtInp);row.appendChild(methInp);row.appendChild(rmInp);row.appendChild(del);
+      var del;
+      if(p&&p.voided){
+        row.style.opacity='0.6';
+        var badg=document.createElement('span');badg.textContent='已撤销';badg.style.cssText='font-size:10px;color:#dc2626;font-weight:600;background:#FEE2E2;padding:2px 8px;border-radius:4px;white-space:nowrap';
+        row.appendChild(badg);
+      }else if(p){
+        var vdId=document.createElement('input');vdId.type='hidden';vdId.className='ar-pay-voided';vdId.value='0';
+        row.appendChild(vdId);
+        del=mkBtn('撤销','btn bsm br',function(){
+          if(!confirm('确认撤销此笔收款？'))return;
+          var reason=prompt('撤销原因：');
+          if(reason===null)return;
+          if(!reason||!reason.trim()){alert('请填写撤销原因');return;}
+          vdId.value='1';
+          var vr=document.createElement('input');vr.type='hidden';vr.className='ar-pay-voidreason';vr.value=reason.trim();
+          row.appendChild(vr);
+          del&&del.remove();
+          row.style.opacity='0.6';
+          var badg=document.createElement('span');badg.textContent='已撤销';badg.style.cssText='font-size:10px;color:#dc2626;font-weight:600;background:#FEE2E2;padding:2px 8px;border-radius:4px;white-space:nowrap';
+          row.appendChild(badg);
+          recalcBalance();
+        });
+      }else{
+        del=mkBtn('×','btn bsm br',function(){row.remove();recalcBalance();});
+      }
+      row.appendChild(dateInp);row.appendChild(amtInp);row.appendChild(methInp);row.appendChild(rmInp);if(del)row.appendChild(del);
       payWrap.appendChild(row);
     }
     initPays.forEach(function(p){addPayRow(p);});
@@ -9114,7 +9140,7 @@ function openARecModal(id){
         var t=row.querySelector('.ar-adj-type');var a=parseFloat(row.querySelector('.ar-adj-amt').value)||0;
         if(t&&t.value==='deduct')deduct+=a;else add+=a;
       });
-      var paid=0;document.querySelectorAll('.ar-pay-amt').forEach(function(i){paid+=parseFloat(i.value)||0;});
+      var paid=0;document.querySelectorAll('.ar-pay-row').forEach(function(row){var v=row.querySelector('.ar-pay-voided');if(v&&v.value==='1')return;paid+=parseFloat(row.querySelector('.ar-pay-amt').value)||0;});
       var bal=Math.max(0,gross-retDeductTotal+shipFee-deduct+add-paid);
       var f=function(v){return '¥'+v.toFixed(2);};
       var set=function(id,val){var el=document.getElementById('ar-calc-'+id);if(el)el.textContent=val;};
@@ -9194,7 +9220,10 @@ function openARecModal(id){
       var date=row.querySelector('.ar-pay-date').value;
       var method=row.querySelector('.ar-pay-meth').value;
       var rm=row.querySelector('.ar-pay-rm').value;
-      if(amt)payments.push({amt:String(amt),date:date,method:method,rm:rm});
+      var voided=row.querySelector('.ar-pay-voided');
+      var isVoided=voided&&voided.value==='1';
+      var voidReason=isVoided?(row.querySelector('.ar-pay-voidreason')&&row.querySelector('.ar-pay-voidreason').value)||'':'';
+      if(amt||isVoided)payments.push({amt:String(amt),date:date,method:method,rm:rm,voided:'1',voidReason:voidReason});
     });
     var paidTotal=payments.reduce(function(s,p){return s+(parseFloat(p.amt)||0);},0);
     var netAmt=total+shipFeeTotal-deductTotal+addTotal;

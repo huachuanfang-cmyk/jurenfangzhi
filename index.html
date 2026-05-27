@@ -5671,6 +5671,7 @@ function pgDW(){
   facSel.onchange=function(){
     var fnm=this.value;var fac=facts.find(function(f){return f.nm===fnm;});
     if(fac){var ctEl=document.getElementById('wd-ct');if(ctEl&&(fac.ct||fac.contact))ctEl.value=fac.ct||fac.contact;}
+    fillWDYarnKG();
   };
   var cb=document.createElement('div');cb.style.cssText='display:flex;flex-direction:column;gap:0';
   cb.appendChild(al);
@@ -5911,6 +5912,21 @@ function pgDW(){
     var ct=document.getElementById('wd-ct');
     if(ct&&!ct.value&&fac)ct.value=fac.ct||fac.contact||'';
   }
+  function fillWDYarnKG(){
+    var ordNo=(document.getElementById('wd-o')||{}).value;
+    var facNm=(document.getElementById('wd-f')||{}).value;
+    if(!ordNo||!facNm)return;
+    var yqEl=document.getElementById('wd-yq');
+    if(!yqEl||yqEl.value)return;
+    var sent=0,ret=0;
+    (DB.yarnouts||[]).forEach(function(r){
+      if(r.ordNo!==ordNo||r.factory!==facNm)return;
+      if(r.type==='out')sent+=parseFloat(r.kg)||0;
+      else if(r.type==='ret')ret+=parseFloat(r.kg)||0;
+    });
+    var net=Math.max(0,sent-ret);
+    if(net>0)yqEl.value=net.toFixed(1);
+  }
 
   // ══ Reconnect ordSel.onchange to update new UI ══
   var _origOrdChange=ordSel.onchange;
@@ -5990,6 +6006,7 @@ function pgDW(){
       if(!cfg.facNm){
         applyWDFactoryIfEmpty(latestYarnIssueFactoryForWD(ord));
       }
+      fillWDYarnKG();
     }
   };
   // Trigger if already has value

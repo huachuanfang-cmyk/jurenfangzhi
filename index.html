@@ -10711,13 +10711,13 @@ function pgFGStock(){
         var ord=orders.find(function(x){return x.id===r.ordId;})||{};
         ordMap[oid]={
           ordNo:r.ordNo||ord.no||'',ordId:oid,custNm:r.custNm||ord.custNm||'',
-          fab:ord.fab||r.fab||'',totalIn:0,totalInKG:0,totalOut:0,totalOutKG:0,
+          fab:ord.fab||r.fab||'',totalIn:0,totalInKG:0,totalInM:0,totalOut:0,totalOutKG:0,totalOutM:0,
           colors:{},inDate:null
         };
       }
       var og=ordMap[oid];
-      og.totalIn++;og.totalInKG+=(parseFloat(r.kg)||0);
-      if(r.status==='out'){og.totalOut++;og.totalOutKG+=(parseFloat(r.kg)||0);}
+      og.totalIn++;og.totalInKG+=(parseFloat(r.kg)||0);og.totalInM+=(parseFloat(r.m)||0);
+      if(r.status==='out'){og.totalOut++;og.totalOutKG+=(parseFloat(r.kg)||0);og.totalOutM+=(parseFloat(r.m)||0);}
       if(r.inId&&inDateMap[r.inId]){if(!og.inDate||inDateMap[r.inId]<og.inDate)og.inDate=inDateMap[r.inId];}
       // 颜色+缸号子分组
       var cvk=(r.colorNm||'')+'|'+(r.vatNo||'');
@@ -10726,13 +10726,13 @@ function pgFGStock(){
         var clrObj=(ord2.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
         og.colors[cvk]={
           colorNm:r.colorNm||'',colorCode:clrObj.code||r.colorCode||'',vatNo:r.vatNo||'',
-          inCount:0,inKG:0,outCount:0,outKG:0,inDate:null,
+          inCount:0,inKG:0,inM:0,outCount:0,outKG:0,outM:0,inDate:null,
           rollGroupKey:(r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'')
         };
       }
       var cg=og.colors[cvk];
-      cg.inCount++;cg.inKG+=(parseFloat(r.kg)||0);
-      if(r.status==='out'){cg.outCount++;cg.outKG+=(parseFloat(r.kg)||0);}
+      cg.inCount++;cg.inKG+=(parseFloat(r.kg)||0);cg.inM+=(parseFloat(r.m)||0);
+      if(r.status==='out'){cg.outCount++;cg.outKG+=(parseFloat(r.kg)||0);cg.outM+=(parseFloat(r.m)||0);}
       if(r.inId&&inDateMap[r.inId]){if(!cg.inDate||inDateMap[r.inId]<cg.inDate)cg.inDate=inDateMap[r.inId];}
     });
 
@@ -10805,6 +10805,9 @@ function pgFGStock(){
         var og=ordMap[oid];if(!og)return;
         var stockN=og.totalIn-og.totalOut;
         var stockKG2=(og.totalInKG-og.totalOutKG).toFixed(1);
+        var stockM2=og.totalInM-og.totalOutM;
+        var hasStockM=stockM2>0;
+        var hasTotalInM=og.totalInM>0;
         var isAllOut=stockN<=0;
         var isPartial=!isAllOut&&og.totalOut>0;
         var expanded=!!window._fgExp[oid];
@@ -10852,9 +10855,9 @@ function pgFGStock(){
 
         var stockTxt=isAllOut
           ?'<span style="color:#9CA3AF">—</span>'
-          :'<b>'+stockN+'匹</b> / <span style="color:#065F46;font-weight:700">'+stockKG2+'KG</span>';
+          :'<b>'+stockN+'匹</b> / <span style="color:#065F46;font-weight:700">'+stockKG2+'KG</span>'+(hasStockM?' / <span style="color:#7C3AED;font-weight:600">'+stockM2.toFixed(1)+'M</span>':'');
         tr.appendChild(mkSumTd(stockTxt));
-        tr.appendChild(mkSumTd('<span style="color:#64748B;font-size:11.5px">'+og.totalIn+'匹 / '+og.totalInKG.toFixed(1)+'KG</span>'));
+        tr.appendChild(mkSumTd('<span style="color:#64748B;font-size:11.5px">'+og.totalIn+'匹 / '+og.totalInKG.toFixed(1)+'KG'+(hasTotalInM?' / '+og.totalInM.toFixed(1)+'M':'')+'</span>'));
         tr.appendChild(mkSumTd(statusBadge));
 
         // 操作列（阻止行点击冒泡）
@@ -10900,6 +10903,9 @@ function pgFGStock(){
           var cv=og.colors[cvk];
           var dN=cv.inCount-cv.outCount;
           var dKG=(cv.inKG-cv.outKG).toFixed(1);
+          var dM=cv.inM-cv.outM;
+          var hasDM=dM>0;
+          var hasCvInM=cv.inM>0;
           var dEmpty=dN<=0;
           var dBg=ci%2===0?'#F8FAFC':'#EFF6FF';
           if(dEmpty)dBg='#F9FAFB';
@@ -10929,8 +10935,8 @@ function pgFGStock(){
 
           dtr.appendChild(mkDTd(dEmpty
             ?'<span style="color:#D1D5DB">—</span>'
-            :'<b>'+dN+'匹</b> / <span style="color:#065F46">'+dKG+'KG</span>'));
-          dtr.appendChild(mkDTd('<span style="color:#94A3B8">'+cv.inCount+'匹 / '+cv.inKG.toFixed(1)+'KG</span>'));
+            :'<b>'+dN+'匹</b> / <span style="color:#065F46">'+dKG+'KG</span>'+(hasDM?' / <span style="color:#7C3AED">'+dM.toFixed(1)+'M</span>':''));
+          dtr.appendChild(mkDTd('<span style="color:#94A3B8">'+cv.inCount+'匹 / '+cv.inKG.toFixed(1)+'KG'+(hasCvInM?' / '+cv.inM.toFixed(1)+'M':'')+'</span>'));
           dtr.appendChild(mkDTd(dEmpty
             ?'<span style="font-size:10px;background:#F3F4F6;color:#9CA3AF;padding:1px 6px;border-radius:99px">已出完</span>'
             :'<span style="font-size:10px;background:#ECFDF5;color:#065F46;padding:1px 6px;border-radius:99px">在库</span>'));
@@ -11844,8 +11850,11 @@ function openRollList(k,grp,rolls){
         }
         // 修改后更新合计行
         var totKGnow=grpRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+        var totMnow=grpRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
         var totEl=document.getElementById('rl-totkg');
         if(totEl)totEl.textContent=totKGnow.toFixed(1)+' KG';
+        var totMEl=document.getElementById('rl-totm');
+        if(totMEl)totMEl.textContent=totMnow>0?totMnow.toFixed(1)+' M':'';
       }
 
       function renderEdit(){
@@ -11896,13 +11905,14 @@ function openRollList(k,grp,rolls){
 
     // 合计行
     var totKG=grpRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+    var totM=grpRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0);
     var inN=grpRolls.filter(function(r){return r.status==='in';}).length;
     var sumTr=document.createElement('tr');
     sumTr.style.cssText='background:var(--b3);font-weight:700;border-top:2px solid var(--bd)';
     sumTr.innerHTML=
       '<td style="padding:6px 10px">合计 '+grpRolls.length+'匹</td>'+
       '<td style="padding:6px 10px;text-align:center" id="rl-totkg">'+totKG.toFixed(1)+' KG</td>'+
-      '<td></td>'+
+      '<td style="padding:6px 10px;text-align:center;color:#7C3AED;font-weight:600" id="rl-totm">'+(totM>0?totM.toFixed(1)+' M':'')+'</td>'+
       '<td style="padding:6px 10px;text-align:center;color:#27ae60">在库 '+inN+' 匹</td>'+
       '<td></td><td></td>';
     tbody.appendChild(sumTr);

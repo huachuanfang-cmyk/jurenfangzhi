@@ -9351,7 +9351,9 @@ function pgRecon(){
         };}(r.id)));
       }
       opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
-        if(!confirm('确认删除此对账单？'))return;
+        var rec=(DB.recons||[]).find(function(x){return x.id===id;});
+        if(rec&&rec.status==='paid')return alert('此对账单已标记「已付款」，不能删除。');
+        if(!confirm('确认删除此对账单？\n工厂：'+(rec?rec.factNm:'')+'\n月份：'+(rec?rec.month:'')+'\n金额：¥'+(rec?rec.actualAmt||'0':'0')))return;
         DB.remove('rc',id);
         pgRecon();showToast('已删除','success');
       };}(r.id)));

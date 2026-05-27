@@ -11349,6 +11349,15 @@ function pgFGStock(){
         if(!ret.status||ret.status==='pending'){
           opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
             if(!confirm('确认删除退货单 '+esc(retId)+'？\n注意：删除后退货记录无法恢复。'))return;
+            var retRec=(DB.fgreturns||[]).find(function(x){return x.id===retId;});
+            if(retRec&&retRec.rollIds&&retRec.rollIds.length){
+              var allR=fgRolls();
+              retRec.rollIds.forEach(function(rlid){
+                var rl=allR.find(function(x){return x.id===rlid;});
+                if(rl&&rl.status==='returned'){rl.status='in';rl.grade='A';rl.returned=false;rl.retId='';}
+              });
+              saveFgRolls(allR);
+            }
             DB.remove('ret',retId);
             pgFGStock();showToast('已删除','success');
           };}(ret.id)));

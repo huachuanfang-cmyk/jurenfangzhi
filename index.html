@@ -10498,6 +10498,7 @@ function pgFGStock(){
     if((r.date||'').startsWith(lastMonth))lmInKG+=kg;
   });
   fgouts.forEach(function(r){
+    if(r.voided)return;
     var rs=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0&&x.status!=='voided';});
     var kg=rs.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
     if((r.date||'').startsWith(thisMonth))mOutKG+=kg;
@@ -10514,7 +10515,7 @@ function pgFGStock(){
   var sr=document.createElement('div');sr.className='sr';
   sr.style.gridTemplateColumns='repeat(4,1fr)';
   var mInCnt=fgins.filter(function(x){return (x.date||'').startsWith(thisMonth)&&x.status!=='voided';}).length;
-  var mOutCnt=fgouts.filter(function(x){return (x.date||'').startsWith(thisMonth);}).length;
+  var mOutCnt=fgouts.filter(function(x){return (x.date||'').startsWith(thisMonth)&&!x.voided;}).length;
   [
     {lbl:'当前在库',val:stockCount+'匹',sub:stockKG.toFixed(1)+' KG',cls:'sg',badge:'',tab:'stock'},
     {lbl:'本月入库',val:mInKG.toFixed(1)+' KG',sub:'共 '+mInCnt+' 批次',cls:'sb',badge:trendBadge(mInKG,lmInKG),tab:null},
@@ -11147,18 +11148,18 @@ function pgFGStock(){
           var outVats=[...new Set(rls.map(function(x){return x.vatNo||'';}).filter(Boolean))].join('、');
           var hasRetD=retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0;
           var dBg=ri%2===0?'#FAF9FF':'#F3F2FF';
+          if(r.voided)dBg='#f2f2f2';
           var dtr=document.createElement('tr');
           dtr.dataset.fgoDetail=oid;
-          dtr.style.cssText='display:'+(expanded?'':'none')+';background:'+dBg+(hasRetD?';border-left:3px solid #DC2626':'');
-          dtr.onmouseover=function(){this.style.background='#EDE9FE';};
-          dtr.onmouseout=function(){this.style.background=dBg;};
+          dtr.style.cssText='display:'+(expanded?'':'none')+';background:'+dBg+(hasRetD?';border-left:3px solid #DC2626':'')+(r.voided?';opacity:.6':'');
+          if(!r.voided){dtr.onmouseover=function(){this.style.background='#EDE9FE';};dtr.onmouseout=function(){this.style.background=dBg;};}
           function mkDTd2(html,style){
             var td=document.createElement('td');
             td.style.cssText='padding:5px 8px;border-bottom:1px solid #E5E7EB;font-size:11px;vertical-align:middle;'+(style||'');
             td.innerHTML=html;return td;
           }
           dtr.appendChild(mkDTd2('','width:26px;border-left:3px solid #C4B5FD;background:'+dBg));
-          dtr.appendChild(mkDTd2('<span style="font-family:monospace;font-weight:700;color:#4338CA;font-size:10.5px">'+esc(r.no||'')+'</span>'+(hasRetD?'<span style="margin-left:4px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 4px;border-radius:2px">退货</span>':'')));
+          dtr.appendChild(mkDTd2('<span style="font-family:monospace;font-weight:700;color:'+(r.voided?'#9CA3AF':'#4338CA')+';font-size:10.5px">'+esc(r.no||'')+'</span>'+(r.voided?'<span style="margin-left:4px;font-size:9px;background:#e5e7eb;color:#6b7280;border:1px solid #d1d5db;padding:1px 4px;border-radius:2px">作废</span>':'')+(hasRetD?'<span style="margin-left:4px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 4px;border-radius:2px">退货</span>':'')));
           dtr.appendChild(mkDTd2('<span style="color:#374151;font-weight:600">'+esc(clrNms||'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#94A3B8;font-family:monospace;font-size:10px">'+(outCodes?esc(outCodes)+' / ':'')+(outVats?esc(outVats):'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#64748B">'+esc(r.date||'')+'</span>'));
@@ -11175,8 +11176,8 @@ function pgFGStock(){
             if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
           };}(r.id)));
           if(!hasRetD)opDTd2.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
-          opDTd2.appendChild(mkBtn('删除','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
-            if(rSnap&&rSnap.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再删除。');
+          if(!r.voided)opDTd2.appendChild(mkBtn('作废','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
+            if(rSnap&&rSnap.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再作废。');
             var _ov2=document.createElement('div');
             _ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
             var _box2=document.createElement('div');
@@ -11184,21 +11185,21 @@ function pgFGStock(){
             _box2.innerHTML=
               '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
               +'<span style="font-size:22px">⚠️</span>'
-              +'<span style="font-size:16px;font-weight:700;color:#B91C1C">确认删除出货记录？</span>'
+              +'<span style="font-size:16px;font-weight:700;color:#B91C1C">确认作废出货记录？</span>'
               +'</div>'
               +'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:12px;color:#7F1D1D;margin-bottom:14px;line-height:1.9">'
               +'<b>送货单：</b>'+esc(rSnap.no||'—')+'&nbsp;&nbsp;<b>日期：</b>'+esc(rSnap.date||'—')+'<br>'
               +'<b>客&nbsp;户：</b>'+esc(rSnap.custNm||'—')+'&nbsp;&nbsp;<b>数量：</b>'+rlsSnap+'匹 / '+totKGSnap.toFixed(1)+'KG'
               +'</div>'
               +'<div style="font-size:11.5px;color:#374151;margin-bottom:18px;line-height:2">'
-              +'删除后将产生以下影响：<br>'
+              +'作废后将产生以下影响：<br>'
               +'① 出货匹料恢复为<b>「在库」</b>状态<br>'
-              +'② 对账单中此笔出货记录将<b>消失</b><br>'
+              +'② 此出货记录标记为<b>「已作废」</b>保留备查<br>'
               +'③ 若已挂账请先确认<b>应收账款</b>是否需一并处理'
               +'</div>'
               +'<div style="display:flex;gap:10px;justify-content:flex-end">'
               +'<button id="_del_cancel2" style="padding:8px 20px;background:#F3F4F6;color:#374151;border:1.5px solid #D1D5DB;border-radius:7px;font-size:13px;cursor:pointer">取&nbsp;消</button>'
-              +'<button id="_del_confirm2" style="padding:8px 20px;background:#DC2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">我已确认，删除</button>'
+              +'<button id="_del_confirm2" style="padding:8px 20px;background:#DC2626;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">我已确认，作废</button>'
               +'</div>';
             _ov2.appendChild(_box2);document.body.appendChild(_ov2);
             function _closeD(){_ov2.remove();}
@@ -11211,8 +11212,8 @@ function pgFGStock(){
                 var allR=fgRolls();var rl=allR.find(function(x){return x.id===rlid;});
                 if(rl){rl.status='in';rl.outId='';saveFgRolls(allR);}
               });
-              DB.remove('fgo',rid);
-              pgFGStock();showToast('已删除，库存已恢复','success');
+              r2.voided=true;DB.save('fgo',DB.fgouts);
+              pgFGStock();showToast('已作废，库存已恢复','success');
             };
           };}(r.id, r, rls.length, kg))));
           dtr.appendChild(opDTd2);

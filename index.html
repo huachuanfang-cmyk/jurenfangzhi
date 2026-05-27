@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -11069,12 +11069,16 @@ function pgFGStock(){
           // 从关联疋料取布类（若订单无）
           if(!fabStr){var firstRl=rolls.find(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});if(firstRl)fabStr=firstRl.fab||'';}
           outOrdMap[oid]={ordNo:r.ordNo||'',ordId:r.ordId||'',custNm:r.custNm||'',fab:fabStr,
-            outs:[],totalKG:0,totalPcs:0,latestDate:'',hasRet:false};
+            outs:[],totalKG:0,totalM:0,totalPcs:0,latestDate:'',hasRet:false};
         }
         var rls=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
         var kg=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+        var mTot=rls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
+        // 没疋数据时尝试用 approxM 字段（自由文本里抽数字）
+        if(mTot===0 && r.approxM){mTot=parseFloat(String(r.approxM).replace(/[^0-9.]/g,''))||0;}
         outOrdMap[oid].outs.push(r);
         outOrdMap[oid].totalKG+=kg;
+        outOrdMap[oid].totalM+=mTot;
         outOrdMap[oid].totalPcs+=rls.length;
         if((r.date||'')>outOrdMap[oid].latestDate)outOrdMap[oid].latestDate=r.date||'';
         if(retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0)outOrdMap[oid].hasRet=true;
@@ -11133,7 +11137,12 @@ function pgFGStock(){
         tr.appendChild(mkOSumTd('<span style="font-size:12px;font-weight:600;color:#1F2937">'+esc(og.custNm||'—')+'</span>'));
         var fTd=mkOSumTd('<span style="font-size:11px;color:#374151">'+esc(fabSh)+'</span>');
         if(og.fab&&og.fab.length>18)fTd.title=og.fab;tr.appendChild(fTd);
-        tr.appendChild(mkOSumTd('<b>'+og.totalPcs+'匹</b> / <span style="color:#E67E22;font-weight:700">'+og.totalKG.toFixed(1)+'KG</span>'));
+        // 合计出货：KG 为 0 但有米数时只显示米数；两者都有则一起显示
+        var sumQty='<b>'+og.totalPcs+'匹</b>';
+        if(og.totalKG>0)sumQty+=' / <span style="color:#E67E22;font-weight:700">'+og.totalKG.toFixed(1)+'KG</span>';
+        if(og.totalM>0)sumQty+=' / <span style="color:#7C3AED;font-weight:700">'+og.totalM.toFixed(1)+'M</span>';
+        if(og.totalKG===0&&og.totalM===0)sumQty+=' / <span style="color:#9CA3AF">—</span>';
+        tr.appendChild(mkOSumTd(sumQty));
         tr.appendChild(mkOSumTd('<span style="color:#6B7280">'+og.outs.length+'张</span>','text-align:center'));
         tr.appendChild(mkOSumTd('<span style="color:#64748B;font-size:11px">'+esc(og.latestDate)+'</span>'));
         var opSumTd=mkOSumTd('','white-space:nowrap');
@@ -11173,6 +11182,8 @@ function pgFGStock(){
         og.outs.slice().sort(function(a,b){return (b.date||'')>(a.date||'')?1:(b.date||'')<(a.date||'')?-1:0;}).forEach(function(r,ri){
           var rls=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
           var kg=rls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+          var mRow=rls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
+          if(mRow===0 && r.approxM){mRow=parseFloat(String(r.approxM).replace(/[^0-9.]/g,''))||0;}
           var clrNms=[...new Set(rls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
           var outCodes=[...new Set(rls.map(function(x){return x.colorCode||'';}).filter(Boolean))].join('、');
           var outVats=[...new Set(rls.map(function(x){return x.vatNo||'';}).filter(Boolean))].join('、');
@@ -11193,7 +11204,12 @@ function pgFGStock(){
           dtr.appendChild(mkDTd2('<span style="color:#374151;font-weight:600">'+esc(clrNms||'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#94A3B8;font-family:monospace;font-size:10px">'+(outCodes?esc(outCodes)+' / ':'')+(outVats?esc(outVats):'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#64748B">'+esc(r.date||'')+'</span>'));
-          dtr.appendChild(mkDTd2('<b>'+rls.length+'匹</b> / <span style="color:#E67E22">'+kg.toFixed(1)+'KG</span>'));
+          // 数量列：KG 为 0 但有米数时只显示米数；两者都有则一起显示
+          var dQty='<b>'+rls.length+'匹</b>';
+          if(kg>0)dQty+=' / <span style="color:#E67E22">'+kg.toFixed(1)+'KG</span>';
+          if(mRow>0)dQty+=' / <span style="color:#7C3AED">'+mRow.toFixed(1)+'M</span>';
+          if(kg===0&&mRow===0)dQty+=' / <span style="color:#9CA3AF">—</span>';
+          dtr.appendChild(mkDTd2(dQty));
           dtr.appendChild(mkDTd2('<span style="color:#9CA3AF;font-size:10.5px">'+esc(r.rm||'')+'</span>'));
           var opDTd2=mkDTd2('','white-space:nowrap');
           opDTd2.onclick=function(e){e.stopPropagation();};

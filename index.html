@@ -5246,6 +5246,7 @@ function saveO(id){
     }
 
     pgOrders();
+    cm(); // 关闭弹窗，防止再次点保存导致同内容订单被反复 push 出现重复
     showToast('销售订单保存成功 ✓','success');
   } catch(err){ alert("保存失败: " + err.message); }
 }

@@ -113,6 +113,59 @@ export function filterRowsPendingDelete(key, rows, deleteQueue, tableMap = TABLE
 }
 
 /**
+ * 从墓碑列表中提取指定业务键的已删除记录 ID。
+ * 墓碑格式：{ bizKey, tableName, recordId }
+ */
+export function tombstoneIdsForKey(key, tombstones, tableMap = TABLE_MAP) {
+  var table = tableMap[key];
+  var ids = {};
+  (tombstones || []).forEach(function(t) {
+    if (!t || !t.recordId) return;
+    if (t.bizKey === key || t.tableName === table) ids[t.recordId] = true;
+  });
+  return ids;
+}
+
+/**
+ * 过滤掉已被墓碑标记的行（防止云端已删除数据重新被拉回本地）。
+ */
+export function filterRowsBlockedByTombstones(key, rows, tombstones, tableMap = TABLE_MAP) {
+  var ids = tombstoneIdsForKey(key, tombstones, tableMap);
+  return (rows || []).filter(function(row) {
+    return !(row && row.id && ids[row.id]);
+  });
+}
+
+/**
+ * 合并云端数据与本地独有记录，同时阻止被墓碑标记的旧缓存重新上传。
+ * 返回合并结果、可恢复的本地独有记录、和被拦截的墓碑记录。
+ */
+export function mergeCloudRowsWithLocalOnly(key, cloudRows, allLocalRows, localOnlyDirty, tombstones, tableMap = TABLE_MAP) {
+  var tombIds = tombstoneIdsForKey(key, tombstones, tableMap);
+  var cloudIdSet = {};
+  (cloudRows || []).forEach(function(r) { if (r && r.id) cloudIdSet[r.id] = true; });
+
+  var localOnly = [];
+  var blockedLocalOnly = [];
+
+  (allLocalRows || []).forEach(function(row) {
+    if (!row || !row.id) return;
+    if (cloudIdSet[row.id]) return;
+    if (tombIds[row.id]) {
+      blockedLocalOnly.push(row);
+    } else {
+      localOnly.push(row);
+    }
+  });
+
+  return {
+    localOnly: localOnly,
+    blockedLocalOnly: blockedLocalOnly,
+    merged: (cloudRows || []).concat(localOnly),
+  };
+}
+
+/**
  * 计算同步计划：给定脏表集合和推送结果，返回哪些表应跳过快照、哪些应拉取、
  * 哪些 dirty flag 应清除、哪些应保留。
  *

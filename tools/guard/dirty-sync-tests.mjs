@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS, pendingDeleteIdsForKey, filterRowsPendingDelete } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS, pendingDeleteIdsForKey, filterRowsPendingDelete, tombstoneIdsForKey, filterRowsBlockedByTombstones, mergeCloudRowsWithLocalOnly } from './sync-core.mjs';
 
 const tests = [];
 
@@ -114,6 +114,56 @@ test('pending delete queue can match table name when key is missing', () => {
     { yn: 'yarns' }
   );
   if (!ids['yn-old']) throw new Error('delete queue item should match by cloud table name');
+});
+
+test('cloud tombstone prevents deleted cloud rows from being restored during pull', () => {
+  const rows = [
+    { id: 'yn-old', poNo: 'PO20260007' },
+    { id: 'yn-new', poNo: 'PO20260008' },
+  ];
+  const tombstones = [{ bizKey: 'yn', tableName: 'yarns', recordId: 'yn-old' }];
+  const ids = tombstoneIdsForKey('yn', tombstones, { yn: 'yarns' });
+  if (!ids['yn-old']) throw new Error('tombstone id should be recognized by biz key');
+
+  const filtered = filterRowsBlockedByTombstones('yn', rows, tombstones, { yn: 'yarns' });
+  if (filtered.length !== 1 || filtered[0].id !== 'yn-new') {
+    throw new Error('tombstoned cloud row should be filtered before local save');
+  }
+});
+
+test('cloud tombstone prevents old cached local-only rows from being re-uploaded', () => {
+  const result = mergeCloudRowsWithLocalOnly(
+    'yn',
+    [],
+    [{ id: 'yn-old', poNo: 'PO20260007' }, { id: 'yn-new', poNo: 'PO20260008' }],
+    [],
+    [{ bizKey: 'yn', recordId: 'yn-old' }],
+    { yn: 'yarns' }
+  );
+  if (result.localOnly.length !== 1 || result.localOnly[0].id !== 'yn-new') {
+    throw new Error('only non-tombstoned local-only row should remain recoverable');
+  }
+  if (result.blockedLocalOnly.length !== 1 || result.blockedLocalOnly[0].id !== 'yn-old') {
+    throw new Error('tombstoned local-only row should be blocked from upload');
+  }
+  if (result.merged.length !== 1 || result.merged[0].id !== 'yn-new') {
+    throw new Error('merged data should not include tombstoned cache row');
+  }
+});
+
+test('merge keeps non-tombstoned local-only rows as recovery path', () => {
+  const result = mergeCloudRowsWithLocalOnly(
+    'yn',
+    [{ id: 'cloud1', poNo: 'PO20260001' }],
+    [{ id: 'cloud1', poNo: 'PO20260001' }, { id: 'local2', poNo: 'PO20260002' }],
+    [],
+    [],
+    { yn: 'yarns' }
+  );
+  if (result.localOnly.length !== 1 || result.localOnly[0].id !== 'local2') {
+    throw new Error('non-tombstoned local-only row should stay recoverable');
+  }
+  if (result.merged.length !== 2) throw new Error('merged data should include cloud plus recoverable local-only rows');
 });
 
 // ══ 测试 4：推送成功的表在 pull 后被清除 dirty flag ══

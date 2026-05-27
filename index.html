@@ -5456,8 +5456,10 @@ function renderTrks(list){
     var td=document.createElement('td');td.className='bg2';
     td.appendChild(mkBtn('详情','btn bsm bq',(function(id){return function(){openTD(id);};})(t.id)));
     td.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openTM(id);};})(t.id)));
-    td.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delT(id);};})(t.id)));
-    tr.appendChild(td);return tr;
+    if(!t.voided)td.appendChild(mkBtn('作废','btn bsm brd',(function(id){return function(){delT(id);};})(t.id)));
+    tr.appendChild(td);
+    if(t.voided){tr.style.background='#f2f2f2';tr.style.opacity='.6';tr.style.cursor='default';}
+    return tr;
   });
   cb.appendChild(buildTable(['订单号','工序','工厂','颜色','色号','纱批','机台','缸号','缸kg','发出kg','收回kg','损耗%','加工费','付款','预计','实际','状态','操作'],rows));
 }
@@ -5545,9 +5547,10 @@ function saveT(id){
 function delT(id){
   var rec=(DB.trks||[]).find(function(x){return x.id===id;});
   if(!rec)return;
-  if(rec.fPaid)return alert('此加工跟踪已标记「已付款」，不能删除。如需取消付款请先到付款看板操作。');
-  if(!confirm('确认删除加工跟踪记录？\n订单：'+rec.ordNo+'\n工厂：'+rec.factNm+'\n工序：'+rec.proc+'\n加工费：'+(rec.fee||'—')))return;
-  DB.remove('t',id);pgTrk();
+  if(rec.fPaid)return alert('此加工跟踪已标记「已付款」，不能作废。如需取消付款请先到付款看板操作。');
+  if(!confirm('确认作废加工跟踪记录？\n订单：'+rec.ordNo+'\n工厂：'+rec.factNm+'\n工序：'+rec.proc+'\n加工费：'+(rec.fee||'—')))return;
+  rec.voided=true;DB.save('t',DB.trks);
+  pgTrk();
 }
 
 // ═══ DOC PRINT SHARED ═══

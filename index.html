@@ -971,7 +971,7 @@ var TABLE_MAP = {
   t:'trackings', wd:'weaving_docs', qt:'quotations',
   ar:'ar_records', rc:'ap_records', dd:'dyeing_docs', yn:'yarns',
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
-  fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns'
+  fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns', tmb:'tombstones'
 };
 
 function textVal(v){return v===null||v===undefined?'':String(v).trim();}
@@ -1326,9 +1326,20 @@ function writeTombstones(v){
   try{localStorage.setItem('gjr5_tombs',JSON.stringify(v||[]));}catch(e){}
 }
 function addTombstone(key,id,table){
-  var t=readTombstones();
-  var exists=t.some(function(x){return x.bizKey===key&&x.recordId===id;});
-  if(!exists){t.push({bizKey:key,recordId:id,tableName:table||TABLE_MAP[key]||'',deletedAt:new Date().toISOString()});writeTombstones(t);}
+	var t=readTombstones();
+	var exists=t.some(function(x){return x.bizKey===key&&x.recordId===id;});
+	if(!exists){t.push({bizKey:key,recordId:id,tableName:table||TABLE_MAP[key]||'',deletedAt:new Date().toISOString()});writeTombstones(t);}
+	// 同步墓碑到 Supabase 云端，确保所有设备共享同一份删除标记
+	if(_supabaseData&&!(-_testMode)&&isOnline()){
+		(function(_key,_id,_tbl){
+			try{
+				_supabaseData.from('tombstones').upsert({
+					id:_key+'::'+_id, biz_key:_key, record_id:_id,
+					table_name:_tbl||TABLE_MAP[_key]||'', deleted_at:new Date().toISOString()
+				}).then(function(){},function(){});
+			}catch(e){}
+		})(key,id,table);
+	}
 }
 function tombstoneIdsForKey(key){
   var ids={};
@@ -1362,6 +1373,23 @@ async function pullFromSupabase(){
   }
   // 先处理待删队列，再拉云端，避免已删除记录从 Supabase 回弹。
   await processDeleteQueue();
+  // ── 拉取云端墓碑并合并到本地，确保所有设备共享删除标记 ──
+  if(!_testMode&&_supabaseData){
+    try{
+      var{data:tmbData}=await _supabaseData.from('tombstones').select('biz_key,record_id,table_name,deleted_at');
+      if(tmbData&&tmbData.length){
+        var localT=readTombstones();var localMap={};
+        localT.forEach(function(x){if(x&&x.bizKey&&x.recordId)localMap[x.bizKey+'::'+x.recordId]=true;});
+        tmbData.forEach(function(r){
+          var k=r.biz_key||r.bizKey||'';var rid=r.record_id||r.recordId||'';
+          if(k&&rid&&!localMap[k+'::'+rid]){
+            localT.push({bizKey:k,recordId:rid,tableName:r.table_name||r.tableName||'',deletedAt:r.deleted_at||r.deletedAt||''});
+          }
+        });
+        writeTombstones(localT);
+      }
+    }catch(e){console.warn('墓碑拉取失败:',e);}
+  }
   // Step 2 — 拉取云端数据（跳过脏表 以及 刚推送成功的表——后者本地已是最新，拉取可能带回旧数据）
   var loaded = 0;
   var fails = [];

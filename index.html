@@ -8213,20 +8213,24 @@ function pgARec(){
       var st=getDaysStatus(r.dueDate);
       // 行背景：逾期>警告>斑马纹
       var bg=st.type==='overdue'?'#FEF2F2':st.type==='warning'?'#FFFBEB':(idx%2===0?'#ffffff':'#f9f8ff');
+      if(r.status==='voided')bg='#f2f2f2';
       var hoverBg=st.type==='overdue'?'#fde8e8':st.type==='warning'?'#fef6d0':'#f0f0ff';
       var tr=document.createElement('tr');tr.style.cursor='pointer';
+      if(r.status==='voided'){tr.style.opacity='.6';tr.style.cursor='default';tr.onmouseover=null;tr.onmouseout=null;}
       tr.onmouseover=function(){this._tds&&this._tds.forEach(function(td){td.style.background=hoverBg;});};
       tr.onmouseout=function(){this._tds&&this._tds.forEach(function(td){td.style.background=bg;});};
       tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openARecModal(r.id);});
 
       var stTag='';
-      if(r.status==='settled'){stTag='<span class="bx bxg">已结清</span>';}
+      if(r.status==='voided'){stTag='<span class="bx" style="background:#e5e7eb;color:#6b7280">已作废</span>';}
+      else if(r.status==='settled'){stTag='<span class="bx bxg">已结清</span>';}
       else if(st.type==='overdue'){stTag='<span class="bx" style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;font-weight:700">逾期'+st.days+'天</span>';}
       else if(st.type==='warning'){stTag='<span class="bx" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">还剩'+st.days+'天</span>';}
       else{stTag='<span class="bx" style="background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0">正常</span>';}
 
       var payTag='';
-      if(r.status==='settled'){payTag='<span class="bx bxg">已收款</span>';}
+      if(r.status==='voided'){payTag='<span class="bx" style="background:#e5e7eb;color:#6b7280">已作废</span>';}
+      else if(r.status==='settled'){payTag='<span class="bx bxg">已收款</span>';}
       else{
         var paidAmt=parseFloat(r.paidTotal)||0;
         if(paidAmt>0){payTag='<span class="bx" style="background:#DBEAFE;color:#1e3a8a;border:1px solid #BFDBFE">部分收款</span>';}
@@ -8257,13 +8261,13 @@ function pgARec(){
       opTd.appendChild(mkBtn('查看','btn bsm bs',function(id){return function(){openARecModal(id);};}(r.id)));
       opTd.appendChild(mkBtn('打印','btn bsm boo',function(id){return function(){printARec(id);};}(r.id)));
       opTd.appendChild(mkBtn('📊 Excel','btn bsm',function(id){return function(){exportARecExcel(id);};}(r.id)));
-      if(r.status!=='settled'&&bal>0){
+      if(r.status!=='settled'&&bal>0&&r.status!=='voided'){
         opTd.appendChild(mkBtn('录收款','btn bsm bgn',function(id){return function(){openPaymentModal(id);};}(r.id)));
       }
-      opTd.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){
+      if(r.status!=='voided')opTd.appendChild(mkBtn('作废','btn bsm br',function(id){return function(){
         var delRec=(DB.arecs||[]).find(function(x){return x.id===id;});
-        if(delRec&&delRec.payments&&delRec.payments.some(function(p){return p.amt&&!p.voided;}))return alert('此对账单已有收款记录，不能删除。如需作废请到对账单详情中使用「撤销」功能。');
-        if(!confirm('确认删除此对账单？\n删除后出货记录将恢复为未对账状态。'))return;
+        if(delRec&&delRec.payments&&delRec.payments.some(function(p){return p.amt&&!p.voided;}))return alert('此对账单已有收款记录，不能作废。如需撤销请到对账单详情中使用「撤销」功能。');
+        if(!confirm('确认作废此对账单？\n作废后出货记录将恢复为未对账状态。'))return;
         if(delRec&&delRec.outIds){
           var fgoutsDB=DB.fgouts||[];
           delRec.outIds.forEach(function(oid){
@@ -8272,8 +8276,8 @@ function pgARec(){
           });
           DB.fgouts=fgoutsDB;
         }
-        DB.remove('ar',id);
-        pgARec();showToast('已删除，出货记录已恢复为未对账状态','success');
+        delRec.status='voided';DB.save('ar',DB.arecs);
+        pgARec();showToast('已作废，出货记录已恢复为未对账状态','success');
       };}(r.id)));
       arTbody.appendChild(tr);
     });

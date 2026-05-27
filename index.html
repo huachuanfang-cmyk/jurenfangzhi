@@ -8756,7 +8756,7 @@ function openPaymentModal(arecId){
     if(!rec.payments)rec.payments=[];
     rec.payments.push(payment);
     // 重算欠尾款
-    var totalPaid=rec.payments.reduce(function(s,p){return s+(parseFloat(p.amt)||0);},0);
+    var totalPaid=rec.payments.reduce(function(s,p){return s+(p.voided==='1'?0:parseFloat(p.amt)||0);},0);
     var netAmt=(parseFloat(rec.totalAmt)||0)+(parseFloat(rec.shipFeeTotal)||0)-(parseFloat(rec.deductTotal)||0)+(parseFloat(rec.addTotal)||0);
     rec.balanceAmt=String(Math.max(0,netAmt-totalPaid));
     if(parseFloat(rec.balanceAmt)<=0)rec.status='settled';
@@ -9225,7 +9225,7 @@ function openARecModal(id){
       var voidReason=isVoided?(row.querySelector('.ar-pay-voidreason')&&row.querySelector('.ar-pay-voidreason').value)||'':'';
       if(amt||isVoided)payments.push({amt:String(amt),date:date,method:method,rm:rm,voided:'1',voidReason:voidReason});
     });
-    var paidTotal=payments.reduce(function(s,p){return s+(parseFloat(p.amt)||0);},0);
+    var paidTotal=payments.reduce(function(s,p){return s+(p.voided==='1'?0:parseFloat(p.amt)||0);},0);
     var netAmt=total+shipFeeTotal-deductTotal+addTotal;
     var balance=Math.max(0,netAmt-paidTotal);
 

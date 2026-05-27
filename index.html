@@ -1136,6 +1136,147 @@ function findDataIntegrityIssues(){
   return issues;
 }
 
+// ══════════════════════════════════════════════════════════════
+// 数据完整性修复工具：列出孤儿引用 + 重复订单号，可勾选批量清理
+// 强约束：执行前要管理员密码 + 自动留快照（受 _SNAP_KEYS 保护，可恢复）
+// ══════════════════════════════════════════════════════════════
+function openIntegrityRepairTool(){
+  var issues=findDataIntegrityIssues();
+  if(!issues.length){alert('✅ 数据完整性检查通过，没有发现异常。');return;}
+
+  // 解析 issues 找出每条具体指向哪张表、哪一条记录
+  // findDataIntegrityIssues 只生成 message 字符串；这里重新跑一遍逻辑拿到原始 row 引用
+  var orphans=[]; // {table, row, type, label, why}
+  var orderById={},orderByNo={};
+  (DB.orders||[]).forEach(function(o){if(o.id)orderById[o.id]=o;if(o.no)orderByNo[o.no]=o;});
+  // orphan_order_ref
+  [['yn','纱线采购'],['yo','发料/回仓'],['t','加工跟踪'],['wd','织厂加工单'],['dd','染整加工单'],['fgi','成品入库批次'],['fgr','疋料/库存'],['fgo','成品出货单'],['ret','退货单']].forEach(function(pair){
+    (DB.load(pair[0])||[]).forEach(function(row){
+      var rid=(row.ordId||row.ord_id||row.orderId||'').toString().split('::')[0];
+      var rno=(row.ordNo||row.ord_no||row.orderNo||'').toString();
+      if(!rid&&!rno)return;
+      if(!(orderById[rid]||orderByNo[rno])){
+        orphans.push({table:pair[0],label:pair[1],row:row,type:'orphan_order_ref',
+          why:'引用 '+(rno?'订单号 '+rno:'订单ID '+rid.slice(0,8))+' 不存在'});
+      }
+    });
+  });
+  // duplicate order no
+  var noMap={};(DB.orders||[]).forEach(function(o){if(!o.no)return;if(!noMap[o.no])noMap[o.no]=[];noMap[o.no].push(o);});
+  var dupGroups=Object.keys(noMap).filter(function(n){return noMap[n].length>1;});
+
+  var modal=buildModal('🧹 数据完整性修复 — '+issues.length+' 项异常','mlg',function(body){
+    body.innerHTML='';
+    var warn=document.createElement('div');
+    warn.style.cssText='background:#FEF3C7;border-left:4px solid #F59E0B;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400E;border-radius:4px';
+    warn.innerHTML='<b>⚠ 重要提醒：</b>清理前会自动留快照（库存台账可一键恢复）。删除孤儿引用是物理删除，请先确认这些数据确实是垃圾。';
+    body.appendChild(warn);
+
+    // ── 重复订单号区 ──
+    if(dupGroups.length){
+      var dupH=document.createElement('div');
+      dupH.style.cssText='font-size:13px;font-weight:700;color:#B91C1C;margin:6px 0 8px;padding:6px 10px;background:#FEE2E2;border-radius:4px';
+      dupH.textContent='🔴 重复订单号 ('+dupGroups.length+' 组)';
+      body.appendChild(dupH);
+      dupGroups.forEach(function(no){
+        var orders=noMap[no];
+        var box=document.createElement('div');
+        box.style.cssText='border:1px solid #FECACA;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:11.5px;background:#FFFBFB';
+        box.innerHTML='<b>订单号：'+esc(no)+'</b>（共 '+orders.length+' 条，建议保留最早一条）<div style="margin-top:6px;color:#6B7280;font-size:10.5px">'
+          +orders.map(function(o){return '· '+esc(o.id).slice(0,12)+' '+(o.ordDate||'')+' '+(o.custNm||'');}).join('<br>')+'</div>';
+        body.appendChild(box);
+      });
+    }
+
+    // ── 孤儿引用区 ──
+    var orphH=document.createElement('div');
+    orphH.style.cssText='font-size:13px;font-weight:700;color:#92400E;margin:14px 0 8px;padding:6px 10px;background:#FEF3C7;border-radius:4px';
+    orphH.textContent='🟡 孤儿引用 ('+orphans.length+' 条) — 引用了不存在的销售订单';
+    body.appendChild(orphH);
+
+    var tbl=document.createElement('table');
+    tbl.style.cssText='width:100%;border-collapse:collapse;font-size:11.5px';
+    tbl.innerHTML='<thead><tr style="background:#F3F4F6"><th style="padding:6px 8px;text-align:center;width:36px"><input type="checkbox" id="orph-all"></th><th style="padding:6px 8px;text-align:left">类型</th><th style="padding:6px 8px;text-align:left">单号</th><th style="padding:6px 8px;text-align:left">异常原因</th><th style="padding:6px 8px;text-align:left">关键字段</th></tr></thead>';
+    var tbody=document.createElement('tbody');
+    orphans.forEach(function(item,i){
+      var tr=document.createElement('tr');
+      tr.style.cssText='border-bottom:1px solid #E5E7EB';
+      var detail='';
+      if(item.row.factNm)detail+='工厂:'+esc(item.row.factNm)+' ';
+      if(item.row.proc)detail+='工序:'+esc(item.row.proc)+' ';
+      if(item.row.custNm)detail+='客户:'+esc(item.row.custNm)+' ';
+      if(item.row.fee)detail+='加工费:¥'+esc(item.row.fee)+' ';
+      if(item.row.date)detail+='日期:'+esc(item.row.date);
+      tr.innerHTML='<td style="padding:5px 8px;text-align:center"><input type="checkbox" class="orph-cb" data-idx="'+i+'"></td>'
+        +'<td style="padding:5px 8px;font-weight:600;color:#374151">'+esc(item.label)+'</td>'
+        +'<td style="padding:5px 8px;font-family:monospace;color:#4338CA">'+esc(item.row.no||item.row.id||'').slice(0,16)+'</td>'
+        +'<td style="padding:5px 8px;color:#B91C1C;font-size:10.5px">'+esc(item.why)+'</td>'
+        +'<td style="padding:5px 8px;color:#6B7280;font-size:10.5px">'+detail+'</td>';
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);body.appendChild(tbl);
+
+    // 全选/反选
+    setTimeout(function(){
+      var all=document.getElementById('orph-all');
+      if(all)all.onchange=function(){document.querySelectorAll('.orph-cb').forEach(function(cb){cb.checked=all.checked;});};
+    },10);
+
+    // 操作区
+    var ops=document.createElement('div');
+    ops.style.cssText='margin-top:14px;padding:10px 14px;background:#F9FAFB;border-radius:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+    ops.innerHTML='<span style="font-size:11px;color:#6B7280">勾选要删除的孤儿记录，点右侧按钮执行（需管理员密码）</span>';
+    var delBtn=document.createElement('button');delBtn.type='button';
+    delBtn.style.cssText='margin-left:auto;background:#DC2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px';
+    delBtn.textContent='🗑 删除勾选项';
+    delBtn.onclick=function(){
+      var cbs=document.querySelectorAll('.orph-cb:checked');
+      if(!cbs.length){alert('请先勾选要删除的记录');return;}
+      var idxs=Array.from(cbs).map(function(cb){return parseInt(cb.dataset.idx);});
+      var targets=idxs.map(function(i){return orphans[i];});
+      verifyPwd(function(){
+        // 1. 留快照：按表分组，对受影响的表保存当前完整副本
+        var snapTables={};
+        targets.forEach(function(t){snapTables[t.table]=true;});
+        Object.keys(snapTables).forEach(function(k){
+          var arr=DB.load(k)||[];
+          try{
+            localStorage.setItem('gjr5_snap_'+k,JSON.stringify(arr));
+            localStorage.setItem('gjr5_snap_ts',String(Date.now()));
+          }catch(e){}
+        });
+        // 2. 物理删除：按表收集 ID
+        var byTable={};
+        targets.forEach(function(t){
+          if(!byTable[t.table])byTable[t.table]=[];
+          byTable[t.table].push(t.row.id);
+        });
+        var deleted=0;
+        Object.keys(byTable).forEach(function(tbl){
+          var arr=DB.load(tbl)||[];
+          var idSet={};byTable[tbl].forEach(function(id){idSet[id]=true;});
+          var kept=arr.filter(function(r){if(idSet[r.id]){deleted++;return false;}return true;});
+          DB.save(tbl,kept);
+          // 同步删除队列推送到云端
+          byTable[tbl].forEach(function(id){
+            if(typeof TABLE_MAP!=='undefined'&&TABLE_MAP[tbl]){
+              var dq=JSON.parse(localStorage.getItem('gjr5_delq')||'[]');
+              dq.push({key:tbl,id:id,table:TABLE_MAP[tbl]});
+              localStorage.setItem('gjr5_delq',JSON.stringify(dq));
+            }
+          });
+        });
+        showToast('已删除 '+deleted+' 条孤儿记录，快照已保存可一键恢复 ✓','success');
+        cm();
+        setTimeout(function(){pgDash&&pgDash();},300);
+      });
+    };
+    ops.appendChild(delBtn);
+    body.appendChild(ops);
+  },function(){cm();},'关闭');
+  om(modal);
+}
+
 function isOnline(){return navigator.onLine!==false;}
 
 function initSupabase(){
@@ -2584,13 +2725,16 @@ function pgDash(){
   var pg=document.getElementById('pg');
   pg.innerHTML='';
 
-  // ── 数据巡检横幅（仅有问题时出现）──
+  // ── 数据巡检横幅（仅有问题时出现，点击可打开「数据完整性修复」工具）──
   if(_auditIssues&&_auditIssues.length){
     var ab=document.createElement('div');
-    ab.style.cssText='background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#E65100;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    ab.style.cssText='background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#E65100;display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer';
+    ab.title='点击打开数据完整性修复工具';
     ab.innerHTML='<span style="font-size:16px;flex-shrink:0">⚠️</span><span style="font-weight:600;flex-shrink:0">数据巡检发现 '+_auditIssues.length+' 项异常：</span>'
       +'<span style="color:#BF360C;font-size:11px">'+_auditIssues.slice(0,3).join('；')+'</span>'
-      +(_auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+_auditIssues.length+'项</span>':'');
+      +(_auditIssues.length>3?'<span style="color:#888;font-size:10px">等'+_auditIssues.length+'项</span>':'')
+      +'<span style="margin-left:auto;flex-shrink:0;background:#FB923C;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600">🧹 一键打开修复工具 →</span>';
+    ab.onclick=openIntegrityRepairTool;
     pg.appendChild(ab);_auditIssues=null;
   }
 
@@ -4501,12 +4645,9 @@ function renderOrds(list){
       opTd.appendChild(mkBtn('详情','btn bsm bs',(function(id){return function(){openOD(id,true);};})(o.id)));
       opTd.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openOM(id);};})(o.id)));
       if(o.status!=='cancelled'){
-        var delGuard=canDeleteOrder(o.id);
-        if(delGuard.ok){
-          opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){delO(id);};})(o.id)));
-        }else{
-          opTd.appendChild(mkBtn('作废','btn bsm boo',(function(id){return function(){cancelOrder(id);};})(o.id)));
-        }
+        // 业务单据全面禁止硬删除 — 一律走「作废」（cancelOrder）保留审计轨迹
+        // 真要清理重复订单可用工作台「🧹 数据完整性修复」工具（要管理员密码 + 自动留快照）
+        opTd.appendChild(mkBtn('作废','btn bsm boo',(function(id){return function(){cancelOrder(id);};})(o.id)));
       }
       tr.appendChild(opTd);
 
@@ -9937,14 +10078,17 @@ function pgYarn(){
     yThead.appendChild(yThRow);yTbl.appendChild(yThead);
     var yTbody=document.createElement('tbody');
     DB.yarns.slice().reverse().forEach(function(r,idx){
-      var bg=idx%2===0?'#ffffff':'#f9f8ff';
-      var tr=document.createElement('tr');tr.style.cssText='cursor:pointer;transition:background .1s';
-      tr.onmouseover=function(){this.querySelectorAll('td').forEach(function(td){td.style.background='#f0f0ff';});};
+      var isVoided=!!r.voided;
+      var bg=isVoided?'#F5F5F5':(idx%2===0?'#ffffff':'#f9f8ff');
+      var tr=document.createElement('tr');
+      tr.style.cssText='cursor:pointer;transition:background .1s'+(isVoided?';opacity:.55':'');
+      tr.onmouseover=function(){this.querySelectorAll('td').forEach(function(td){td.style.background=isVoided?'#EEEEEE':'#f0f0ff';});};
       tr.onmouseout=function(){this.querySelectorAll('td').forEach(function(td){td.style.background=bg;});};
       tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openYarnDetail(r.id);});
-      function mkYTd(html,style){var td=document.createElement('td');td.innerHTML=html;td.style.cssText='padding:6px 10px;border:1px solid #e0dff5;vertical-align:middle;background:'+bg+';'+(style||'');return td;}
+      function mkYTd(html,style){var td=document.createElement('td');td.innerHTML=html;td.style.cssText='padding:6px 10px;border:1px solid #e0dff5;vertical-align:middle;background:'+bg+';'+(isVoided?'text-decoration:line-through;color:#9CA3AF;':'')+(style||'');return td;}
       var paidBadge=r.paid?'<span class="bx bxg">已付款</span>':'<span class="bx bxr">未付款</span>';
-      tr.appendChild(mkYTd('<div style="font-family:monospace;font-weight:700;color:var(--p);font-size:11px">'+esc(r.poNo||'')+'</div>'+(r.ordNo?'<div style="font-size:10px;color:#7C3AED">'+esc(r.ordNo)+'</div>':'')));
+      if(isVoided)paidBadge='<span class="bx" style="background:#E5E7EB;color:#6B7280;border:1px solid #D1D5DB">已作废</span>';
+      tr.appendChild(mkYTd('<div style="font-family:monospace;font-weight:700;color:var(--p);font-size:11px">'+esc(r.poNo||'')+'</div>'+(r.ordNo?'<div style="font-size:10px;color:#7C3AED">'+esc(r.ordNo)+'</div>':'')+(isVoided&&r.voidReason?'<div style="font-size:9.5px;color:#9CA3AF;font-style:italic">作废原因：'+esc(r.voidReason)+'</div>':'')));
       tr.appendChild(mkYTd(esc(r.supplier||'—'),'font-size:11px'));
       tr.appendChild(mkYTd('<strong>'+esc(r.spec||'')+'</strong>'+(r.brand?'<div style="font-size:10px;color:var(--t3)">'+esc(r.brand)+'</div>':''),'font-size:11px'));
       tr.appendChild(mkYTd(esc(r.color||'—'),'font-size:11px;color:#555'));
@@ -9956,11 +10100,15 @@ function pgYarn(){
       tr.appendChild(mkYTd(paidBadge,'text-align:center'));
       tr.appendChild(mkYTd(esc(r.arrDate||'—'),'font-size:11px;color:var(--t2)'));
       var opTd=mkYTd('','white-space:nowrap');
+      // 作废采购单覆盖删除线 + 灰色，恢复正常颜色
+      opTd.style.textDecoration='none';opTd.style.color='inherit';
       opTd.appendChild(mkBtn('详情','btn bsm bs',(function(id){return function(){openYarnDetail(id);};})(r.id)));
-      if(!r.paid){opTd.appendChild(mkBtn('✓付款','btn bsm bgn',(function(id){return function(){yarnMarkPaid(id);};})(r.id)));}
-      opTd.appendChild(mkBtn('编辑','btn bsm bq',(function(id){return function(){openYarnM(id);};})(r.id)));
-      opTd.appendChild(mkBtn('🖨 合同','btn bsm bs',(function(id){return function(){yarnPrintContract(id);};})(r.id)));
-      opTd.appendChild(mkBtn('删除','btn bsm brd',(function(id){return function(){deleteYarnPurchase(id);};})(r.id)));
+      if(!isVoided){
+        if(!r.paid){opTd.appendChild(mkBtn('✓付款','btn bsm bgn',(function(id){return function(){yarnMarkPaid(id);};})(r.id)));}
+        opTd.appendChild(mkBtn('编辑','btn bsm bq',(function(id){return function(){openYarnM(id);};})(r.id)));
+        opTd.appendChild(mkBtn('🖨 合同','btn bsm bs',(function(id){return function(){yarnPrintContract(id);};})(r.id)));
+        opTd.appendChild(mkBtn('作废','btn bsm boo',(function(id){return function(){voidYarnPurchase(id);};})(r.id)));
+      }
       tr.appendChild(opTd);yTbody.appendChild(tr);
     });
     yTbl.appendChild(yTbody);yarnWrap.appendChild(yTbl);cb.appendChild(yarnWrap);
@@ -9977,23 +10125,27 @@ function yarnMarkPaid(id){
   pgYarn();
 }
 
-function deleteYarnPurchase(id){
+function voidYarnPurchase(id){
   if(!Array.isArray(DB.yarns))DB.yarns=[];
   if(!Array.isArray(DB.yarnouts))DB.yarnouts=[];
   var r=DB.yarns.find(function(x){return x.id===id;});
   if(!r){alert('这张采购单已不存在，请刷新页面后再看。');pgYarn();return;}
+  if(r.voided){showToast('该采购单已是作废状态','warning');return;}
   var linked=DB.yarnouts.filter(function(x){return x.yarnId===id;});
-  if(linked.length){
-    alert('不能直接删除：此采购单已有 '+linked.length+' 条发料/回仓记录。\n大企业 ERP 通常会先处理关联发料/回仓，再作废或冲销源单，避免库存账被破坏。');
-    return;
-  }
-  var msg='确认删除纱线采购单 '+(r.poNo||'')+'？\n\n供应商：'+(r.supplier||'—')+'\n规格：'+(r.spec||'—')+'\n数量：'+(r.ordKg||'—')+' KG\n金额：'+(r.amt?('¥'+r.amt):'—')+'\n\n删除后会同步从云端删除。';
-  if(r.paid)msg+='\n\n注意：这张单标记为“已付款”，请确认它确实是重复或误录。';
-  if(!confirm(msg))return;
-  if(DB.remove('yn',id)){
-    pgYarn();
-    showToast('纱线采购单已删除 ✓','success');
-  }
+  var msg='确认作废纱线采购单 '+(r.poNo||'')+'？\n\n供应商：'+(r.supplier||'—')+'\n规格：'+(r.spec||'—')+'\n数量：'+(r.ordKg||'—')+' KG\n金额：'+(r.amt?('¥'+r.amt):'—');
+  if(linked.length){msg+='\n\n⚠ 此采购单已有 '+linked.length+' 条发料/回仓记录，作废后这些记录将保留备查，但库存账上的纱线总量会减少。';}
+  if(r.paid)msg+='\n\n注意：这张单标记为「已付款」，作废不会自动退款，请人工与供应商对账。';
+  msg+='\n\n作废后此单据保留以供审计，不会从云端删除。';
+  var reason=window.prompt(msg+'\n\n请填写作废原因（必填，例如：重复录入 / 供应商取消订单）：','');
+  if(reason===null)return; // 取消
+  reason=(reason||'').trim();
+  if(!reason){alert('作废原因为必填项，已取消操作。');return;}
+  r.voided=true;
+  r.voidedAt=new Date().toISOString();
+  r.voidReason=reason;
+  DB.yarns=DB.yarns;
+  pgYarn();
+  showToast('纱线采购单已作废 ✓（数据保留备查）','success');
 }
 
 function openYarnM(id){

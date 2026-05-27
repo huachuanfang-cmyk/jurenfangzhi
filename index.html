@@ -5493,7 +5493,13 @@ function saveT(id){
     DB.trks=l;cm();pgTrk();
   } catch(err){ alert("保存失败: " + err.message); }
 }
-function delT(id){if(!confirm('删除？'))return;DB.remove('t',id);pgTrk();}
+function delT(id){
+  var rec=(DB.trks||[]).find(function(x){return x.id===id;});
+  if(!rec)return;
+  if(rec.fPaid)return alert('此加工跟踪已标记「已付款」，不能删除。如需取消付款请先到付款看板操作。');
+  if(!confirm('确认删除加工跟踪记录？\n订单：'+rec.ordNo+'\n工厂：'+rec.factNm+'\n工序：'+rec.proc+'\n加工费：'+(rec.fee||'—')))return;
+  DB.remove('t',id);pgTrk();
+}
 
 // ═══ DOC PRINT SHARED ═══
 var DOC_CSS=[

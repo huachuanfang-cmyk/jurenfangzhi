@@ -889,7 +889,7 @@ var DB={
             queueCloudDelete(key,id,table);
             recordSyncError(key,error.message||'删除同步失败');
             console.warn('Supabase删除失败['+key+']:',error.message);
-          }
+          }else{addTombstone(key,id,table);}
         }catch(e){
           queueCloudDelete(key,id,table);
           recordSyncError(key,(e&&e.message)||'删除同步异常');
@@ -1311,11 +1311,31 @@ async function processDeleteQueue(){
       var item=dq[i];
       if(!item||!item.table||!item.id){dq.splice(i,1);continue;}
       var{error}=await _supabaseData.from(item.table).delete().eq('id',item.id);
-      if(!error)dq.splice(i,1);
+      if(!error){dq.splice(i,1);addTombstone(item.key,item.id,item.table);}
     }catch(e){}
   }
   writeDeleteQueue(dq);
   return dq;
+}
+
+// ── 删除墓碑：防止已删除记录从旧设备缓存复活 ──
+function readTombstones(){
+  try{return JSON.parse(localStorage.getItem('gjr5_tombs')||'[]');}catch(e){return[];}
+}
+function writeTombstones(v){
+  try{localStorage.setItem('gjr5_tombs',JSON.stringify(v||[]));}catch(e){}
+}
+function addTombstone(key,id,table){
+  var t=readTombstones();
+  var exists=t.some(function(x){return x.bizKey===key&&x.recordId===id;});
+  if(!exists){t.push({bizKey:key,recordId:id,tableName:table||TABLE_MAP[key]||'',deletedAt:new Date().toISOString()});writeTombstones(t);}
+}
+function tombstoneIdsForKey(key){
+  var ids={};
+  readTombstones().forEach(function(t){
+    if(t&&t.recordId&&(t.bizKey===key||t.tableName===TABLE_MAP[key]))ids[t.recordId]=true;
+  });
+  return ids;
 }
 
 async function pullFromSupabase(){
@@ -1374,7 +1394,8 @@ async function pullFromSupabase(){
       var _localPre=DB.load(key)||[];
       var _remSet={};camelData.forEach(function(x){if(x&&x.id)_remSet[x.id]=true;});
       var _pendingDeleteIds=pendingDeleteIdsForKey(key);
-      var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id]&&!_pendingDeleteIds[x.id];});
+      var _tombIds=tombstoneIdsForKey(key);
+      var _localOnly=_localPre.filter(function(x){return x&&x.id&&!_remSet[x.id]&&!_pendingDeleteIds[x.id]&&!_tombIds[x.id];});
       if(_localOnly.length>0){
         (function(_key,_t,_rows){upsertCloudRows(_key,_t,_rows).catch(function(){});})(key,TABLE_MAP[key],_localOnly);
       }

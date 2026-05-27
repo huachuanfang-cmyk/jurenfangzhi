@@ -13632,14 +13632,15 @@ function pgGreyFab(){
   (DB.greyfabs||[]).slice().reverse().forEach(function(r,idx){
     var ord=(DB.orders||[]).find(function(o){return o.id===r.ordId;})||{};
     var bg=idx%2===0?'#ffffff':'#f9f8ff';
-    var tr=document.createElement('tr');tr.style.cssText='cursor:pointer;transition:background .1s';
+    if(r.voided)bg='#f2f2f2';
+    var tr=document.createElement('tr');tr.style.cssText='cursor:pointer;transition:background .1s'+(r.voided?';opacity:.6':'');
     tr.onmouseover=function(){this.querySelectorAll('td').forEach(function(td){td.style.background='#f0f0ff';});};
     tr.onmouseout=function(){this.querySelectorAll('td').forEach(function(td){td.style.background=bg;});};
     tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openGreyFabM(r.id,true);});
     function mkGFTd(html,style){var td=document.createElement('td');td.innerHTML=html;td.style.cssText='padding:6px 10px;border:1px solid #e0dff5;vertical-align:middle;background:'+bg+';'+(style||'');return td;}
     var fabShort=r.fab&&r.fab.length>20?r.fab.slice(0,20)+'…':r.fab||'—';
     var fabTd=mkGFTd(esc(fabShort),'font-size:11px;color:#1e3a8a');if(r.fab&&r.fab.length>20)fabTd.title=r.fab;
-    var paidBadge=r.paid?'<span class="bx bxg">已付款</span>':'<span class="bx bxr">未付款</span>';
+    var paidBadge=r.voided?'<span class="bx" style="background:#e5e7eb;color:#6b7280">已作废</span>':(r.paid?'<span class="bx bxg">已付款</span>':'<span class="bx bxr">未付款</span>');
     tr.appendChild(mkGFTd('<strong style="color:var(--p);font-family:monospace;font-size:11px">'+esc(r.contractNo||'—')+'</strong>'));
     tr.appendChild(mkGFTd(esc(ord.no||r.ordNo||'—'),'font-family:monospace;font-size:11px;color:var(--p)'));
     tr.appendChild(mkGFTd(esc(r.supplier||'—'),'font-size:11px'));
@@ -13653,13 +13654,13 @@ function pgGreyFab(){
     opTd.appendChild(mkBtn('详情','btn bsm bs',function(rid){return function(){openGreyFabM(rid,true);};}(r.id)));
     opTd.appendChild(mkBtn('编辑','btn bsm bp',function(rid){return function(){openGreyFabM(rid);};}(r.id)));
     opTd.appendChild(mkBtn('打印','btn bsm boo',function(rid){return function(){prtGreyFab(rid);};}(r.id)));
-    opTd.appendChild(mkBtn('删除','btn bsm br',function(rid){return function(){
+    if(!r.voided){opTd.appendChild(mkBtn('作废','btn bsm br',function(rid){return function(){
       var rec=(DB.greyfabs||[]).find(function(x){return x.id===rid;});
-      if(rec&&rec.paid)return alert('此采购合同已标记「已付款」，不能删除。');
-      if(!confirm('确认删除此胚布采购合同？\n合同号：'+(rec?rec.contractNo:'')+'\n供应商：'+(rec?rec.supplier||'':'')+'\n金额：¥'+(rec?rec.totalAmt||'0':'0')))return;
-      DB.remove('gfy',rid);
-      pgGreyFab();showToast('已删除','success');
-    };}(r.id)));
+      if(rec&&rec.paid)return alert('此采购合同已标记「已付款」，不能作废。');
+      if(!confirm('确认作废此胚布采购合同？\n合同号：'+(rec?rec.contractNo:'')+'\n供应商：'+(rec?rec.supplier||'':'')+'\n金额：¥'+(rec?rec.totalAmt||'0':'0')))return;
+      rec.voided=true;DB.save('gfy',DB.greyfabs);
+      pgGreyFab();showToast('已作废','success');
+    };}(r.id)));}
     tr.appendChild(opTd);gfTbody.appendChild(tr);
   });
   gfTbl.appendChild(gfTbody);gfWrap.appendChild(gfTbl);pg.appendChild(gfWrap);

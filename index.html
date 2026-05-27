@@ -11375,7 +11375,9 @@ function pgFGStock(){
       var rtbody=document.createElement('tbody');
       rets.forEach(function(ret,idx){
         var bg=idx%2===0?'#FFFBEB':'#FFF';
+        if(ret.status==='voided')bg='#f2f2f2';
         var tr=document.createElement('tr');
+        if(ret.status==='voided')tr.style.opacity='.6';
         function mkRTd(txt,s){
           var td=document.createElement('td');
           td.style.cssText='padding:6px 10px;border:1px solid #FEF3C7;vertical-align:middle;background:'+bg+';'+(s||'');
@@ -11390,8 +11392,8 @@ function pgFGStock(){
         tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
         tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
         // 处理结果状态
-        var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废'};
-        var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700'};
+        var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废',voided:'🚫 已作废'};
+        var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700',voided:'color:#6b7280;font-weight:700'};
         var retSt=ret.status||'pending';
         var retStLabel=retStatusMap[retSt]||retSt;
         var retStStyle=retStatusStyle[retSt]||'';
@@ -11400,8 +11402,8 @@ function pgFGStock(){
         var opTd=mkRTd('','text-align:center');
         opTd.appendChild(mkBtn('打印','btn bsm bs',function(retId){return function(){printFGReturn(retId);};}(ret.id)));
         if(!ret.status||ret.status==='pending'){
-          opTd.appendChild(mkBtn('删除','btn bsm br',function(retId){return function(){
-            if(!confirm('确认删除退货单 '+esc(retId)+'？\n注意：删除后退货记录无法恢复。'))return;
+          opTd.appendChild(mkBtn('作废','btn bsm br',function(retId){return function(){
+            if(!confirm('确认作废此退货单 '+esc(retId)+'？\n作废后布卷将恢复为在库状态。'))return;
             var retRec=(DB.fgreturns||[]).find(function(x){return x.id===retId;});
             if(retRec&&retRec.rollIds&&retRec.rollIds.length){
               var allR=fgRolls();
@@ -11411,8 +11413,8 @@ function pgFGStock(){
               });
               saveFgRolls(allR);
             }
-            DB.remove('ret',retId);
-            pgFGStock();showToast('已删除','success');
+            retRec.status='voided';DB.save('ret',DB.fgreturns);
+            pgFGStock();showToast('已作废','success');
           };}(ret.id)));
         }
         tr.appendChild(opTd);

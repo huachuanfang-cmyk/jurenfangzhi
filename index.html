@@ -463,6 +463,19 @@ function fmt(v){return v||'—';}
 function fmtM(n){return n?'¥'+(+n).toLocaleString('zh-CN',{minimumFractionDigits:2}):'—';}
 function fmtN(n){return n?(+n).toLocaleString('zh-CN',{maximumFractionDigits:0}):'0';}
 function esc(s){if(s===null||s===undefined)s='';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// 数量主单位：有 KG 显示 KG，否则有 米 显示 米，都没 0；用于 dashboard val
+function fmtKgM(kg,m){kg=parseFloat(kg)||0;m=parseFloat(m)||0;if(kg>0)return kg.toFixed(1)+' KG';if(m>0)return m.toFixed(1)+' 米';return '0';}
+// 副单位：主显示 KG 时再带 / X 米；只有 KG 或只有米时返回空串
+function fmtKgMSub(kg,m){kg=parseFloat(kg)||0;m=parseFloat(m)||0;return (kg>0&&m>0)?' / '+m.toFixed(1)+'米':'';}
+// 行内紧凑显示：N匹 [/ Xkg] [/ Ym]，0/0 给短横；styled=true 用色块
+function fmtPcsKgM(pcs,kg,m,styled){
+  kg=parseFloat(kg)||0;m=parseFloat(m)||0;
+  var parts=[(pcs!=null?pcs+'匹':'')];
+  if(kg>0)parts.push(styled?'<span style="color:#E67E22">'+kg.toFixed(1)+'KG</span>':kg.toFixed(1)+'KG');
+  if(m>0)parts.push(styled?'<span style="color:#7C3AED">'+m.toFixed(1)+'M</span>':m.toFixed(1)+'M');
+  if(kg===0&&m===0&&pcs!=null)parts.push(styled?'<span style="color:#9CA3AF">—</span>':'—');
+  return parts.filter(Boolean).join(' / ');
+}
 function normSearch(v){return String(v==null?'':v).replace(/[Ａ-Ｚａ-ｚ０-９]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-0xFEE0);}).toLowerCase().replace(/[\s\-_\/.#]+/g,'').trim();}
 function searchHit(hay,q){q=normSearch(q);return !q||normSearch(hay).includes(q);}
 function sameCode(a,b){a=normSearch(a);b=normSearch(b);return !!a&&!!b&&a===b;}
@@ -4687,7 +4700,7 @@ function buildColorRow(n,c){
     delBtn.style.cssText='border:none;background:none;color:var(--cr);cursor:pointer;font-size:17px;padding:2px 4px;border-radius:4px;line-height:1;transition:background .12s';
     delBtn.onmouseover=function(){this.style.background='rgba(239,68,68,.1)';};
     delBtn.onmouseout=function(){this.style.background='none';};
-    delBtn.onclick=function(){tr.style.opacity='0';tr.style.transition='opacity .18s';setTimeout(function(){tr.remove();},180);};
+    delBtn.onclick=function(){tr.style.opacity='0';tr.style.transition='opacity .18s';setTimeout(function(){tr.remove();recalcColorTotals();},180);};
     tDel.appendChild(delBtn);
   }
   tr.appendChild(tDel);
@@ -5016,6 +5029,54 @@ function openOM(id){
 
     body.appendChild(mf);
 
+    function recalcColorTotals(){
+      var rows=document.querySelectorAll('#cwp tbody tr');
+      var sumKg=0,sumM=0,sumProd=0,sumVat=0,sumFin=0;
+      rows.forEach(function(tr){
+        var n='';
+        var m=tr.id.match(/^cr-row-(\d+)$/);
+        if(m)n=m[1];
+        if(!n)return;
+        var qty=parseFloat((document.getElementById('cq-'+n)||{}).value)||0;
+        var unit=(document.getElementById('cu-'+n)||{}).value||'公斤';
+        if(unit==='米')sumM+=qty;else sumKg+=qty;
+        sumProd+=parseFloat((document.getElementById('pq-'+n)||{}).value)||0;
+        sumVat+=parseFloat((document.getElementById('vq-'+n)||{}).value)||0;
+        sumFin+=parseFloat((document.getElementById('fq-'+n)||{}).value)||0;
+      });
+      var qtyEl=document.getElementById('tot-qty');
+      if(qtyEl){
+        var parts=[];
+        if(sumKg>0)parts.push(sumKg.toFixed(1)+' KG');
+        if(sumM>0)parts.push(sumM.toFixed(1)+' 米');
+        qtyEl.textContent=parts.length?parts.join(' / '):'—';
+      }
+      var prodEl=document.getElementById('tot-prod');
+      if(prodEl)prodEl.textContent=sumProd>0?sumProd.toFixed(1)+' KG':'—';
+      var vatEl=document.getElementById('tot-vat');
+      if(vatEl)vatEl.textContent=sumVat>0?sumVat.toFixed(1)+' KG':'—';
+      var finEl=document.getElementById('tot-fin');
+      if(finEl)finEl.textContent=sumFin>0?sumFin.toFixed(1)+' KG':'—';
+      var lossEl=document.getElementById('tot-loss');
+      if(lossEl){
+        var prodRate=sumKg>0?((sumProd-sumKg)/sumKg*100):0;
+        var vatRate=sumProd>0?((sumProd-sumVat)/sumProd*100):0;
+        var prodStr=sumKg>0?(prodRate>=0?'+':'')+prodRate.toFixed(1)+'%':'—';
+        var vatStr=sumProd>0?(vatRate>=0?'+':'')+vatRate.toFixed(1)+'%':'—';
+        function lossClr(v){return v<0?'#DC2626':v>25?'#DC2626':v>15?'#D97706':'#16A34A';}
+        lossEl.innerHTML='投产损耗率：<span style="color:'+lossClr(prodRate)+';font-weight:600">'+prodStr+'</span> / 落缸损耗率：<span style="color:'+lossClr(vatRate)+';font-weight:600">'+vatStr+'</span>';
+      }
+    }
+    function attachTotalListeners(){
+      document.querySelectorAll('#cwp [id^="cq-"], #cwp [id^="pq-"], #cwp [id^="vq-"], #cwp [id^="fq-"]').forEach(function(el){
+        if(el.dataset.tot)return;el.dataset.tot='1';
+        el.addEventListener('input',recalcColorTotals);
+      });
+      document.querySelectorAll('#cwp [id^="cu-"]').forEach(function(el){
+        if(el.dataset.tot)return;el.dataset.tot='1';
+        el.addEventListener('change',recalcColorTotals);
+      });
+    }
     // 颜色明细区块（橙色调）
     var clrSecHdr=document.createElement('div');
     clrSecHdr.style.cssText='padding:13px 18px 8px;background:#FFFBEB;border-bottom:1px solid #FDE68A;font-size:9px;font-weight:600;letter-spacing:1.5px;color:#D97706;text-transform:uppercase';
@@ -5065,9 +5126,28 @@ function openOM(id){
     });
     cThead.appendChild(cThr);cwp.appendChild(cThead);
     var cTbody=document.createElement('tbody');cwp.appendChild(cTbody);
+    var cTfoot=document.createElement('tfoot');
+    var totTr1=document.createElement('tr');
+    totTr1.style.cssText='background:#FEF3C7;border-top:2px solid #FDE68A;font-weight:700';
+    totTr1.innerHTML=
+      '<td colspan="4" style="padding:6px 8px;text-align:right;color:#92400E;font-size:11px">合 计</td>'+
+      '<td id="tot-qty" style="padding:6px 3px;text-align:center;color:#92400E;font-size:11px">—</td>'+
+      '<td id="tot-prod" style="padding:6px 3px;text-align:center;color:#92400E;font-size:11px">—</td>'+
+      '<td id="tot-vat" style="padding:6px 3px;text-align:center;color:#92400E;font-size:11px">—</td>'+
+      '<td id="tot-fin" style="padding:6px 3px;text-align:center;color:#92400E;font-size:11px">—</td>'+
+      '<td colspan="4" style="padding:6px 8px"></td>';
+    var totTr2=document.createElement('tr');
+    totTr2.style.cssText='background:#FFFBEB';
+    totTr2.innerHTML=
+      '<td colspan="12" id="tot-loss" style="padding:4px 12px;text-align:right;color:#6B7280;font-size:10.5px">—</td>';
+    cTfoot.appendChild(totTr1);
+    cTfoot.appendChild(totTr2);
+    cwp.appendChild(cTfoot);
     cols.forEach(function(c,i){cTbody.appendChild(buildColorRow(i+1,c));});
+    attachTotalListeners();
+    recalcColorTotals();
     cwpWrap.appendChild(cwp);body.appendChild(cwpWrap);
-    var addBtn=mkBtn('&#43; 添加颜色','btn bq',function(){_cc++;var tbody=cwp.querySelector('tbody')||cwp;tbody.appendChild(buildColorRow(_cc));});
+    var addBtn=mkBtn('&#43; 添加颜色','btn bq',function(){_cc++;var tbody=cwp.querySelector('tbody')||cwp;tbody.appendChild(buildColorRow(_cc));attachTotalListeners();recalcColorTotals();});
     addBtn.style.marginTop='6px';body.appendChild(addBtn);
   },function(){saveO(id);});
   om(modal);
@@ -10514,20 +10594,26 @@ function pgFGStock(){
   var retVatCount=[...new Set(returnedRolls.map(function(r){return r.vatNo;}).filter(Boolean))].length;
 
   var mInKG=0,mOutKG=0,lmInKG=0,lmOutKG=0;
+  var mInM=0,mOutM=0; // 按米计价订单的本月汇总
+  var stockM=stockRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0);
   fgins.forEach(function(r){
     if(r.status==='voided')return; // 已撤销批次不计入KPI
     var rs=rolls.filter(function(x){return x.inId===r.id&&x.status!=='voided';});
     var kg=rs.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
-    if((r.date||'').startsWith(thisMonth))mInKG+=kg;
+    var mm=rs.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
+    if((r.date||'').startsWith(thisMonth)){mInKG+=kg;mInM+=mm;}
     if((r.date||'').startsWith(lastMonth))lmInKG+=kg;
   });
   fgouts.forEach(function(r){
     if(r.voided)return;
     var rs=rolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0&&x.status!=='voided';});
     var kg=rs.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
-    if((r.date||'').startsWith(thisMonth))mOutKG+=kg;
+    var mm=rs.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
+    if(mm===0 && r.approxM){mm=parseFloat(String(r.approxM).replace(/[^0-9.]/g,''))||0;}
+    if((r.date||'').startsWith(thisMonth)){mOutKG+=kg;mOutM+=mm;}
     if((r.date||'').startsWith(lastMonth))lmOutKG+=kg;
   });
+  // 使用全局 fmtKgM / fmtKgMSub（在文件顶部 464 行附近定义）
 
   function trendBadge(c,l){
     if(!l||l<=0)return '';
@@ -10541,9 +10627,9 @@ function pgFGStock(){
   var mInCnt=fgins.filter(function(x){return (x.date||'').startsWith(thisMonth)&&x.status!=='voided';}).length;
   var mOutCnt=fgouts.filter(function(x){return (x.date||'').startsWith(thisMonth)&&!x.voided;}).length;
   [
-    {lbl:'当前在库',val:stockCount+'匹',sub:stockKG.toFixed(1)+' KG',cls:'sg',badge:'',tab:'stock'},
-    {lbl:'本月入库',val:mInKG.toFixed(1)+' KG',sub:'共 '+mInCnt+' 批次',cls:'sb',badge:trendBadge(mInKG,lmInKG),tab:null},
-    {lbl:'本月出货',val:mOutKG.toFixed(1)+' KG',sub:'共 '+mOutCnt+' 张',cls:'so',badge:trendBadge(mOutKG,lmOutKG),tab:'out'},
+    {lbl:'当前在库',val:stockCount+'匹',sub:fmtKgM(stockKG,stockM)+fmtKgMSub(stockKG,stockM),cls:'sg',badge:'',tab:'stock'},
+    {lbl:'本月入库',val:fmtKgM(mInKG,mInM),sub:'共 '+mInCnt+' 批次'+fmtKgMSub(mInKG,mInM),cls:'sb',badge:trendBadge(mInKG,lmInKG),tab:null},
+    {lbl:'本月出货',val:fmtKgM(mOutKG,mOutM),sub:'共 '+mOutCnt+' 张'+fmtKgMSub(mOutKG,mOutM),cls:'so',badge:trendBadge(mOutKG,lmOutKG),tab:'out'},
     {lbl:'退货待处理',val:retVatCount?retVatCount+'缸':' — ',sub:returnedRolls.length?returnedRolls.length+'匹待处理':'暂无退货',cls:retVatCount?'sr2':'sg',badge:'',tab:'returned'}
   ].forEach(function(k){
     var st=document.createElement('div');st.className='st '+k.cls;
@@ -11222,7 +11308,7 @@ function pgFGStock(){
             if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
           };}(r.id)));
           if(!hasRetD)opDTd2.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
-          if(!r.voided)opDTd2.appendChild(mkBtn('作废','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap){return function(){
+          if(!r.voided)opDTd2.appendChild(mkBtn('作废','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap,totMSnap){return function(){
             if(rSnap&&rSnap.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再作废。');
             var _ov2=document.createElement('div');
             _ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center';
@@ -11235,7 +11321,7 @@ function pgFGStock(){
               +'</div>'
               +'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:12px;color:#7F1D1D;margin-bottom:14px;line-height:1.9">'
               +'<b>送货单：</b>'+esc(rSnap.no||'—')+'&nbsp;&nbsp;<b>日期：</b>'+esc(rSnap.date||'—')+'<br>'
-              +'<b>客&nbsp;户：</b>'+esc(rSnap.custNm||'—')+'&nbsp;&nbsp;<b>数量：</b>'+rlsSnap+'匹 / '+totKGSnap.toFixed(1)+'KG'
+              +'<b>客&nbsp;户：</b>'+esc(rSnap.custNm||'—')+'&nbsp;&nbsp;<b>数量：</b>'+fmtPcsKgM(rlsSnap,totKGSnap,totMSnap||0,false)
               +'</div>'
               +'<div style="font-size:11.5px;color:#374151;margin-bottom:18px;line-height:2">'
               +'作废后将产生以下影响：<br>'
@@ -11261,7 +11347,7 @@ function pgFGStock(){
               r2.voided=true;DB.save('fgo',DB.fgouts);
               pgFGStock();showToast('已作废，库存已恢复','success');
             };
-          };}(r.id, r, rls.length, kg))));
+          };}(r.id, r, rls.length, kg, mRow))));
           dtr.appendChild(opDTd2);
           outBody.appendChild(dtr);
         });
@@ -11299,11 +11385,12 @@ function pgFGStock(){
         if(!retGroup[vk]){
           var ord2=orders.find(function(x){return x.id===r.ordId;})||{};
           var clrObj2=(ord2.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
-          retGroup[vk]={vatNo:r.vatNo||'—',ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,rollIds:[],reason:retReasonMap[r.retId]||'',retId:r.retId||''};
+          retGroup[vk]={vatNo:r.vatNo||'—',ordNo:r.ordNo,ordId:r.ordId,custNm:r.custNm||ord2.custNm||'',colorNm:r.colorNm,colorCode:clrObj2.code||r.colorCode||'',cnt:0,kg:0,m:0,rollIds:[],reason:retReasonMap[r.retId]||'',retId:r.retId||''};
         }
         if(!retGroup[vk].reason&&r.retId)retGroup[vk].reason=retReasonMap[r.retId]||'';
         retGroup[vk].cnt++;
         retGroup[vk].kg+=(parseFloat(r.kg)||0);
+        retGroup[vk].m+=(parseFloat(r.m)||0);
         retGroup[vk].rollIds.push(r.id);
       });
       var retKeys=Object.keys(retGroup);
@@ -11332,7 +11419,7 @@ function pgFGStock(){
         tr.appendChild(mkRetTd(esc(g.ordNo||''),'font-weight:600;color:#7F1D1D;font-family:monospace;font-size:10.5px'));
         tr.appendChild(mkRetTd(esc(g.custNm||'—'),'font-size:11px;color:#7F1D1D'));
         tr.appendChild(mkRetTd(esc(g.colorNm||''),'font-weight:600;font-size:11px;color:#7F1D1D'));
-        tr.appendChild(mkRetTd(g.cnt+'匹 / '+g.kg.toFixed(1)+'KG','text-align:center;font-weight:700;color:#DC2626'));
+        tr.appendChild(mkRetTd(fmtPcsKgM(g.cnt,g.kg,g.m,false),'text-align:center;font-weight:700;color:#DC2626'));
         tr.appendChild(mkRetTd(esc(g.reason||'—'),'color:#B91C1C;font-size:11px'));
         var opTd=mkRetTd('','text-align:center;white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap;justify-content:center');
         // ── 辅助：关闭旧疋 + 更新退货单状态 ──
@@ -11540,10 +11627,14 @@ function openFGReturn(outId){
       cb.className='fgret-roll-cb';
       cb.style.cssText='width:15px;height:15px;accent-color:#DC2626;cursor:pointer';
       cb.dataset.kg=rl.kg||'0';
+      cb.dataset.m=rl.m||'0';
       rollCbs.push(cb);
       row.appendChild(cb);
+      // 文本显示 KG/米：按疋本身的数据展示，0KG 时显示米数避免误导
+      var _rkg=parseFloat(rl.kg)||0,_rm=parseFloat(rl.m)||0;
+      var _qtyTxt=_rkg>0?(rl.kg+'KG'+(_rm>0?'/'+rl.m+'M':'')):(_rm>0?(rl.m+'M'):'—');
       row.appendChild(document.createTextNode(
-        (rl.rollNo||'')+' | '+(rl.colorNm||'')+' '+(rl.colorCode||'')+' | 缸号:'+(rl.vatNo||'')+' | '+(rl.kg||'0')+'KG'
+        (rl.rollNo||'')+' | '+(rl.colorNm||'')+' '+(rl.colorCode||'')+' | 缸号:'+(rl.vatNo||'')+' | '+_qtyTxt
       ));
       listWrap.appendChild(row);
     });
@@ -11553,11 +11644,12 @@ function openFGReturn(outId){
     stat.style.cssText='font-size:11.5px;color:#374151;margin-bottom:8px;padding:0 4px';
     body.appendChild(stat);
     function updateStat(){
-      var n=0,kg=0;
-      rollCbs.forEach(function(cb){if(cb.checked){n++;kg+=parseFloat(cb.dataset.kg||0);}});
-      stat.innerHTML='已选 <b>'+n+'</b> 匹，约 <b>'+kg.toFixed(1)+'</b> KG';
+      var n=0,kg=0,m=0;
+      rollCbs.forEach(function(cb){if(cb.checked){n++;kg+=parseFloat(cb.dataset.kg||0);m+=parseFloat(cb.dataset.m||0);}});
+      var qtyHtml='<b>'+(kg>0?kg.toFixed(1)+'</b> KG':'')+(kg===0&&m>0?m.toFixed(1)+'</b> 米':'')+(kg>0&&m>0?' / <b>'+m.toFixed(1)+'</b>M':'')+(kg===0&&m===0?'0</b>':'');
+      stat.innerHTML='已选 <b>'+n+'</b> 匹，约 '+qtyHtml;
       rollCount.textContent='（共 '+outRolls.length+' 匹）';
-      if(deductKGInp&&!deductKGInp._userSet){deductKGInp.value=kg.toFixed(1);}
+      if(deductKGInp&&!deductKGInp._userSet){deductKGInp.value=(kg>0?kg:m).toFixed(1);}
     }
     updateStat();
     rollCbs.forEach(function(cb){cb.onchange=updateStat;});
@@ -11630,6 +11722,7 @@ function openFGOutEdit(outId){
   var allRolls=fgRolls();
   var outRolls=allRolls.filter(function(x){return (r.rollIds||[]).indexOf(x.id)>=0;});
   var totKG=outRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
+  var totM=outRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
 
   // 同订单同缸号的在库疋（可补勾）
   var sameGroup=allRolls.filter(function(x){
@@ -11641,7 +11734,7 @@ function openFGOutEdit(outId){
     // 只读摘要
     var info=document.createElement('div');
     info.style.cssText='background:#EFF6FF;border-left:3px solid #BFDBFE;border-radius:3px;padding:8px 12px;margin-bottom:10px;font-size:11px;line-height:2;color:#1e3a8a';
-    info.innerHTML='<strong>送货单号：</strong>'+esc(r.no||'')+'　<strong>订单：</strong>'+esc(r.ordNo||'')+'　<strong>客户：</strong>'+esc(r.custNm||'')+'　<strong>出货：</strong>'+outRolls.length+'匹 / '+totKG.toFixed(1)+'KG';
+    info.innerHTML='<strong>送货单号：</strong>'+esc(r.no||'')+'　<strong>订单：</strong>'+esc(r.ordNo||'')+'　<strong>客户：</strong>'+esc(r.custNm||'')+'　<strong>出货：</strong>'+fmtPcsKgM(outRolls.length,totKG,totM,false);
     body.appendChild(info);
 
     // 可编辑字段
@@ -11791,10 +11884,10 @@ function openFGOutFromGroup(k,grp){
     body.appendChild(grid);
     function updateSt(){
       var cbs=document.querySelectorAll('.fgo2-cb:checked');
-      var tot=0;var allR=fgRolls();
-      cbs.forEach(function(cb){var r=allR.find(function(x){return x.id===cb.value;});if(r)tot+=(parseFloat(r.kg)||0);});
+      var tot=0,totM=0;var allR=fgRolls();
+      cbs.forEach(function(cb){var r=allR.find(function(x){return x.id===cb.value;});if(r){tot+=(parseFloat(r.kg)||0);totM+=(parseFloat(r.m)||0);}});
       var s=document.getElementById('fgo2-stats');
-      if(s)s.textContent='已选 '+cbs.length+'匹 / '+tot.toFixed(1)+'KG';
+      if(s)s.textContent='已选 '+fmtPcsKgM(cbs.length,tot,totM,false);
     }
     updateSt();
   },function(){

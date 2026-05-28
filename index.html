@@ -2886,7 +2886,8 @@ function pgDash(){
   // ── 今日要事（智能优先级清单）──
   (function(){
     var arecs=DB.arecs||[];
-    var unsettled=arecs.filter(function(r){return r.status!=='settled'&&parseFloat(r.balanceAmt||0)>0;});
+    // 作废对账单不计入今日要事的应收预警（之前漏过滤导致 STM2026006 作废后仍在弹"去收款"）
+    var unsettled=arecs.filter(function(r){return r.status!=='settled'&&r.status!=='voided'&&parseFloat(r.balanceAmt||0)>0;});
     var overdueArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='overdue';});
     var warnArecs=unsettled.filter(function(r){return getDaysStatus(r.dueDate).type==='warning';});
     var overdueOrds=orders.filter(function(o){
@@ -3199,7 +3200,8 @@ function openCustSummary(custId){
     });
   });
   var custArecs=arecs.filter(function(r){return r.custNm===cust.nm;});
-  var unsettledAmt=custArecs.reduce(function(s,r){return s+(r.status!=='settled'?parseFloat(r.balanceAmt||0):0);},0);
+  // 作废对账单不算未结清
+  var unsettledAmt=custArecs.reduce(function(s,r){return s+(r.status!=='settled'&&r.status!=='voided'?parseFloat(r.balanceAmt||0):0);},0);
 
   // 弹窗
   var ov=document.createElement('div');
@@ -8510,7 +8512,7 @@ function pgARec(){
   function getTabRecs(key){
     if(!key)return recs;
     if(key==='settled')return recs.filter(function(r){return r.status==='settled';});
-    if(key==='unsettled')return recs.filter(function(r){return r.status!=='settled';});
+    if(key==='unsettled')return recs.filter(function(r){return r.status!=='settled'&&r.status!=='voided';});
     return recs.filter(function(r){
       if(r.status==='settled')return false;
       var s=getDaysStatus(r.dueDate);

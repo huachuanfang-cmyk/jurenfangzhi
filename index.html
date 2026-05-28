@@ -8551,7 +8551,17 @@ function pgARec(){
     });
     arThead.appendChild(arThRow);arTbl.appendChild(arThead);
     var arTbody=document.createElement('tbody');
-    filtered.slice().reverse().forEach(function(r,idx){
+    // ── 财务系统标准排序：对账月份 desc → 客户名 asc → 单号 desc ──
+    // 同月份的对账单聚在一起，月份内同客户的聚在一起，最新单号在前
+    var _sorted=filtered.slice().sort(function(a,b){
+      var am=String(a.month||''),bm=String(b.month||'');
+      if(am!==bm)return bm<am?-1:1; // 月份倒序（2025-12 在前）
+      var ac=String(a.custNm||''),bc=String(b.custNm||'');
+      if(ac!==bc)return ac<bc?-1:1; // 同月份按客户名升序
+      var an=String(a.no||''),bn=String(b.no||'');
+      return bn<an?-1:1; // 同月同客户按单号倒序
+    });
+    _sorted.forEach(function(r,idx){
       var st=getDaysStatus(r.dueDate);
       // 行背景：逾期>警告>斑马纹
       var bg=st.type==='overdue'?'#FEF2F2':st.type==='warning'?'#FFFBEB':(idx%2===0?'#ffffff':'#f9f8ff');
@@ -9894,7 +9904,15 @@ function pgRecon(){
       empty.innerHTML='&#128203; 暂无对账单<br><span style="font-size:11px">点击「新建对账单」开始</span>';
       listCard.appendChild(empty);return;
     }
-    var rows=filtered.slice().reverse().map(function(r){
+    // 应付对账同样按 对账月份 desc → 工厂名 asc → 单号 desc 排序
+    var rows=filtered.slice().sort(function(a,b){
+      var am=String(a.month||''),bm=String(b.month||'');
+      if(am!==bm)return bm<am?-1:1;
+      var ac=String(a.factNm||''),bc=String(b.factNm||'');
+      if(ac!==bc)return ac<bc?-1:1;
+      var an=String(a.no||''),bn=String(b.no||'');
+      return bn<an?-1:1;
+    }).map(function(r){
       var tr=document.createElement('tr');
       tr.style.cssText='cursor:pointer;transition:background .12s';
       tr.onmouseover=function(){this.style.background='var(--b3)';};

@@ -8712,9 +8712,11 @@ function exportARecExcel(id){
     var mSum=oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
     var unitPr=parseFloat(ord.unitPr)||0;
     var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-    // ── 关键：用送货单凭证精度（1 位小数）算账，保证对账金额 = 送货单 KG × 单价 ──
-    var kgBill=Math.round(kg*10)/10;
-    var mBill=Math.round(mSum*10)/10;
+    // ── 关键：用与送货单完全相同的 toFixed(1) 公式，规避浮点 .x5 边界不一致 ──
+    // Math.round(1060.55*10)/10 = 1060.6 但 (1060.55).toFixed(1) = "1060.5"
+    // 送货单用的是后者，账单必须跟它一字不差
+    var kgBill=Number(kg.toFixed(1));
+    var mBill=Number(mSum.toFixed(1));
     var amt=(_byM?mBill:kgBill)*unitPr; grandTotal+=amt;
     var clrNms=[...new Set(oRolls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
     var feeAmt=parseFloat(out.feeAmt)||0;
@@ -8955,9 +8957,9 @@ function printARec(id){
       :(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
     var unitPr=parseFloat(ord.unitPr)||0;
     var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-    // ── 关键：与送货单一致用 1 位小数 KG/米 计费，避免账单和送货单金额对不上 ──
-    var kgBill=Math.round(kg*10)/10;
-    var mBill=Math.round(mSum*10)/10;
+    // ── 关键：用与送货单完全相同的 toFixed(1) 公式（line 13764），避免 .x5 边界不一致 ──
+    var kgBill=Number(kg.toFixed(1));
+    var mBill=Number(mSum.toFixed(1));
     var amt=(_byM?mBill:kgBill)*unitPr;
     // 把 kg/mSum 重写为凭证精度，下游 outRows 用 d.kg 直接显示
     kg=kgBill; mSum=mBill;
@@ -9380,12 +9382,13 @@ function openARecModal(id){
             amt=Object.keys(_byClr).reduce(function(s,c){
               var clr=(ord.colors||[]).find(function(x){return x.nm===c;})||{};
               var extraPr=parseFloat(clr.extraPr)||0;
-              var qty=byM?(Math.round(_byClr[c].m*10)/10):(Math.round(_byClr[c].kg*10)/10);
+              // 与送货单 toFixed(1) 一致，避开 Math.round 在 .x5 处的行为差异
+              var qty=byM?Number(_byClr[c].m.toFixed(1)):Number(_byClr[c].kg.toFixed(1));
               return s+qty*(baseUnitPr+extraPr);
             },0);
           } else {
-            // 无疋数据：直接用汇总量×单价（也按 1 位小数）
-            var qty2=byM?Math.round(mTot*10)/10:Math.round(kg*10)/10;
+            // 无疋数据：直接用汇总量×单价（与送货单同精度）
+            var qty2=byM?Number(mTot.toFixed(1)):Number(kg.toFixed(1));
             amt=qty2*baseUnitPr;
           }
         }

@@ -8345,14 +8345,16 @@ function pgARec(){
   var nb=mkBtn('＋ 新建对账单','btn bp',function(){openARecModal(null);});
   hdr.appendChild(ht);hdr.appendChild(nb);pg.appendChild(hdr);
 
-  // 统计卡
+  // 统计卡（作废单据不计入任何应收汇总 — 行业合规要求）
   var sr=document.createElement('div');sr.className='sr';
-  var overdueRecs=recs.filter(function(r){if(r.status==='settled')return false;var s=getDaysStatus(r.dueDate);return s.type==='overdue';});
-  var warnRecs=recs.filter(function(r){if(r.status==='settled')return false;var s=getDaysStatus(r.dueDate);return s.type==='warning';});
-  var totalOwed=recs.filter(function(r){return r.status!=='settled';}).reduce(function(s,r){return s+(parseFloat(r.balanceAmt)||0);},0);
+  function _isLive(r){return r.status!=='settled'&&r.status!=='voided';}
+  var overdueRecs=recs.filter(function(r){if(!_isLive(r))return false;var s=getDaysStatus(r.dueDate);return s.type==='overdue';});
+  var warnRecs=recs.filter(function(r){if(!_isLive(r))return false;var s=getDaysStatus(r.dueDate);return s.type==='warning';});
+  var totalOwed=recs.filter(_isLive).reduce(function(s,r){return s+(parseFloat(r.balanceAmt)||0);},0);
   var overdueAmt=overdueRecs.reduce(function(s,r){return s+(parseFloat(r.balanceAmt)||0);},0);
+  var voidedCount=recs.filter(function(r){return r.status==='voided';}).length;
   [
-    [recs.filter(function(r){return r.status!=='settled';}).length+'张','未结清对账单','待收款','sg'],
+    [recs.filter(_isLive).length+'张','未结清对账单',voidedCount?('已剔除 '+voidedCount+' 张作废'):'待收款','sg'],
     ['¥'+totalOwed.toFixed(0),'应收总额','未结清合计','sb'],
     [overdueRecs.length+'张','已逾期','需催款','so'],
     ['¥'+overdueAmt.toFixed(0),'逾期金额','逾期未收','sb2']
@@ -8789,8 +8791,20 @@ function exportARecExcel(id){
   ws.mergeCells('D'+bankRow.number+':F'+bankRow.number);
   ws.mergeCells('G'+bankRow.number+':J'+bankRow.number);
 
-  // ── 生成下载 ──
-  var fname='对账单_'+(r.custNm||'')+'_'+(r.month||displayNo)+'.xlsx';
+  // ── 生成下载（作废单加前缀 + 工作表首行红字警示）──
+  var _isVoidedX=(r.status==='voided');
+  if(_isVoidedX){
+    try{
+      ws.insertRow(1,['⚠ 本对账单已作废，仅供存档参考，不作为有效凭证 ⚠']);
+      var voidRow=ws.getRow(1);
+      voidRow.height=22;
+      voidRow.font={name:FN,size:12,bold:true,color:{argb:'FF991B1B'}};
+      voidRow.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFEE2E2'}};
+      voidRow.alignment={horizontal:'center',vertical:'middle'};
+      ws.mergeCells('A1:K1');
+    }catch(e){console.warn('Excel 作废首行注入失败',e);}
+  }
+  var fname=(_isVoidedX?'[作废]':'')+'对账单_'+(r.custNm||'')+'_'+(r.month||displayNo)+'.xlsx';
   wb.xlsx.writeBuffer().then(function(buf){
     var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     var url=URL.createObjectURL(blob);
@@ -8925,11 +8939,26 @@ function printARec(id){
   var balance=Math.max(0,grandTotal+totalFee-returnTotal-deductTotal+addTotal-paidTotal);
   var meterTh=hasMeter?'<th style="border:1px solid #ccc;padding:5px 6px;color:#1e3a8a;text-align:center;font-size:10px;width:55px">米数</th>':'';
 
+  // 作废对账单：标题前缀 + 红色对角水印 + 页脚备注，符合企业 ERP 规范
+  var _isVoided=(r.status==='voided');
+  var _voidPrefix=_isVoided?'[作废] ':'';
+  var _voidStyles=_isVoided?
+    '.voided-stamp{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);'+
+      'font-size:140px;font-weight:900;color:rgba(220,38,38,.18);border:8px solid rgba(220,38,38,.22);'+
+      'padding:10px 60px;letter-spacing:30px;z-index:9999;pointer-events:none;'+
+      'font-family:"Microsoft YaHei",sans-serif;white-space:nowrap}'+
+    '.voided-banner{background:#FEE2E2;border:2px solid #DC2626;color:#991B1B;padding:6px 12px;'+
+      'font-weight:700;margin-bottom:6px;border-radius:4px;text-align:center;font-size:13px;letter-spacing:2px}'+
+    'body{position:relative}'
+    :'';
+  var _voidStamp=_isVoided?'<div class="voided-stamp">作 废</div>':'';
+  var _voidBanner=_isVoided?'<div class="voided-banner">⚠ 本对账单已作废，仅供存档参考，不作为有效凭证</div>':'';
+
   var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'
-    +'<title>对账单 '+esc(displayNo)+'</title>'
+    +'<title>'+_voidPrefix+'对账单 '+esc(displayNo)+'</title>'
     +'<style>body{font-family:"Noto Sans SC","Microsoft YaHei",sans-serif;margin:0;padding:7mm 10mm;font-size:11px;color:#111}'
-    +'@media print{@page{size:A4 landscape;margin:5mm 8mm}}</style>'
-    +'</head><body>'
+    +'@media print{@page{size:A4 landscape;margin:5mm 8mm}}'+_voidStyles+'</style>'
+    +'</head><body>'+_voidStamp+_voidBanner
     +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:5px">'
     +'<div style="display:flex;gap:10px;align-items:flex-start">'
     +'<img src="'+LOGO+'" style="width:40px;height:40px;object-fit:contain;flex-shrink:0">'

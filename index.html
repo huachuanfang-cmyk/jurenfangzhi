@@ -8702,12 +8702,15 @@ function exportARecExcel(id){
     var mSum=oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
     var unitPr=parseFloat(ord.unitPr)||0;
     var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-    var amt=(_byM?mSum:kg)*unitPr; grandTotal+=amt;
+    // ── 关键：用送货单凭证精度（1 位小数）算账，保证对账金额 = 送货单 KG × 单价 ──
+    var kgBill=Math.round(kg*10)/10;
+    var mBill=Math.round(mSum*10)/10;
+    var amt=(_byM?mBill:kgBill)*unitPr; grandTotal+=amt;
     var clrNms=[...new Set(oRolls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、');
     var feeAmt=parseFloat(out.feeAmt)||0;
     if(feeAmt)totalFee+=feeAmt;
     outDataList.push({date:out.date||'',fab:ord.fab||'',clr:clrNms,pcs:oRolls.length,
-      kg:parseFloat(kg.toFixed(2)),m:parseFloat(mSum.toFixed(1)),
+      kg:kgBill,m:mBill,
       unitPr:unitPr,prUnit:(_byM?'米':'KG'),amt:parseFloat(amt.toFixed(2)),
       no:(out.no||'').replace(/^[A-Z]+/,''),custNo:out.custOrdNo||ord.custNo||'',
       rm:out.feeNm&&feeAmt?(out.feeNm+'¥'+feeAmt.toFixed(0)):''});
@@ -8942,7 +8945,12 @@ function printARec(id){
       :(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
     var unitPr=parseFloat(ord.unitPr)||0;
     var _byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-    var amt=(_byM?mSum:kg)*unitPr;
+    // ── 关键：与送货单一致用 1 位小数 KG/米 计费，避免账单和送货单金额对不上 ──
+    var kgBill=Math.round(kg*10)/10;
+    var mBill=Math.round(mSum*10)/10;
+    var amt=(_byM?mBill:kgBill)*unitPr;
+    // 把 kg/mSum 重写为凭证精度，下游 outRows 用 d.kg 直接显示
+    kg=kgBill; mSum=mBill;
     grandTotal+=amt;
     var clrNms=oRolls.length>0
       ?[...new Set(oRolls.map(function(x){return x.colorNm||'';}).filter(Boolean))].join('、')
@@ -8979,7 +8987,7 @@ function printARec(id){
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:10px">'+esc(d.fab)+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:10px;white-space:nowrap">'+esc(d.clr)+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.pcs+'</td>'
-      +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.kg.toFixed(2)+'</td>'
+      +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.kg.toFixed(1)+'</td>'
       +meterTd
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px;color:#1e3a8a;font-weight:600">'+(d.unitPr?'¥'+d.unitPr+'/'+(d.prUnit||'KG'):'—')+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-family:monospace;font-size:9.5px;color:#1e3a8a">'+esc(d.no)+'</td>'
@@ -8995,7 +9003,7 @@ function printARec(id){
       +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px">退货扣损：'+esc(d.fab)+'</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px;white-space:nowrap">'+esc(d.clr)+'</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">'+(d.pcs||'')+'</td>'
-      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;font-weight:700">-'+d.kg.toFixed(2)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;font-weight:700">-'+d.kg.toFixed(1)+'</td>'
       +meterTd
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">—</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-family:monospace;font-size:9.5px;color:#DC2626">'+esc((d.no||'').replace(/^[A-Z]+/,''))+'</td>'
@@ -9093,7 +9101,7 @@ function printARec(id){
     +'<tr style="background:#EAECF4;font-weight:700">'
     +'<td colspan="3" style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-size:11px">本期货款</td>'
     +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.pcs;},0)+'</td>'
-    +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.kg;},0).toFixed(2)+'</td>'
+    +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.kg;},0).toFixed(1)+'</td>'
     +(hasMeter?'<td style="border:1px solid #ccc;padding:5px 6px"></td>':'')
     +'<td colspan="2" style="border:1px solid #ccc;padding:5px 6px"></td>'
     +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-size:12px">¥'+grandTotal.toFixed(2)+'</td>'
@@ -9350,15 +9358,24 @@ function openARecModal(id){
         var amt=0;
         if(baseUnitPr>0){
           if(oRolls.length>0){
-            amt=oRolls.reduce(function(s,r){
-              var clr=(ord.colors||[]).find(function(c){return c.nm===r.colorNm;})||{};
+            // ── 关键：按颜色分组汇总后四舍五入到送货单凭证精度（1 位小数）再计费 ──
+            // 否则 17 疋累加得 1060.55，× 42 = 44543.10，但送货单显示 1060.5 × 42 = 44541，账不平
+            var _byClr={};
+            oRolls.forEach(function(r){
+              var c=r.colorNm||'';
+              if(!_byClr[c])_byClr[c]={kg:0,m:0};
+              _byClr[c].kg+=parseFloat(r.kg)||0;
+              _byClr[c].m+=parseFloat(r.m)||0;
+            });
+            amt=Object.keys(_byClr).reduce(function(s,c){
+              var clr=(ord.colors||[]).find(function(x){return x.nm===c;})||{};
               var extraPr=parseFloat(clr.extraPr)||0;
-              var qty=byM?(parseFloat(r.m)||0):(parseFloat(r.kg)||0);
+              var qty=byM?(Math.round(_byClr[c].m*10)/10):(Math.round(_byClr[c].kg*10)/10);
               return s+qty*(baseUnitPr+extraPr);
             },0);
           } else {
-            // 无疋数据：直接用汇总量×单价
-            var qty2=byM?mTot:kg;
+            // 无疋数据：直接用汇总量×单价（也按 1 位小数）
+            var qty2=byM?Math.round(mTot*10)/10:Math.round(kg*10)/10;
             amt=qty2*baseUnitPr;
           }
         }

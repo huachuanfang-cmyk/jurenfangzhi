@@ -4851,7 +4851,9 @@ function buildColorRow(n,c){
 function openOM(id){
   var o=(id&&DB.orders.find(function(x){return x.id===id;}))||{};
   var cols=o.colors||[{}];_cc=cols.length;
-  var modal=buildModal((id?'编辑':'新增')+'销售订单','mxl',function(body){
+  // 编辑时把订单号 + 客户拼进标题，避免要靠时间/布类才能定位订单
+  var _modalTitle=id?('编辑订单 '+(o.no||'—')+' · '+(o.custNm||'')):'新增销售订单';
+  var modal=buildModal(_modalTitle,'mxl',function(body){
     // ══ D方案 v2：彩色分区模块化表单（最终版）══
     var mf=document.createElement('div');
     mf.style.cssText='display:flex;flex-direction:column;gap:0;font-size:12px';
@@ -6228,6 +6230,12 @@ function pgDW(){
       if(!cfg.facNm){
         applyWDFactoryIfEmpty(latestYarnIssueFactoryForWD(ord));
       }
+      fillWDYarnKG();
+    }
+    // ── 兜底自动填充：即使没有保存过的 cfg（首次为该订单生成织厂加工单）──
+    // 之前的 bug：cfg 为 undefined 时整个 if(cfg) 块都跳过，导致织厂/投纱量空白
+    if(!cfg && ord){
+      applyWDFactoryIfEmpty(latestYarnIssueFactoryForWD(ord));
       fillWDYarnKG();
     }
   };
@@ -10666,6 +10674,11 @@ function openYarnOutM(type, editId){
       return ps.indexOf('织厂')>=0||ps.indexOf('织布厂')>=0;
     }
     var factOpts=[{v:'',l:'— 请选择织厂 —'}].concat((DB.facts||[]).filter(isYarnIssueFactory).map(function(f){return{v:f.nm,l:f.nm};}));
+    // 编辑模式兼容：如果保存的 factory 不在「prcs=织厂」过滤里（例如档案改动过），仍把它放进下拉
+    // 否则编辑时下拉会显示空白，用户以为没保存，再保存又被卡住
+    if(rec.factory && !factOpts.some(function(o){return o.v===rec.factory;})){
+      factOpts.push({v:rec.factory,l:rec.factory+'（历史记录）'});
+    }
     function findYarnForOrder(ordNo){
       if(!ordNo)return null;
       var ord=(DB.orders||[]).find(function(o){return o.no===ordNo;})||{};

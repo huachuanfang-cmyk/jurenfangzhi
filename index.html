@@ -9497,10 +9497,11 @@ function openARecModal(id){
           summary+='\n⚠ 拆分生成的对账单只含货款，不含扣减/附加费/收款 — 需要后续单独打开各张补录。\n\n确认继续？';
           if(!confirm(summary))return;
           verifyPwd(function(){
-            var dueDateInp=document.getElementById('ar-due');
-            var payTypeSel=document.getElementById('ar-pay-sel')||document.getElementById('ar-pay');
-            var dueDate=dueDateInp?dueDateInp.value:'';
-            var payTypeVal=payTypeSel?payTypeSel.value:'';
+            // 修复：之前用错了 input id（ar-due / ar-pay-sel 不存在）导致拆分单的付款方式/到期日空白
+            // 真实 id 是 ar-payType（隐藏 input，由客户档案自动带入）；到期日用 calcDueDate 算
+            var payTypeEl=document.getElementById('ar-payType');
+            var payTypeVal=(payTypeEl&&payTypeEl.value)||'月结30天';
+            var dueDate=calcDueDate(payTypeVal,mVal);
             var fgoutsDB=DB.fgouts||[];
             var rollsX=typeof fgRolls==='function'?fgRolls():[];
             var arList=DB.arecs||[];

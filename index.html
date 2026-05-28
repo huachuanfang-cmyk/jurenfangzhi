@@ -9615,15 +9615,6 @@ function openARecModal(id){
     var month=(document.getElementById('ar-month')||{value:''}).value;
     if(!month)return alert('请填写对账月份');
 
-    // 重复检测：新建时检查同客户+同月份是否已存在
-    if(isNew){
-      var existing=(DB.arecs||[]).find(function(x){return x.custNm===custNm&&x.month===month;});
-      if(existing){
-        alert('⚠️ 已存在「'+custNm+'」'+month+'的对账单（'+existing.no+'）\n\n请勿重复建单，如需修改请直接编辑已有的对账单。');
-        cm();openARecModal(existing.id);return;
-      }
-    }
-
     var payType=(document.getElementById('ar-payType')||{value:''}).value||'月结30天';
     var dueDate=calcDueDate(payType,month);
 
@@ -9633,6 +9624,36 @@ function openARecModal(id){
     document.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)').forEach(function(c){
       if(c.value)selOutIds.push(c.value);
     });
+
+    // ── 智能重复检测：支持拆分对账场景 ──
+    // 旧逻辑：同客户同月份只允许 1 张 → 现在支持拆分（按订单/跟单/布类），需放宽
+    // 新逻辑：
+    //   1) 忽略已作废的对账单
+    //   2) 若勾选的出货单与现有对账单的出货单完全无重叠 → 视为拆分，弹确认允许
+    //   3) 若有重叠（同一张送货单分到两张对账单）→ 报错阻止
+    if(isNew){
+      var existingActive=(DB.arecs||[]).filter(function(x){
+        return x.custNm===custNm && x.month===month && x.status!=='voided';
+      });
+      if(existingActive.length){
+        var conflictMap={};
+        existingActive.forEach(function(ex){(ex.outIds||[]).forEach(function(oid){conflictMap[oid]=ex.no;});});
+        var conflictOuts=selOutIds.filter(function(oid){return conflictMap[oid];});
+        if(conflictOuts.length){
+          var conflictDetail=conflictOuts.map(function(oid){
+            var o=(DB.fgouts||[]).find(function(x){return x.id===oid;});
+            return '  · '+((o&&o.no)||oid.slice(0,12))+' → 已挂在 '+conflictMap[oid];
+          }).join('\n');
+          alert('⚠️ 以下出货单已挂在其他对账单上，无法重复对账：\n\n'+conflictDetail+'\n\n请取消勾选这些项目，或先去对应对账单移除关联。');
+          return;
+        }
+        // 无冲突 → 拆分场景，让用户明确确认
+        var existingNos=existingActive.map(function(x){return x.no;}).join('、');
+        if(!confirm('提示：该客户 '+month+' 已存在对账单：\n'+existingNos+'\n\n本次勾选的出货单与已有对账单不冲突，将作为「拆分对账」另立一张。\n\n确认继续？\n（如果想合并到已有对账单，请点取消，然后到对账单列表里点对应行编辑）')){
+          return;
+        }
+      }
+    }
     // 退货行：父送货单已选中的才收录
     document.querySelectorAll('.ar-ret-cb').forEach(function(c){
       if(!c.dataset.retId)return;

@@ -5764,7 +5764,9 @@ function renderTrks(list){
     var lc=ls>5?'cr':ls>0?'co':'';
     tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ||'—')+'</td><td>'+(t.retQ||'—')+'</td><td class="'+lc+'">'+(ls!==null?ls+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
-    td.appendChild(mkBtn('详情','btn bsm bq',(function(id){return function(){openTD(id);};})(t.id)));
+    // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
+    // 修复：复用 openTM（编辑弹窗即详情，本系统其他模块的通用做法）
+    td.appendChild(mkBtn('详情','btn bsm bq',(function(id){return function(){openTM(id);};})(t.id)));
     td.appendChild(mkBtn('编辑','btn bsm bs',(function(id){return function(){openTM(id);};})(t.id)));
     if(!t.voided)td.appendChild(mkBtn('作废','btn bsm brd',(function(id){return function(){delT(id);};})(t.id)));
     tr.appendChild(td);

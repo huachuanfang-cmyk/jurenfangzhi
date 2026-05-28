@@ -9370,6 +9370,112 @@ function openARecModal(id){
         recalcBalance();
       }
       window._arecCalcTotal=calcTotal;
+
+      // ── 🔀 批量拆分生成对账单（按订单 / 跟单员 / 布类 自动分组）──
+      // 默认行为：底部「保存」生成一张合并对账单。点这里拆分则按维度生成多张。
+      // 拆分场景：客户内部按 PO 分账、多业务员各自提成、不同布类财务核算
+      if(!rec){ // 仅新建模式显示拆分按钮（编辑现有对账单不允许拆）
+        var splitBar=document.createElement('div');
+        splitBar.style.cssText='margin-top:10px;padding:10px 14px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px';
+        splitBar.innerHTML='<div style="font-size:11px;font-weight:700;color:#0369A1;margin-bottom:6px">🔀 批量拆分生成对账单（可选 — 默认走底部「保存」生成一张合并对账单）</div>'
+          +'<div style="font-size:10px;color:#475569;margin-bottom:8px">适用场景：客户按 PO 单独结账 / 多业务员各自提成 / 不同布类财务分账。<b>拆分生成的对账单不含扣减/附加/收款，需事后单独补录。</b></div>';
+        var btnRow=document.createElement('div');
+        btnRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+        function _doSplit(dim){
+          var dimLabel={ordNo:'订单号',follower:'跟单员',fab:'布类'}[dim];
+          var groupsX={};
+          matched.forEach(function(o){
+            var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
+            var key;
+            if(dim==='ordNo')key=o.ordNo||'(无订单号)';
+            else if(dim==='follower')key=ord.follower||'(无跟单员)';
+            else if(dim==='fab')key=ord.fab||'(无布类)';
+            if(!groupsX[key])groupsX[key]={key:key,outs:[]};
+            groupsX[key].outs.push(o);
+          });
+          var keysX=Object.keys(groupsX);
+          if(keysX.length<=1){
+            alert('当前所有出货都属于同一【'+dimLabel+'】（'+keysX[0]+'），无需拆分。直接点底部「保存」即可生成一张对账单。');
+            return;
+          }
+          var summary='按【'+dimLabel+'】拆分将自动生成 '+keysX.length+' 张对账单：\n\n';
+          keysX.forEach(function(k){summary+='  · '+k+' — '+groupsX[k].outs.length+' 笔出货\n';});
+          summary+='\n⚠ 拆分生成的对账单只含货款，不含扣减/附加费/收款 — 需要后续单独打开各张补录。\n\n确认继续？';
+          if(!confirm(summary))return;
+          verifyPwd(function(){
+            var dueDateInp=document.getElementById('ar-due');
+            var payTypeSel=document.getElementById('ar-pay-sel')||document.getElementById('ar-pay');
+            var dueDate=dueDateInp?dueDateInp.value:'';
+            var payTypeVal=payTypeSel?payTypeSel.value:'';
+            var fgoutsDB=DB.fgouts||[];
+            var rollsX=typeof fgRolls==='function'?fgRolls():[];
+            var arList=DB.arecs||[];
+            var nowYear=new Date().getFullYear();
+            var maxNo=arList.reduce(function(m,x){
+              if(x.no&&x.no.startsWith('STM'+nowYear)){var n=parseInt(x.no.slice(7))||0;if(n>m)return n;}
+              return m;
+            },0);
+            var created=[];
+            keysX.forEach(function(k,idx){
+              var grp=groupsX[k];
+              var outIds=grp.outs.map(function(o){return o.id;});
+              var totalAmt=0,shipFeeTotal=0;
+              grp.outs.forEach(function(o){
+                var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
+                var oRolls=rollsX.filter(function(rr){return (o.rollIds||[]).indexOf(rr.id)>=0;});
+                var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
+                var mTot=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.m)||0);},0):(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
+                var unitPr=parseFloat(ord.unitPr)||0;
+                var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+                var amt=0;
+                if(unitPr>0){
+                  if(oRolls.length>0){
+                    amt=oRolls.reduce(function(s,rr){
+                      var clr=(ord.colors||[]).find(function(c){return c.nm===rr.colorNm;})||{};
+                      var extraPr=parseFloat(clr.extraPr)||0;
+                      var qty=byM?(parseFloat(rr.m)||0):(parseFloat(rr.kg)||0);
+                      return s+qty*(unitPr+extraPr);
+                    },0);
+                  } else { amt=(byM?mTot:kg)*unitPr; }
+                }
+                totalAmt+=amt;
+                shipFeeTotal+=parseFloat(o.feeAmt)||0;
+              });
+              var balance=totalAmt+shipFeeTotal;
+              var arNo='STM'+nowYear+String(maxNo+idx+1).padStart(3,'0');
+              var arId='ar_'+Date.now()+'_'+idx;
+              var data={
+                id:arId,no:arNo,
+                custNm:cNm,month:mVal,payType:payTypeVal,dueDate:dueDate,
+                outIds:outIds,retIds:[],
+                totalAmt:String(totalAmt),shipFeeTotal:String(shipFeeTotal),returnTotal:'0',
+                adjustments:[],deductTotal:'0',addTotal:'0',
+                payments:[],paidTotal:'0',
+                balanceAmt:String(balance),
+                status:balance<=0?'settled':'pending',
+                createdDate:new Date().toISOString().slice(0,10),
+                splitBy:dim,splitKey:k
+              };
+              arList.push(data);
+              outIds.forEach(function(oid){
+                var oo=fgoutsDB.find(function(x){return x.id===oid;});
+                if(oo)oo.arecId=arId;
+              });
+              created.push(arNo);
+            });
+            DB.arecs=arList;
+            DB.fgouts=fgoutsDB;
+            cm();
+            pgARec();
+            showToast('✓ 按【'+dimLabel+'】拆分生成 '+created.length+' 张对账单：'+created.join('、'),'success');
+          });
+        }
+        btnRow.appendChild(mkBtn('📂 按订单号拆分','btn bsm bs',function(){_doSplit('ordNo');}));
+        btnRow.appendChild(mkBtn('👤 按跟单员拆分','btn bsm bs',function(){_doSplit('follower');}));
+        btnRow.appendChild(mkBtn('🎨 按布类拆分','btn bsm bs',function(){_doSplit('fab');}));
+        splitBar.appendChild(btnRow);
+        outWrap.appendChild(splitBar);
+      }
     });
     body.appendChild(fetchBtn);
 

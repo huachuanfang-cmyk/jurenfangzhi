@@ -9197,6 +9197,7 @@ function openARecModal(id){
         +'<th style="padding:5px 8px;width:28px"><input type="checkbox" checked id="ar-all-cb2"></th>'
         +'<th style="padding:5px 8px;text-align:left;color:#1e3a8a;font-size:10px">送货单号</th>'
         +'<th style="padding:5px 8px;text-align:left;color:#1e3a8a;font-size:10px">订单号</th>'
+        +'<th style="padding:5px 8px;text-align:left;color:#1e3a8a;font-size:10px">布类 / 跟单</th>'
         +'<th style="padding:5px 8px;text-align:left;color:#1e3a8a;font-size:10px">颜色</th>'
         +'<th style="padding:5px 8px;text-align:center;color:#1e3a8a;font-size:10px">'+_qtyLabel+'</th>'
         +'<th style="padding:5px 8px;text-align:center;color:#1e3a8a;font-size:10px">单价</th>'
@@ -9262,9 +9263,12 @@ function openARecModal(id){
           ?'<span style="display:inline-block;background:#F97316;color:#fff;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:600">⚠ '+(o.date||'').slice(0,7)+' 遗留</span>'
           :'';
         var feeTag=feeAmt?'<div style="font-size:9px;color:#C2410C;font-weight:700;margin-top:2px">+'+esc(feeNm||'附加费')+' ¥'+feeAmt.toFixed(2)+'</div>':'';
+        var _fabShort=(ord.fab||'').length>14?(ord.fab||'').slice(0,14)+'…':(ord.fab||'—');
+        var _followerTxt=ord.follower?'<div style="font-size:9px;color:#7C3AED;margin-top:2px">跟单:'+esc(ord.follower)+'</div>':'';
         tr.innerHTML+=
           '<td style="padding:5px 8px;font-size:10px;color:var(--p);font-weight:600">'+esc(o.no||'')+_legacyTag+'</td>'+
           '<td style="padding:5px 8px;font-size:10px">'+esc(o.ordNo||'')+'</td>'+
+          '<td style="padding:5px 8px;font-size:10px;color:#374151" title="'+esc(ord.fab||'')+'">'+esc(_fabShort)+_followerTxt+'</td>'+
           '<td style="padding:5px 8px;font-size:10px">'+esc(clrNms||'—')+'</td>'+
           '<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:600">'+_qtyDisp+'</td>'+
           '<td style="padding:5px 8px;text-align:center;font-size:10px;color:#555">'+_unitDisp+'</td>'+
@@ -9297,6 +9301,7 @@ function openARecModal(id){
             retTr.appendChild(retNoTd);
             retTr.innerHTML+=
               '<td style="padding:5px 8px;font-size:10px;color:#991B1B">原单 '+esc(o.no||'')+'</td>'+
+              '<td style="padding:5px 8px;font-size:10px;color:#991B1B">—</td>'+
               '<td style="padding:5px 8px;font-size:10px;color:#B91C1C">'+esc(retRec.reason||'品质问题')+'</td>'+
               '<td style="padding:5px 8px;text-align:center;font-size:10px;font-weight:600;color:#DC2626">-'+retDeductKG.toFixed(1)+'</td>'+
               '<td style="padding:5px 8px;text-align:center;font-size:10px;color:#991B1B">—</td>'+
@@ -12022,8 +12027,7 @@ function openFGOutFromGroup(k,grp){
     var saCb=document.createElement('input');saCb.type='checkbox';saCb.checked=true;
     saCb.onchange=function(){document.querySelectorAll('.fgo2-cb').forEach(function(c){c.checked=saCb.checked;});updateSt();};
     saLbl.appendChild(saCb);saLbl.appendChild(document.createTextNode('全选'));
-    var stSpan=document.createElement('span');stSpan.id='fgo2-stats';stSpan.style.cssText='margin-left:auto;color:var(--p)';
-    selHdr.appendChild(saLbl);selHdr.appendChild(stSpan);
+    selHdr.appendChild(saLbl);
     body.appendChild(selHdr);
     var grid=document.createElement('div');grid.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
     rolls.forEach(function(r){
@@ -12035,12 +12039,22 @@ function openFGOutFromGroup(k,grp){
       grid.appendChild(lbl);
     });
     body.appendChild(grid);
+    // 显眼合计栏（蓝底大字，挪到列表正下方）
+    var stBar=document.createElement('div');
+    stBar.id='fgo2-stats';
+    stBar.style.cssText='margin:10px 0 4px;padding:10px 14px;background:linear-gradient(90deg,#EFF6FF,#DBEAFE);border:1px solid #93C5FD;border-radius:6px;font-size:13px;font-weight:700;color:#1E40AF;display:flex;align-items:center;gap:8px';
+    body.appendChild(stBar);
     function updateSt(){
       var cbs=document.querySelectorAll('.fgo2-cb:checked');
       var tot=0,totM=0;var allR=fgRolls();
       cbs.forEach(function(cb){var r=allR.find(function(x){return x.id===cb.value;});if(r){tot+=(parseFloat(r.kg)||0);totM+=(parseFloat(r.m)||0);}});
       var s=document.getElementById('fgo2-stats');
-      if(s)s.textContent='已选 '+fmtPcsKgM(cbs.length,tot,totM,false);
+      if(s){
+        s.innerHTML='<span style="font-size:18px">📦</span><span>本次出货合计：</span>'
+          +'<span style="font-size:16px;color:#DC2626">'+cbs.length+'</span><span> 匹</span>'
+          +(tot>0?' / <span style="font-size:16px;color:#DC2626">'+tot.toFixed(1)+'</span><span> KG</span>':'')
+          +(totM>0?' / <span style="font-size:16px;color:#7C3AED">'+totM.toFixed(1)+'</span><span> 米</span>':'');
+      }
     }
     updateSt();
   },function(){

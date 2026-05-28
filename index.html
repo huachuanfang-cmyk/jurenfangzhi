@@ -8979,7 +8979,7 @@ function printARec(id){
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:10px">'+esc(d.fab)+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;font-size:10px;white-space:nowrap">'+esc(d.clr)+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.pcs+'</td>'
-      +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.kg.toFixed(1)+'</td>'
+      +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px">'+d.kg.toFixed(2)+'</td>'
       +meterTd
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-size:10px;color:#1e3a8a;font-weight:600">'+(d.unitPr?'¥'+d.unitPr+'/'+(d.prUnit||'KG'):'—')+'</td>'
       +'<td style="border:1px solid #e0e0e0;padding:4px 6px;text-align:center;font-family:monospace;font-size:9.5px;color:#1e3a8a">'+esc(d.no)+'</td>'
@@ -8995,7 +8995,7 @@ function printARec(id){
       +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px">退货扣损：'+esc(d.fab)+'</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;font-size:10px;white-space:nowrap">'+esc(d.clr)+'</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">'+(d.pcs||'')+'</td>'
-      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;font-weight:700">-'+d.kg.toFixed(1)+'</td>'
+      +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px;font-weight:700">-'+d.kg.toFixed(2)+'</td>'
       +meterTd
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-size:10px">—</td>'
       +'<td style="border:1px solid #FECACA;padding:4px 6px;text-align:center;font-family:monospace;font-size:9.5px;color:#DC2626">'+esc((d.no||'').replace(/^[A-Z]+/,''))+'</td>'
@@ -9093,7 +9093,7 @@ function printARec(id){
     +'<tr style="background:#EAECF4;font-weight:700">'
     +'<td colspan="3" style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-size:11px">本期货款</td>'
     +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.pcs;},0)+'</td>'
-    +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.kg;},0).toFixed(1)+'</td>'
+    +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:center;font-size:11px">'+outDataList.reduce(function(s,d){return s+d.kg;},0).toFixed(2)+'</td>'
     +(hasMeter?'<td style="border:1px solid #ccc;padding:5px 6px"></td>':'')
     +'<td colspan="2" style="border:1px solid #ccc;padding:5px 6px"></td>'
     +'<td style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-size:12px">¥'+grandTotal.toFixed(2)+'</td>'

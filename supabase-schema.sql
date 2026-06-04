@@ -431,6 +431,7 @@ CREATE TABLE dyeing_docs (
   vat_rm JSONB DEFAULT '[]',
   vat_code JSONB DEFAULT '[]',
   vat_q1 JSONB DEFAULT '[]',
+  selected_vat_colors JSONB DEFAULT '[]',
   pj_note TEXT DEFAULT '',
   status TEXT DEFAULT 'draft',
   issued_at TEXT DEFAULT '',

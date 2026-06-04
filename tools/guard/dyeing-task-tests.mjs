@@ -52,6 +52,17 @@ test('dyeing docs can be issued and locked until explicitly unlocked', () => {
   mustText('解锁修改', 'explicit unlock button');
 });
 
+test('dyeing issue preserves manually selected vat colors', () => {
+  must(/selectedVatColors:\(function\(\)\{var a=\[\];document\.querySelectorAll\('\.dd-clr-chk'\)/, 'save selected dyeing vat colors');
+  must(/var savedVatSelected=Array\.isArray\(savedCfg\.selectedVatColors\)\?savedCfg\.selectedVatColors:null;/, 'load saved vat color selection');
+  must(/clrCb\.checked=savedVatSelected\?savedVatSelected\.indexOf\(c\.nm\)>=0:\(inferVatSelected\?\!\!String\(savedVatQ1\[i\]\|\|''\)\.trim\(\):true\);/, 'restore saved vat color checkboxes instead of defaulting all checked');
+});
+
+test('legacy dyeing docs infer selected vat colors from non-empty vat quantity', () => {
+  must(/var inferVatSelected=!savedVatSelected&&savedVatQ1\.some\(function\(v\)\{return String\(v\|\|''\)\.trim\(\);\}\);/, 'infer legacy vat color selection from quantities');
+  must(/inferVatSelected\?\!\!String\(savedVatQ1\[i\]\|\|''\)\.trim\(\):true/, 'legacy docs do not re-check blank-quantity colors');
+});
+
 let passed = 0;
 for (const t of tests) {
   try {

@@ -7248,6 +7248,9 @@ function buildVatTable(){
   var savedCfg=getActiveDDCfg(oid)||{};
   var savedVatRm=savedCfg.vatRm||[];
   var savedVatCode=savedCfg.vatCode||[];
+  var savedVatQ1=savedCfg.vatQ1||[];
+  var savedVatSelected=Array.isArray(savedCfg.selectedVatColors)?savedCfg.selectedVatColors:null;
+  var inferVatSelected=!savedVatSelected&&savedVatQ1.some(function(v){return String(v||'').trim();});
   var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse';
   var thead=document.createElement('thead');thead.innerHTML='<tr><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:28px">✓</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">颜色</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">色号</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;text-align:center;width:13%">落缸数(KG)</th><th style="padding:6px 8px;background:var(--p);border:1px solid var(--bd);font-size:11px;color:#fff;font-weight:700">备注 / 注意事项（重要！工厂必看）</th></tr>';
   tbl.appendChild(thead);
@@ -7258,7 +7261,7 @@ function buildVatTable(){
     var iStyle='width:100%;padding:3px 6px;border:1px solid #ddd;border-radius:4px;font-size:11px;text-align:center';
     // checkbox列
     var clrChkTd=document.createElement('td');clrChkTd.style.cssText=cellStyle+';padding:4px;text-align:center;width:28px';
-    var clrCb=document.createElement('input');clrCb.type='checkbox';clrCb.className='dd-clr-chk';clrCb.value=c.nm;clrCb.checked=true;clrCb.style.cssText='cursor:pointer;width:14px;height:14px';
+    var clrCb=document.createElement('input');clrCb.type='checkbox';clrCb.className='dd-clr-chk';clrCb.value=c.nm;clrCb.checked=savedVatSelected?savedVatSelected.indexOf(c.nm)>=0:(inferVatSelected?!!String(savedVatQ1[i]||'').trim():true);clrCb.style.cssText='cursor:pointer;width:14px;height:14px';
     clrChkTd.appendChild(clrCb);tr.appendChild(clrChkTd);
     // 颜色名列 - 用appendChild不用innerHTML+=，防止破坏checkbox.checked
     var nmTd=document.createElement('td');nmTd.style.cssText=cellStyle+';font-weight:600;padding:5px';nmTd.textContent=c.nm;tr.appendChild(nmTd);
@@ -7643,6 +7646,7 @@ function saveDDcfg(){
     vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatRm:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvr-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatQ1:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
+    selectedVatColors:(function(){var a=[];document.querySelectorAll('.dd-clr-chk').forEach(function(cb){if(cb.checked)a.push(cb.value);});return a;})(),
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value
   };
   if(existing && existing.id) cfg.id = existing.id;

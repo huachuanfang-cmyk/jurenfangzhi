@@ -14,11 +14,15 @@ test('sales order delete path uses data integrity guard', () => {
   assert.match(html, /function\s+delO\s*\([^)]*\)\s*\{[\s\S]*canDeleteOrder/);
 });
 
-test('sales order list offers cancel before hard delete', () => {
+test('sales order list offers cancel instead of hard delete', () => {
   assert.match(html, /function\s+cancelOrder\s*\(/);
-  assert.match(html, /canDeleteOrder\(o\.id\)/);
-  assert.match(html, /mkBtn\('作废'[\s\S]*cancelOrder/);
-  assert.match(html, /mkBtn\('删除'[\s\S]*delO/);
+  assert.match(html, /业务单据全面禁止硬删除/);
+  const listActionBlock = html.slice(
+    html.indexOf('业务单据全面禁止硬删除'),
+    html.indexOf('tr.appendChild(opTd)', html.indexOf('业务单据全面禁止硬删除'))
+  );
+  assert.match(listActionBlock, /mkBtn\('作废'[\s\S]*cancelOrder/);
+  assert.doesNotMatch(listActionBlock, /mkBtn\('删除'[\s\S]*delO/);
 });
 
 test('data integrity scanner checks orphan business records', () => {

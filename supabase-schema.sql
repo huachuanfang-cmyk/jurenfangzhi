@@ -392,6 +392,11 @@ CREATE TABLE weaving_docs (
   ra_sel_nm TEXT DEFAULT '',
   note TEXT DEFAULT '',
   rm TEXT DEFAULT '',
+  status TEXT DEFAULT 'draft',
+  issued_at TEXT DEFAULT '',
+  unlock_reason TEXT DEFAULT '',
+  selected_colors JSONB DEFAULT '[]',
+  color_kg_map JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ord_id)
 );
@@ -431,6 +436,15 @@ CREATE TABLE dyeing_docs (
   UNIQUE(ord_id)
 );
 
+-- 19. 删除墓碑：防止多端同步时已删除记录从云端回弹
+CREATE TABLE tombstones (
+  id TEXT PRIMARY KEY,
+  biz_key TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  table_name TEXT DEFAULT '',
+  deleted_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- 启用行级安全（RLS）
 -- ============================================================
@@ -452,6 +466,7 @@ ALTER TABLE ar_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ap_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weaving_docs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dyeing_docs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tombstones ENABLE ROW LEVEL SECURITY;
 
 -- 允许已登录用户读写所有表
 CREATE POLICY "允许已登录用户所有操作" ON customers FOR ALL USING (auth.role() = 'authenticated');
@@ -472,6 +487,7 @@ CREATE POLICY "允许已登录用户所有操作" ON ar_records FOR ALL USING (a
 CREATE POLICY "允许已登录用户所有操作" ON ap_records FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON weaving_docs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON dyeing_docs FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON tombstones FOR ALL USING (auth.role() = 'authenticated');
 
 -- Supabase Data API 表权限（RLS 控制行权限，GRANT 控制表是否可访问）
 GRANT USAGE ON SCHEMA public TO authenticated;
@@ -494,3 +510,4 @@ CREATE INDEX idx_fg_outs_ord_id ON fg_outs(ord_id);
 CREATE INDEX idx_quotations_cust_nm ON quotations(cust_nm);
 CREATE INDEX idx_customers_nm ON customers(nm);
 CREATE INDEX idx_materials_mid ON materials(mid);
+CREATE INDEX idx_tombstones_biz_record ON tombstones(biz_key, record_id);

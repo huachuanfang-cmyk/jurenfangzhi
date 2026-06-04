@@ -12,18 +12,31 @@ function must(pattern, label) {
   if (!pattern.test(html)) throw new Error(`missing ${label}`);
 }
 
+function mustText(text, label) {
+  if (!html.includes(text)) throw new Error(`missing ${label}`);
+}
+
 test('dyeing docs support multiple process tasks under one sales order', () => {
   must(/function\s+ddTaskKey\s*\(/, 'ddTaskKey helper');
   must(/function\s+ddBaseOrdId\s*\(/, 'ddBaseOrdId helper');
   must(/function\s+getDDTasks\s*\(/, 'getDDTasks helper');
   must(/window\._ddActiveTaskKey/, 'active dyeing task key');
   must(/ddBaseOrdId\(x\.ordId\)===oid/, 'task lookup by base order id');
+  must(/key&&ddBaseOrdId\(key\)===oid[\s\S]{0,240}return hit\|\|\{\};/, 'new unsaved dyeing task starts blank instead of cloning first task');
   must(/ordId:taskKey/, 'save config with task-specific ordId');
 });
 
 test('dyeing doc cloud sync uses ord_id conflict key', () => {
   must(/function\s+cloudConflictKey\s*\(/, 'cloud conflict helper');
   must(/\(key==='dd'\|\|key==='wd'\)\?'ord_id':'id'/, 'dyeing/weaving docs upsert conflict on ord_id');
+});
+
+test('dyeing print prefers document color-code override over sales order code', () => {
+  must(/savedVatCode=savedCfg\.vatCode\|\|\[\]/, 'load saved dyeing color-code overrides');
+  mustText("mkInput('dvc-'+i,savedVatCode[i]||c.code)", 'dyeing color-code input restores saved override');
+  must(/var savedCode=savedVatCode\[i\]\|\|'';/, 'saved dyeing color-code fallback');
+  must(/code:\(domCode\|\|savedCode\|\|liveCode\)/, 'print prefers manual document color code');
+  mustText("vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),", 'save dyeing color-code overrides');
 });
 
 let passed = 0;

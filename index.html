@@ -2535,7 +2535,7 @@ function mkSearchableSelect(id,opts,val,ph){
     }
     posDD();dd.style.display='block';
   }
-  input.onfocus=function(){clearTimeout(hideTimer);render(input.value);};
+  input.onfocus=function(){clearTimeout(hideTimer);input.select();render('');};
   input.oninput=function(){render(this.value);};
   input.onblur=function(){hideTimer=setTimeout(function(){dd.style.display='none';},200);};
   input.onkeydown=function(e){
@@ -5969,17 +5969,58 @@ function applySpecToDOM(specVals, widthUnit){
   }
 }
 
+function wdBaseOrdId(ordId){
+  return String(ordId||'').split('::')[0];
+}
+function wdTaskKey(ordId, taskId){
+  return String(ordId||'')+'::'+String(taskId||('wd_'+Date.now()));
+}
+function wdNewTaskKey(ordId){
+  return wdTaskKey(ordId,'wd_'+Date.now()+'_'+Math.random().toString(36).slice(2,6));
+}
+function getWDTasks(oid){
+  return (DB.wdocs||[]).filter(function(x){
+    return x && (x.ordId===oid || wdBaseOrdId(x.ordId)===oid);
+  });
+}
+function wdTaskLabel(cfg,idx){
+  if(!cfg)return '新织厂单';
+  var f=(cfg.facNm||'').trim();
+  var st=cfg.status==='issued'?'已下达':'草稿';
+  if(f)return f+' / '+st;
+  return '织厂单 '+(idx+1)+' / '+st;
+}
+function getActiveWDCfg(oid){
+  var tasks=getWDTasks(oid);
+  var key=window._wdActiveTaskKey;
+  if(key&&wdBaseOrdId(key)===oid){
+    var hit=tasks.find(function(x){return x.ordId===key;});
+    return hit||{};
+  }
+  if(!tasks.length)return {};
+  return tasks[0]||{};
+}
+function ensureWDTaskKey(oid){
+  if(!oid)return '';
+  var key=window._wdActiveTaskKey;
+  if(key&&wdBaseOrdId(key)===oid)return key;
+  var tasks=getWDTasks(oid);
+  key=tasks.length?tasks[0].ordId:wdNewTaskKey(oid);
+  window._wdActiveTaskKey=key;
+  return key;
+}
+
 function pgDW(){
   var pg=document.getElementById('pg');pg.innerHTML='';
   var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var facts=DB.facts;
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
-  ch.innerHTML='<span class="ct">生成织厂加工单</span><span style="font-size:11px;color:var(--t3)">填写后点"保存配置"，下次打开自动恢复</span>';
+  ch.innerHTML='<span class="ct">生成织厂加工单</span><span style="font-size:11px;color:var(--t3)">先选销售订单，再按织厂/批次保存独立织厂单</span>';
   card.appendChild(ch);
   // ══ Define al, ordSel, facSel (needed by body) ══
   var al=document.createElement('div');al.className='al alb';
-  al.textContent='选择订单后填写织厂信息，点"保存配置"保存当前填写，再点"预览/打印"生成加工单。';
+  al.textContent='选择销售订单后填写织厂信息；同一订单可新增多张织厂单。下达给织厂后会锁定，需解锁才能修改。';
   var ordSel=mkSearchableSelect('wd-o',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
   var facSel=mkSelect('wd-f',[{v:'',l:'请选择织厂'}].concat(DB.facts.filter(function(f){var ps=f.prcs||[];return ps.indexOf('织厂')>=0||ps.indexOf('织布厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
   facSel.onchange=function(){
@@ -5989,6 +6030,9 @@ function pgDW(){
   };
   var cb=document.createElement('div');cb.style.cssText='display:flex;flex-direction:column;gap:0';
   cb.appendChild(al);
+  var taskPanel=document.createElement('div');taskPanel.id='wd-task-panel';
+  taskPanel.style.cssText='display:none;padding:10px 18px;background:#F8FAFC;border-bottom:1px solid var(--bd);gap:8px;align-items:center;flex-wrap:wrap';
+  cb.appendChild(taskPanel);
 
   // ══ HELPER FUNCTIONS ══
   function dSec2(title,bg,border,lbl,el){
@@ -6011,6 +6055,83 @@ function pgDW(){
     i.onblur=function(){this.style.borderColor='rgba(0,0,0,.12)';this.style.boxShadow='none';};
     i.addEventListener('wheel',function(e){e.preventDefault();},{passive:false});
     return i;
+  }
+  function resetWDFormForOrder(){
+    ['wd-f','wd-ct','wd-du','wd-pr','wd-sh2','wd-yq','wd-ra','wd-ra-nm','wd-ra-ct','wd-ra-ph','wd-ra-sel','wd-note','wd-rm'].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.value='';
+    });
+    ['wd-gn','wd-gs','wd-wd','wd-wt','wd-sh'].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.value='';
+      var sn=el&&el.parentElement&&el.parentElement.querySelector('.spec-num');if(sn)sn.textContent='—';
+    });
+    var tax=document.getElementById('wd-tax');if(tax){tax.textContent='不含税';tax.dataset.tax='excl';}
+    var wu=document.getElementById('wd-wu');if(wu){wu.dataset.u='cm';wu.textContent='cm';}
+    var fabEl=document.getElementById('wd-fab-text');if(fabEl)fabEl.textContent='请先选择订单';
+    var cnoEl=document.getElementById('wd-cno-tag');if(cnoEl)cnoEl.textContent='';
+    var grid=document.getElementById('wd-clr-chks');if(grid)grid.innerHTML='';
+  }
+  function renderWDTaskPanel(oid){
+    var p=document.getElementById('wd-task-panel');if(!p)return;
+    if(!oid){p.style.display='none';p.innerHTML='';return;}
+    ensureWDTaskKey(oid);
+    var tasks=getWDTasks(oid);
+    p.style.display='flex';p.innerHTML='';
+    var title=document.createElement('span');
+    title.style.cssText='font-size:11px;font-weight:700;color:#334155;margin-right:4px';
+    title.textContent='本订单织厂单：';
+    p.appendChild(title);
+    if(!tasks.length){
+      var empty=document.createElement('span');
+      empty.style.cssText='font-size:11px;color:#64748B';
+      empty.textContent='当前是新的织厂单，保存后会独立保留';
+      p.appendChild(empty);
+    }
+    tasks.forEach(function(cfg,idx){
+      var btn=document.createElement('button');btn.type='button';
+      var active=cfg.ordId===window._wdActiveTaskKey;
+      btn.textContent=wdTaskLabel(cfg,idx);
+      btn.style.cssText='padding:5px 10px;border:1px solid '+(active?'#2563EB':'#CBD5E1')+';background:'+(active?'#DBEAFE':'#fff')+';color:'+(active?'#1D4ED8':'#475569')+';border-radius:999px;font-size:11px;font-weight:700;cursor:pointer';
+      btn.onclick=function(){window._wdActiveTaskKey=cfg.ordId;if(ordSel.onchange)ordSel.onchange();};
+      p.appendChild(btn);
+    });
+    var add=document.createElement('button');add.type='button';
+    add.textContent='+ 新增织厂单';
+    add.style.cssText='margin-left:auto;padding:5px 12px;border:1px solid #2563EB;background:#2563EB;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer';
+    add.onclick=function(){
+      window._wdActiveTaskKey=wdNewTaskKey(oid);
+      if(ordSel.onchange)ordSel.onchange();
+      showToast('已新增一张织厂单，填写后保存草稿','success');
+    };
+    p.appendChild(add);
+  }
+  window._renderWDTaskPanel=renderWDTaskPanel;
+  function setWDReadOnly(isIssued){
+    var root=document.getElementById('pg');if(!root)return;
+    root.querySelectorAll('input,select,textarea').forEach(function(el){
+      if(el.id==='wd-o-i')return;
+      if(el.closest('#wd-task-panel'))return;
+      if(el.className==='wd-clr-chk'||el.className==='wd-clr-kg'||/^wd-/.test(el.id||''))el.disabled=!!isIssued;
+    });
+    var ordInput=document.getElementById('wd-o-i');if(ordInput)ordInput.disabled=false;
+    ordSel.disabled=false;
+  }
+  function renderWDActions(cfg){
+    var bar=document.getElementById('wd-actions');if(!bar)return;
+    bar.innerHTML='';
+    var issued=cfg&&cfg.status==='issued';
+    if(issued){
+      var meta=document.createElement('span');
+      meta.style.cssText='margin-right:auto;font-size:11px;color:#64748B';
+      meta.textContent='本单已下达给织厂'+(cfg.issuedAt?' · '+cfg.issuedAt.slice(0,16).replace('T',' '):'')+'，当前为只读。';
+      bar.appendChild(meta);
+      bar.appendChild(mkBtn('\uD83D\uDDA8 重新打印','btn boo',prtW));
+      bar.appendChild(mkBtn('解锁修改','btn bs',unlockWDcfg));
+    }else{
+      bar.appendChild(mkBtn('\uD83D\uDCBE 保存草稿','btn bgn',function(){saveWDcfg();showToast('织厂加工单草稿已保存','success');}));
+      bar.appendChild(mkBtn('预览单据','btn bp',function(){saveWDcfg();prvW();}));
+      bar.appendChild(mkBtn('\uD83D\uDDA8 打印/PDF','btn boo',function(){saveWDcfg();prtW();}));
+      bar.appendChild(mkBtn('确认下达给织厂','btn by',issueWDcfg));
+    }
   }
 
   // ══ 蓝色区：订单+工厂 ══
@@ -6200,9 +6321,7 @@ function pgDW(){
 
   // ══ 底部操作按钮 ══
   var btmBar=document.createElement('div');btmBar.style.cssText='display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 18px;background:var(--b3);border-top:1px solid var(--bd)';
-  btmBar.appendChild(mkBtn('\uD83D\uDCBE 保存配置','btn bgn',function(){saveWDcfg();showToast('织厂加工单配置已保存','success');}));
-  btmBar.appendChild(mkBtn('预览单据','btn bp',function(){saveWDcfg();prvW();}));
-  btmBar.appendChild(mkBtn('\uD83D\uDDA8 打印/PDF','btn boo',function(){saveWDcfg();prtW();}));
+  btmBar.id='wd-actions';
   cb.appendChild(btmBar);
 
   function latestYarnIssueFactoryForWD(ord){
@@ -6242,11 +6361,20 @@ function pgDW(){
     if(net>0)yqEl.value=net.toFixed(1);
   }
 
-  // ══ Reconnect ordSel.onchange to update new UI ══
-  var _origOrdChange=ordSel.onchange;
   ordSel.onchange=function(){
     var oid=this.value;
+    if(oid!==window._wdCurrentOrderId){
+      resetWDFormForOrder();
+      window._wdCurrentOrderId=oid;
+      window._wdActiveTaskKey='';
+    }
     var ord=DB.orders.find(function(o){return o.id===oid;});
+    var taskKey=ord?ensureWDTaskKey(oid):'';
+    if(taskKey!==window._wdCurrentTaskKey){
+      if(window._wdCurrentTaskKey&&wdBaseOrdId(window._wdCurrentTaskKey)===oid)resetWDFormForOrder();
+      window._wdCurrentTaskKey=taskKey;
+    }
+    renderWDTaskPanel(oid);
     // Update fabric display
     var fabEl=document.getElementById('wd-fab-text');var cnoEl=document.getElementById('wd-cno-tag');
     if(fabEl)fabEl.textContent=ord?(ord.fab||'—'):'请先选择订单';
@@ -6269,9 +6397,9 @@ function pgDW(){
     // Rebuild color checkboxes
     rebuildClrChks(ord);
     // Load saved config from wdocs
-    var saved=DB.wdocs;
-    var cfg=saved?saved.find(function(x){return x.ordId===oid;}):{};
-    if(cfg){
+    var cfg=getActiveWDCfg(oid)||{};
+    var hasSavedCfg=!!cfg.ordId;
+    if(hasSavedCfg){
       var ff=document.getElementById('wd-f');if(ff&&cfg.facNm)ff.value=cfg.facNm;
       var ct=document.getElementById('wd-ct');if(ct)ct.value=cfg.ct||'';
       var du=document.getElementById('wd-du');if(du)du.value=cfg.due||'';
@@ -6288,6 +6416,16 @@ function pgDW(){
       var rmEl=document.getElementById('wd-rm');if(rmEl)rmEl.value=cfg.rm||'';
       var taxEl=document.getElementById('wd-tax');
       if(taxEl&&cfg.taxType){taxEl.textContent=cfg.taxType;taxEl.dataset.tax=cfg.taxType==='含税'?'incl':'excl';}
+      var selectedMap={};
+      (cfg.selectedColors||[]).forEach(function(nm){selectedMap[nm]=true;});
+      var hasSelected=(cfg.selectedColors||[]).length>0;
+      document.querySelectorAll('.wd-clr-chk').forEach(function(cb){
+        if(hasSelected)cb.checked=!!selectedMap[cb.value];
+        if(cb.onchange)cb.onchange();
+      });
+      document.querySelectorAll('.wd-clr-kg').forEach(function(inp){
+        if(cfg.colorKgMap&&inp.dataset.nm&&cfg.colorKgMap[inp.dataset.nm])inp.value=cfg.colorKgMap[inp.dataset.nm];
+      });
       // ── 规格同步检测（方案B）──
       var ordSpecs={'wd-gn':ord&&ord.gaugeN,'wd-gs':ord&&ord.gaugeS,'wd-wd':ord&&ord.width,'wd-wt':ord&&ord.weight,'wd-sh':ord&&ord.shrinkP};
       var cfgSpecs={'wd-gn':cfg.gaugeN,'wd-gs':cfg.gaugeS,'wd-wd':cfg.specWd,'wd-wt':cfg.specWt,'wd-sh':cfg.shrink};
@@ -6324,10 +6462,12 @@ function pgDW(){
     }
     // ── 兜底自动填充：即使没有保存过的 cfg（首次为该订单生成织厂加工单）──
     // 之前的 bug：cfg 为 undefined 时整个 if(cfg) 块都跳过，导致织厂/投纱量空白
-    if(!cfg && ord){
+    if(!hasSavedCfg && ord){
       applyWDFactoryIfEmpty(latestYarnIssueFactoryForWD(ord));
       fillWDYarnKG();
     }
+    renderWDActions(cfg);
+    setWDReadOnly(cfg&&cfg.status==='issued');
   };
   // Trigger if already has value
   if(ordSel.value)ordSel.onchange();
@@ -6340,14 +6480,21 @@ function saveWDcfg(){
   if(!oid)return;
   var taxEl=document.getElementById('wd-tax');
   var wuEl=document.getElementById('wd-wu');
+  var taskKey=ensureWDTaskKey(oid);
+  var l=DB.wdocs||[];
+  var existing = null, idx = -1;
+  l.forEach(function(x,i){if(x.ordId===taskKey){existing=x;idx=i;}});
   var cfg={
-    ordId:oid,
+    ordId:taskKey,
     facNm:(document.getElementById('wd-f')||{value:''}).value,
     ct:(document.getElementById('wd-ct')||{value:''}).value,
     due:(document.getElementById('wd-du')||{value:''}).value,
     pr:(document.getElementById('wd-pr')||{value:''}).value,
     taxType:taxEl?taxEl.textContent:'不含税',
-    ls:(document.getElementById('wd-ls')||{value:''}).value,
+    status:(existing&&existing.status)||'draft',
+    issuedAt:existing&&existing.issuedAt||'',
+    unlockReason:existing&&existing.unlockReason||'',
+    ls:(document.getElementById('wd-sh2')||{value:''}).value,
     yq:(document.getElementById('wd-yq')||{value:''}).value,
     gaugeN:(document.getElementById('wd-gn')||{value:''}).value,
     gaugeS:(document.getElementById('wd-gs')||{value:''}).value,
@@ -6361,14 +6508,44 @@ function saveWDcfg(){
     raPh:(document.getElementById('wd-ra-ph')||{value:''}).value,
     raSelNm:(document.getElementById('wd-ra-sel')||{value:''}).value,
     note:(document.getElementById('wd-note')||{value:''}).value,
-    rm:(document.getElementById('wd-rm')||{value:''}).value
+    rm:(document.getElementById('wd-rm')||{value:''}).value,
+    selectedColors:(function(){var a=[];document.querySelectorAll('.wd-clr-chk').forEach(function(cb){if(cb.checked)a.push(cb.value);});return a;})(),
+    colorKgMap:(function(){var map={};document.querySelectorAll('.wd-clr-kg').forEach(function(inp){if(inp.dataset.nm&&inp.value)map[inp.dataset.nm]=inp.value;});return map;})()
   };
-  var l=DB.wdocs||[];
-  var existing = null, idx = -1;
-  l.forEach(function(x,i){if(x.ordId===oid){existing=x;idx=i;}});
   if(existing && existing.id) cfg.id = existing.id;
   if(idx>=0)l[idx]=cfg;else l.push(cfg);
   DB.wdocs=l;
+  if(window._renderWDTaskPanel)window._renderWDTaskPanel(oid);
+}
+function issueWDcfg(){
+  var oid=(document.getElementById('wd-o')||{value:''}).value;
+  if(!oid)return alert('请先选择订单');
+  if(!confirm('确认下达给织厂？\n\n下达后本张织厂单会锁定：订单、织厂、规格、颜色KG、交期、交胚地址、单价和备注。\n如需修改，必须先解锁并填写原因。'))return;
+  saveWDcfg();
+  var key=ensureWDTaskKey(oid), l=DB.wdocs||[];
+  var cfg=l.find(function(x){return x.ordId===key;});
+  if(!cfg)return;
+  cfg.status='issued';
+  cfg.issuedAt=new Date().toISOString();
+  DB.wdocs=l;
+  if(window._renderWDTaskPanel)window._renderWDTaskPanel(oid);
+  var s=document.getElementById('wd-o');if(s&&s.onchange)s.onchange();
+  showToast('织厂加工单已下达并锁定','success');
+}
+function unlockWDcfg(){
+  var oid=(document.getElementById('wd-o')||{value:''}).value;
+  if(!oid)return;
+  var reason=prompt('请输入解锁修改原因：');
+  if(!reason||!reason.trim())return;
+  var key=ensureWDTaskKey(oid), l=DB.wdocs||[];
+  var cfg=l.find(function(x){return x.ordId===key;});
+  if(!cfg)return;
+  cfg.status='draft';
+  cfg.unlockReason=reason.trim();
+  DB.wdocs=l;
+  if(window._renderWDTaskPanel)window._renderWDTaskPanel(oid);
+  var s=document.getElementById('wd-o');if(s&&s.onchange)s.onchange();
+  showToast('已解锁，可修改本张织厂单','warning');
 }
 function setDWord(id){
   var s=document.getElementById('wd-o');
@@ -6599,10 +6776,13 @@ function ddTaskLabel(cfg,idx){
 }
 function getActiveDDCfg(oid){
   var tasks=getDDTasks(oid);
-  if(!tasks.length)return {};
   var key=window._ddActiveTaskKey;
-  var hit=tasks.find(function(x){return x.ordId===key;});
-  return hit||tasks[0]||{};
+  if(key&&ddBaseOrdId(key)===oid){
+    var hit=tasks.find(function(x){return x.ordId===key;});
+    return hit||{};
+  }
+  if(!tasks.length)return {};
+  return tasks[0]||{};
 }
 function ensureDDTaskKey(oid){
   if(!oid)return '';
@@ -6995,7 +7175,14 @@ function pgDD(){
         });
       },200);
     }
-    // 色号不从快照恢复，始终从 ord.colors 实时读取
+    // 染整单临时色号只影响本单打印，不回写销售订单
+    if(ddCfg.vatCode&&ddCfg.vatCode.length){
+      setTimeout(function(){
+        ddCfg.vatCode.forEach(function(code,i){
+          var el=document.getElementById('dvc-'+i);if(el&&code)el.value=code;
+        });
+      },200);
+    }
     // FIX: restore vatQ1 (落缸数)
     if(ddCfg.vatQ1&&ddCfg.vatQ1.length){
       setTimeout(function(){
@@ -7031,6 +7218,7 @@ function buildVatTable(){
   // Load saved vat remarks
   var savedCfg=getActiveDDCfg(oid)||{};
   var savedVatRm=savedCfg.vatRm||[];
+  var savedVatCode=savedCfg.vatCode||[];
   var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse';
   var thead=document.createElement('thead');thead.innerHTML='<tr><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:28px">✓</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">颜色</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;width:18%">色号</th><th style="padding:6px 8px;background:var(--b3);border:1px solid var(--bd);font-size:11px;text-align:center;width:13%">落缸数(KG)</th><th style="padding:6px 8px;background:var(--p);border:1px solid var(--bd);font-size:11px;color:#fff;font-weight:700">备注 / 注意事项（重要！工厂必看）</th></tr>';
   tbl.appendChild(thead);
@@ -7045,7 +7233,7 @@ function buildVatTable(){
     clrChkTd.appendChild(clrCb);tr.appendChild(clrChkTd);
     // 颜色名列 - 用appendChild不用innerHTML+=，防止破坏checkbox.checked
     var nmTd=document.createElement('td');nmTd.style.cssText=cellStyle+';font-weight:600;padding:5px';nmTd.textContent=c.nm;tr.appendChild(nmTd);
-    var td1=document.createElement('td');td1.style.cssText=cellStyle;var i1=mkInput('dvc-'+i,c.code);i1.style.cssText=iStyle;td1.appendChild(i1);tr.appendChild(td1);
+    var td1=document.createElement('td');td1.style.cssText=cellStyle;var i1=mkInput('dvc-'+i,savedVatCode[i]||c.code);i1.style.cssText=iStyle;td1.appendChild(i1);tr.appendChild(td1);
     var td2=document.createElement('td');td2.style.cssText=cellStyle;var i2=mkInput('dvq1-'+i,c.vatQty||c.prodQty||'','kg','number');i2.style.cssText=iStyle+'text-align:center;';td2.appendChild(i2);tr.appendChild(td2);
     var td5=document.createElement('td');td5.style.cssText=cellStyle+'background:var(--b2)';
     var i5=mkInput('dvr-'+i,savedVatRm[i]||'','✏ 此颜色特殊要求（如：色差需确认、先打样板…）');
@@ -7064,6 +7252,8 @@ function setDDord(id){
 function getDDdata(){
   var oid=(document.getElementById('dd-o')||{value:''}).value;
   var ord=DB.orders.find(function(o){return o.id===oid;});if(!ord)return null;
+  var savedCfg=getActiveDDCfg(oid)||{};
+  var savedVatCode=savedCfg.vatCode||[];
   // 过滤勾选的颜色
   var allOrdColors=ord.colors||[];
   var checkedClrs=[];
@@ -7075,7 +7265,8 @@ function getDDdata(){
     var i=origIdx>=0?origIdx:0;
     var liveCode=c.code||'';
     var domCode=(document.getElementById('dvc-'+i)||{value:''}).value;
-    return{nm:c.nm,code:liveCode||domCode,q1:domCode?((document.getElementById('dvq1-'+i)||{value:''}).value||c.vatQty||c.prodQty||''):(c.vatQty||c.prodQty||''),q2:(document.getElementById('dvq2-'+i)||{value:''}).value||'',q3:(document.getElementById('dvq3-'+i)||{value:''}).value||'',rm:(document.getElementById('dvr-'+i)||{value:''}).value||''};
+    var savedCode=savedVatCode[i]||'';
+    return{nm:c.nm,code:(domCode||savedCode||liveCode),q1:((document.getElementById('dvq1-'+i)||{value:''}).value||c.vatQty||c.prodQty||''),q2:(document.getElementById('dvq2-'+i)||{value:''}).value||'',q3:(document.getElementById('dvq3-'+i)||{value:''}).value||'',rm:(document.getElementById('dvr-'+i)||{value:''}).value||''};
   });
   var _ddWd=(document.getElementById('dd-wd')||{value:''}).value||ord&&ord.width||'';
   var _ddWt=(document.getElementById('dd-wt')||{value:''}).value||ord&&ord.weight||'';
@@ -7414,6 +7605,7 @@ function saveDDcfg(){
       a.sort(function(x,y){return x.seq-y.seq;});
       return a.map(function(x){return x.v;});
     })(),
+    vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatRm:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvr-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatQ1:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value

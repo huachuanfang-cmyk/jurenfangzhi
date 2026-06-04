@@ -6769,10 +6769,11 @@ function ddTaskLabel(cfg,idx){
   if(!cfg)return '新工序单';
   var p=(cfg.pj||'').trim();
   var f=(cfg.facNm||'').trim();
-  if(p&&f)return p+' / '+f;
-  if(p)return p;
-  if(f)return f;
-  return '工序单 '+(idx+1);
+  var st=cfg.status==='issued'?'已下达':'草稿';
+  if(p&&f)return p+' / '+f+' / '+st;
+  if(p)return p+' / '+st;
+  if(f)return f+' / '+st;
+  return '工序单 '+(idx+1)+' / '+st;
 }
 function getActiveDDCfg(oid){
   var tasks=getDDTasks(oid);
@@ -6875,6 +6876,34 @@ function pgDD(){
     i.onblur=function(){this.style.borderColor='rgba(0,0,0,.12)';this.style.boxShadow='none';};
     i.addEventListener('wheel',function(e){e.preventDefault();},{passive:false});
     return i;
+  }
+  function setDDReadOnly(isIssued){
+    var root=document.getElementById('pg');if(!root)return;
+    root.querySelectorAll('input,select,textarea,button').forEach(function(el){
+      if(el.id==='dd-o-i')return;
+      if(el.closest('#dd-task-panel'))return;
+      if(el.closest('#dd-actions'))return;
+      if(/^dd-/.test(el.id||'')||el.className==='dd-pkg-cb'||(el.closest&&el.closest('#dd-proc-checks')))el.disabled=!!isIssued;
+    });
+    var ordInput=document.getElementById('dd-o-i');if(ordInput)ordInput.disabled=false;
+  }
+  function renderDDActions(cfg){
+    var bar=document.getElementById('dd-actions');if(!bar)return;
+    bar.innerHTML='';
+    var issued=cfg&&cfg.status==='issued';
+    if(issued){
+      var meta=document.createElement('span');
+      meta.style.cssText='margin-right:auto;font-size:11px;color:#64748B';
+      meta.textContent='本单已下达给染厂'+(cfg.issuedAt?' · '+cfg.issuedAt.slice(0,16).replace('T',' '):'')+'，当前为只读。';
+      bar.appendChild(meta);
+      bar.appendChild(mkBtn('\uD83D\uDDA8 重新打印','btn boo',prtD));
+      bar.appendChild(mkBtn('解锁修改','btn bs',unlockDDcfg));
+    }else{
+      bar.appendChild(mkBtn('\uD83D\uDCBE 保存草稿','btn bgn',function(){saveDDcfg();showToast('染整加工单草稿已保存','success');}));
+      bar.appendChild(mkBtn('预览单据','btn bp',function(){saveDDcfg();prvD();}));
+      bar.appendChild(mkBtn('\uD83D\uDDA8 打印/PDF','btn boo',function(){saveDDcfg();prtD();}));
+      bar.appendChild(mkBtn('确认下达给染厂','btn by',issueDDcfg));
+    }
   }
 
   // ══ 蓝色区：订单+染厂 ══
@@ -7067,9 +7096,7 @@ function pgDD(){
 
   // ══ 底部按钮 ══
   var btm=document.createElement('div');btm.style.cssText='display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 18px;background:var(--b3);border-top:1px solid var(--bd)';
-  btm.appendChild(mkBtn('\uD83D\uDCBE 保存配置','btn bgn',function(){saveDDcfg();showToast('染整加工单配置已保存','success');}));
-  btm.appendChild(mkBtn('预览单据','btn bp',function(){saveDDcfg();prvD();}));
-  btm.appendChild(mkBtn('\uD83D\uDDA8 打印/PDF','btn boo',function(){saveDDcfg();prtD();}));
+  btm.id='dd-actions';
   cb.appendChild(btm);
 
   // ══ Reconnect ordSel.onchange ══
@@ -7202,6 +7229,8 @@ function pgDD(){
         });
       },50);
     }
+    renderDDActions(ddCfg);
+    setTimeout(function(){setDDReadOnly(ddCfg&&ddCfg.status==='issued');},260);
   };
   if(ordSel.value)ordSel.onchange();
 
@@ -7573,6 +7602,9 @@ function saveDDcfg(){
   if(!oid){showToast('请先选择订单','error');return;}
   var taskKey=ensureDDTaskKey(oid);
   try{
+  var l=DB.ddocs||[];
+  var existing = null, idx = -1;
+  l.forEach(function(x,i){if(x.ordId===taskKey){existing=x;idx=i;}});
   var cfg={
     ordId:taskKey,
     facNm:(document.getElementById('dd-f')||{value:''}).value,
@@ -7596,6 +7628,9 @@ function saveDDcfg(){
     specWt:(document.getElementById('dd-wt')||{value:''}).value,
     pj:(document.getElementById('dd-pj')||{value:''}).value,
     rm:(document.getElementById('dd-rm')||{value:''}).value,
+    status:(existing&&existing.status)||'draft',
+    issuedAt:existing&&existing.issuedAt||'',
+    unlockReason:existing&&existing.unlockReason||'',
     pkg:(function(){var a=[];document.querySelectorAll('#dd-pkg-checks .dd-pkg-cb:checked').forEach(function(c){a.push(c.value);});return a;})(),
     procOrder:(function(){
       var a=[];
@@ -7610,9 +7645,6 @@ function saveDDcfg(){
     vatQ1:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value
   };
-  var l=DB.ddocs||[];
-  var existing = null, idx = -1;
-  l.forEach(function(x,i){if(x.ordId===taskKey){existing=x;idx=i;}});
   if(existing && existing.id) cfg.id = existing.id;
   if(idx>=0)l[idx]=cfg;else l.push(cfg);
   DB.ddocs=l;
@@ -7621,6 +7653,36 @@ function saveDDcfg(){
     if(oid2)window._renderDDTaskPanel(oid2);
   }
   }catch(e){showToast('保存失败: '+e.message,'error');console.error(e);}
+}
+function issueDDcfg(){
+  var oid=(document.getElementById('dd-o')||{value:''}).value;
+  if(!oid)return alert('请先选择订单');
+  if(!confirm('确认下达给染厂？\n\n下达后本张染整加工单会锁定：订单、染厂、工序、规格、颜色落缸数、交期、包装要求和注意事项。\n如需修改，必须先解锁并填写原因。'))return;
+  saveDDcfg();
+  var key=ensureDDTaskKey(oid), l=DB.ddocs||[];
+  var cfg=l.find(function(x){return x.ordId===key;});
+  if(!cfg)return;
+  cfg.status='issued';
+  cfg.issuedAt=new Date().toISOString();
+  DB.ddocs=l;
+  if(window._renderDDTaskPanel)window._renderDDTaskPanel(oid);
+  var s=document.getElementById('dd-o');if(s&&s.onchange)s.onchange();
+  showToast('染整加工单已下达并锁定','success');
+}
+function unlockDDcfg(){
+  var oid=(document.getElementById('dd-o')||{value:''}).value;
+  if(!oid)return;
+  var reason=prompt('请输入解锁修改原因：');
+  if(!reason||!reason.trim())return;
+  var key=ensureDDTaskKey(oid), l=DB.ddocs||[];
+  var cfg=l.find(function(x){return x.ordId===key;});
+  if(!cfg)return;
+  cfg.status='draft';
+  cfg.unlockReason=reason.trim();
+  DB.ddocs=l;
+  if(window._renderDDTaskPanel)window._renderDDTaskPanel(oid);
+  var s=document.getElementById('dd-o');if(s&&s.onchange)s.onchange();
+  showToast('已解锁，可修改本张染整加工单','warning');
 }
 
 

@@ -432,6 +432,9 @@ CREATE TABLE dyeing_docs (
   vat_code JSONB DEFAULT '[]',
   vat_q1 JSONB DEFAULT '[]',
   pj_note TEXT DEFAULT '',
+  status TEXT DEFAULT 'draft',
+  issued_at TEXT DEFAULT '',
+  unlock_reason TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ord_id)
 );

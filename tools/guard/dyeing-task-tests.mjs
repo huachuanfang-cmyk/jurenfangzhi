@@ -39,6 +39,19 @@ test('dyeing print prefers document color-code override over sales order code', 
   mustText("vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),", 'save dyeing color-code overrides');
 });
 
+test('dyeing docs can be issued and locked until explicitly unlocked', () => {
+  must(/status:\(existing&&existing\.status\)\|\|'draft'/, 'default draft status preserves existing status');
+  must(/function\s+issueDDcfg\s*\(/, 'issue dyeing doc helper');
+  must(/status='issued'/, 'issued status assignment');
+  must(/issuedAt=new Date\(\)\.toISOString\(\)/, 'issued timestamp');
+  must(/function\s+unlockDDcfg\s*\(/, 'unlock dyeing doc helper');
+  must(/unlockReason/, 'unlock reason audit field');
+  must(/function\s+setDDReadOnly\s*\(/, 'dyeing read-only helper');
+  must(/setDDReadOnly\(ddCfg&&ddCfg\.status==='issued'\)/, 'issued docs switch UI to read-only');
+  mustText('确认下达给染厂', 'explicit issue button');
+  mustText('解锁修改', 'explicit unlock button');
+});
+
 let passed = 0;
 for (const t of tests) {
   try {

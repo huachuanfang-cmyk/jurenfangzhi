@@ -214,6 +214,19 @@ test('integrity scan reports rolls linked to wrong shipment or order', () => {
   assert.match(messages, /退货单 ret-b 的布卷 roll-a 不属于原送货单 out-b/);
 });
 
+test('integrity scan reports duplicate active shipments for the same rolls', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-dup-out', no: 'G-DUP-OUT' });
+  store.receiveFinishedGoods({ id: 'in-dup-out', ordId: 'ord-dup-out', rolls: [{ id: 'roll-dup-out', kg: '30' }] });
+  store.shipFinishedGoods({ id: 'out-dup-1', no: 'DH20260038', ordId: 'ord-dup-out', rollIds: ['roll-dup-out'] });
+  store.injectRecord('fgo', { id: 'out-dup-2', no: 'DH20260039', ordId: 'ord-dup-out', rollIds: ['roll-dup-out'] });
+
+  const messages = store.findDataIntegrityIssues().map((issue) => issue.message).join('\n');
+  assert.match(messages, /重复送货单占用同一批布卷/);
+  assert.match(messages, /DH20260038/);
+  assert.match(messages, /DH20260039/);
+});
+
 // ══ 订单核心字段护栏 ══
 
 test('order core fields are preserved: fabric code, price unit, delivery date', () => {

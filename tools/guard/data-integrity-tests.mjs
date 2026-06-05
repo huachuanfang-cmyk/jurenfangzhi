@@ -33,6 +33,7 @@ test('data integrity scanner checks orphan business records', () => {
   assert.match(html, /不存在的退货单/);
   assert.match(html, /不属于该销售订单/);
   assert.match(html, /重复订单号/);
+  assert.match(html, /重复送货单占用同一批布卷/);
 });
 
 test('master-data delete paths use reference guards', () => {

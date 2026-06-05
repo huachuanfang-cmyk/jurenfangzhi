@@ -154,6 +154,7 @@ export function createGuardStore() {
       }
       const record = {
         id: shipment.id,
+        no: shipment.no || '',
         ordId: shipment.ordId,
         rollIds: clone(shipment.rollIds || []),
         feeNm: shipment.feeNm || '',
@@ -355,6 +356,20 @@ export function createGuardStore() {
           }
         });
       });
+      const shipmentRollGroups = new Map();
+      data.fgo.forEach((shipment) => {
+        if (shipment.voided || shipment.status === 'voided' || shipment.status === 'cancelled') return;
+        const key = (shipment.rollIds || []).filter(Boolean).sort().join('|');
+        if (!key) return;
+        const list = shipmentRollGroups.get(key) || [];
+        list.push(shipment);
+        shipmentRollGroups.set(key, list);
+      });
+      for (const group of shipmentRollGroups.values()) {
+        if (group.length < 2) continue;
+        const nos = group.map((shipment) => shipment.no || shipment.id || '未编号').join('、');
+        issues.push({ type: 'duplicate_shipment_rolls', key: 'fgo', id: group[0].id, message: `重复送货单占用同一批布卷：${nos}。请保留较早有效单，较后重复单使用「重复作废」处理，不要普通作废回仓。` });
+      }
       data.ret.forEach((ret) => {
         (ret.rollIds || []).forEach((rollId) => {
           const roll = byId(data.fgr, rollId);

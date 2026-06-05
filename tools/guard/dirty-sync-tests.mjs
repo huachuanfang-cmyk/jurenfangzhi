@@ -6,7 +6,7 @@
 // 注：使用 sync-core.mjs 的真实算法（纯函数，不涉及网络）
 
 import { readFileSync } from 'node:fs';
-import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, cloudConflictKey, ALL_KEYS, pendingDeleteIdsForKey, filterRowsPendingDelete, tombstoneIdsForKey, filterRowsBlockedByTombstones, mergeCloudRowsWithLocalOnly } from './sync-core.mjs';
+import { simulateSyncFlow, computeSyncPlanWithVersion, stripTransientFieldsForCloud, prepareCloudRow, normalizeLocalRowsBeforeSave, withFallbackSerialIds, withoutCloudColumns, missingCloudColumnsForSchemaError, cloudConflictKey, ALL_KEYS, pendingDeleteIdsForKey, filterRowsPendingDelete, tombstoneIdsForKey, filterRowsBlockedByTombstones, mergeCloudRowsWithLocalOnly } from './sync-core.mjs';
 
 const tests = [];
 
@@ -498,6 +498,28 @@ test('return fallback payload can omit missing deduct_kg column without changing
   }
   if (payload[0].deduct_kg !== 12.5) {
     throw new Error('fallback must not mutate local payload source');
+  }
+});
+
+test('finished-goods shipment fallback can omit missing duplicate_of column', () => {
+  var cols = missingCloudColumnsForSchemaError(
+    'fgo',
+    "Could not find the 'duplicate_of' column of 'fg_outs' in the schema cache"
+  );
+  if (!cols.includes('duplicate_of')) {
+    throw new Error('fgo schema fallback should drop duplicate_of when Supabase lacks that column');
+  }
+});
+
+test('receivable fallback can omit missing receipt account snapshot columns', () => {
+  var cols = missingCloudColumnsForSchemaError(
+    'ar',
+    "Could not find the 'receipt_account_bank' column of 'ar_records' in the schema cache"
+  );
+  for (const col of ['receipt_account_type', 'receipt_account_name', 'receipt_account_bank', 'receipt_account_no', 'receipt_account_note']) {
+    if (!cols.includes(col)) {
+      throw new Error('ar schema fallback should drop all receipt account snapshot columns, missing: ' + col);
+    }
   }
 });
 

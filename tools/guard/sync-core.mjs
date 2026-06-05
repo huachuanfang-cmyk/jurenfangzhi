@@ -95,6 +95,26 @@ export function withoutCloudColumns(payload, columns) {
   });
 }
 
+export function missingCloudColumnsForSchemaError(key, message) {
+  var msg = String(message || '').toLowerCase();
+  if (key === 'ret' && msg.indexOf("'deduct_kg' column") >= 0) {
+    return ['deduct_kg', 'deduct_kG'];
+  }
+  if (key === 'fgo' && msg.indexOf("'duplicate_of' column") >= 0) {
+    return ['duplicate_of'];
+  }
+  if (key === 'ar' && msg.indexOf("'receipt_account_") >= 0) {
+    return [
+      'receipt_account_type',
+      'receipt_account_name',
+      'receipt_account_bank',
+      'receipt_account_no',
+      'receipt_account_note',
+    ];
+  }
+  return [];
+}
+
 export function pendingDeleteIdsForKey(key, deleteQueue, tableMap = TABLE_MAP) {
   var table = tableMap[key];
   var ids = {};

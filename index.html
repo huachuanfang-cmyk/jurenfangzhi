@@ -1485,6 +1485,14 @@ function withoutCloudColumns(payload,columns){
   });
 }
 
+function missingCloudColumnsForSchemaError(key,message){
+  var msg=String(message||'').toLowerCase();
+  if(key==='ret'&&msg.indexOf("'deduct_kg' column")>=0)return ['deduct_kg','deduct_kG'];
+  if(key==='fgo'&&msg.indexOf("'duplicate_of' column")>=0)return ['duplicate_of'];
+  if(key==='ar'&&msg.indexOf("'receipt_account_")>=0)return ['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note'];
+  return [];
+}
+
 async function upsertCloudRows(key,table,rows){
   var conflictKey=cloudConflictKey(key);
   var payload=rowsToCloudPayloadForKey(key,rows);
@@ -1494,8 +1502,9 @@ async function upsertCloudRows(key,table,rows){
   if((key==='wd'||key==='dd')&&msg.indexOf('null value in column "id"')>=0){
     return await _supabaseData.from(table).upsert(withFallbackSerialIds(key,payload),{onConflict:conflictKey,ignoreDuplicates:false});
   }
-  if(key==='ret'&&msg.toLowerCase().indexOf("'deduct_kg' column")>=0){
-    return await _supabaseData.from(table).upsert(withoutCloudColumns(payload,['deduct_kg','deduct_kG']),{onConflict:conflictKey,ignoreDuplicates:false});
+  var fallbackColumns=missingCloudColumnsForSchemaError(key,msg);
+  if(fallbackColumns.length){
+    return await _supabaseData.from(table).upsert(withoutCloudColumns(payload,fallbackColumns),{onConflict:conflictKey,ignoreDuplicates:false});
   }
   return result;
 }
@@ -1884,7 +1893,7 @@ async function openSyncSafetyModal(){
   var danger=problemRows.length>0;
   box.innerHTML='<div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">'
     +'<div><div style="font-size:15px;font-weight:800;color:#1e3a8a">刷新前安全检查</div><div style="font-size:11px;color:#64748B;margin-top:3px">只读检查，不会修改数据。快照时间：'+esc(snapTime)+'</div></div>'
-    +'<button id="_syncsafe_close" style="background:none;border:none;font-size:22px;color:#94A3B8;cursor:pointer">×</button></div>'
+    +'<button type="button" id="_syncsafe_close" data-syncsafe-close="1" title="关闭" style="background:none;border:none;font-size:26px;color:#64748B;cursor:pointer;width:34px;height:34px;line-height:30px;border-radius:6px">×</button></div>'
     +'<div style="padding:16px 20px">'
     +'<div style="border:1px solid '+(danger?'#FCA5A5':'#86EFAC')+';background:'+(danger?'#FEF2F2':'#F0FDF4')+';color:'+(danger?'#991B1B':'#166534')+';border-radius:8px;padding:11px 13px;font-size:12px;margin-bottom:12px;line-height:1.6">'
     +(danger?'发现 '+problemRows.length+' 个关键表本机、云端或同步状态未完全对齐。建议先不要换电脑操作，点“重试同步”后再检查。':'本机与云端条数一致，关键业务表暂无未上传修改；当前页面刷新风险较低。')
@@ -1937,20 +1946,27 @@ async function openSyncSafetyModal(){
     +'<button id="_syncsafe_ok" style="padding:7px 18px;border:none;background:#1565C0;color:#fff;border-radius:6px;font-size:12px;cursor:pointer">知道了</button>'
     +'</div>';
   overlay.appendChild(box);document.body.appendChild(overlay);
-  function close(){if(overlay.parentNode)overlay.parentNode.removeChild(overlay);}
-  document.getElementById('_syncsafe_close').onclick=close;
-  document.getElementById('_syncsafe_ok').onclick=close;
-  overlay.onclick=function(e){if(e.target===overlay)close();};
+  function syncSafeEscHandler(e){if(e.key==='Escape')closeSyncSafetyModal(overlay,syncSafeEscHandler);}
+  document.addEventListener('keydown',syncSafeEscHandler);
+  document.querySelectorAll('[data-syncsafe-close="1"],#_syncsafe_ok').forEach(function(btn){
+    btn.onclick=function(){closeSyncSafetyModal(overlay,syncSafeEscHandler);};
+  });
+  overlay.onclick=function(e){if(e.target===overlay)closeSyncSafetyModal(overlay,syncSafeEscHandler);};
   document.getElementById('_syncsafe_retry').onclick=async function(){
     var btn=this;btn.disabled=true;btn.textContent='同步中...';
     await pullFromSupabase();
-    close();
+    closeSyncSafetyModal(overlay,syncSafeEscHandler);
     setTimeout(function(){openSyncSafetyModal();},300);
   };
   document.getElementById('_syncsafe_force').onclick=function(){
-    close();
+    closeSyncSafetyModal(overlay,syncSafeEscHandler);
     forceFullSync();
   };
+}
+
+function closeSyncSafetyModal(overlay,syncSafeEscHandler){
+  if(syncSafeEscHandler)document.removeEventListener('keydown',syncSafeEscHandler);
+  if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);
 }
 
 DB.save = function(n, v){

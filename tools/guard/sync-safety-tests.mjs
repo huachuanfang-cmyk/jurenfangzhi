@@ -61,6 +61,14 @@ test('backup computer workflow exposes force-pull latest cloud data', () => {
   assert.match(html, /forceFullSync\(\)/);
 });
 
+test('refresh safety modal has reliable close interactions', () => {
+  assert.match(html, /function\s+closeSyncSafetyModal\s*\(/);
+  assert.match(html, /data-syncsafe-close="1"/);
+  assert.match(html, /keydown/);
+  assert.match(html, /Escape/);
+  assert.match(html, /removeEventListener\('keydown',syncSafeEscHandler\)/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

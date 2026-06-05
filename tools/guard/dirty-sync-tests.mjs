@@ -506,8 +506,22 @@ test('finished-goods shipment fallback can omit missing duplicate_of column', ()
     'fgo',
     "Could not find the 'duplicate_of' column of 'fg_outs' in the schema cache"
   );
-  if (!cols.includes('duplicate_of')) {
-    throw new Error('fgo schema fallback should drop duplicate_of when Supabase lacks that column');
+  for (const col of ['duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
+    if (!cols.includes(col)) {
+      throw new Error('fgo schema fallback should drop duplicate shipment audit columns, missing: ' + col);
+    }
+  }
+});
+
+test('finished-goods shipment fallback covers no-restock void schema drift', () => {
+  var cols = missingCloudColumnsForSchemaError(
+    'fgo',
+    "Could not find the 'no_restock_on_void' column of 'fg_outs' in the schema cache"
+  );
+  for (const col of ['duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
+    if (!cols.includes(col)) {
+      throw new Error('fgo no-restock schema fallback should drop all related audit columns, missing: ' + col);
+    }
   }
 });
 

@@ -99,6 +99,16 @@ test('integrity repair delete blocks receivable-linked delivery notes', () => {
   assert.match(html, /仍有业务联动/);
 });
 
+test('integrity repair tool shows non-order issues instead of an empty orphan table', () => {
+  assert.match(html, /function\s+integrityIssueHandledByRepairSections\s*\(/);
+  assert.match(html, /function\s+integrityIssueTypeLabel\s*\(/);
+  assert.match(html, /需人工核对/);
+  assert.match(html, /退货单引用了不存在的送货单/);
+  assert.match(html, /布卷已关联到其他送货单/);
+  assert.match(html, /退货布卷与原送货单不一致/);
+  assert.match(html, /去出货记录核对/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

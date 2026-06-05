@@ -1184,6 +1184,23 @@ function repairDeleteBlockReason(target){
   return '';
 }
 
+function integrityIssueHandledByRepairSections(issue){
+  if(!issue)return false;
+  return issue.type==='orphan_order_ref'||issue.type==='duplicate_order_no'||issue.type==='duplicate_shipment_rolls';
+}
+
+function integrityIssueTypeLabel(type){
+  var map={
+    orphan_shipment_ref:'退货单引用了不存在的送货单',
+    orphan_roll_ref:'单据引用了不存在的布卷',
+    roll_shipment_mismatch:'布卷已关联到其他送货单',
+    roll_order_mismatch:'布卷不属于该销售订单',
+    return_roll_mismatch:'退货布卷与原送货单不一致',
+    orphan_return_ref:'对账单引用了不存在的退货单'
+  };
+  return map[type]||type||'未知异常';
+}
+
 // ══════════════════════════════════════════════════════════════
 // 数据完整性修复工具：列出孤儿引用 + 重复订单号，可勾选批量清理
 // 强约束：执行前要管理员密码 + 自动留快照（受 _SNAP_KEYS 保护，可恢复）
@@ -1267,6 +1284,44 @@ function openIntegrityRepairTool(){
         box.appendChild(jump);
         body.appendChild(box);
       });
+    }
+
+    // ── 其他巡检异常区：不能物理删除，只能引导人工核对 ──
+    var manualIssues=issues.filter(function(issue){return !integrityIssueHandledByRepairSections(issue);});
+    if(manualIssues.length){
+      var manH=document.createElement('div');
+      manH.style.cssText='font-size:13px;font-weight:700;color:#991B1B;margin:14px 0 8px;padding:6px 10px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:4px';
+      manH.textContent='🔎 需人工核对 ('+manualIssues.length+' 条) — 涉及库存、退货或对账联动，不能一键删除';
+      body.appendChild(manH);
+      var manBox=document.createElement('div');
+      manBox.style.cssText='border:1px solid #FECACA;border-radius:6px;background:#FFFBFB;max-height:220px;overflow:auto';
+      manualIssues.forEach(function(issue,i){
+        var row=document.createElement('div');
+        row.style.cssText='display:grid;grid-template-columns:150px 1fr;gap:10px;padding:7px 10px;border-bottom:1px solid #FEE2E2;font-size:11.5px;line-height:1.55';
+        row.innerHTML='<div style="font-weight:700;color:#B91C1C">'+esc(integrityIssueTypeLabel(issue.type))+'</div>'
+          +'<div style="color:#374151">'+esc(issue.message||'')+'</div>';
+        manBox.appendChild(row);
+      });
+      body.appendChild(manBox);
+      var manOps=document.createElement('div');
+      manOps.style.cssText='display:flex;gap:8px;align-items:center;margin:8px 0 4px;flex-wrap:wrap';
+      var outBtn=document.createElement('button');
+      outBtn.type='button';
+      outBtn.className='btn bsm bp';
+      outBtn.textContent='去出货记录核对';
+      outBtn.onclick=function(){cm();window._fgTab='out';window._fgoutDate='all';go('fgstock');};
+      var retBtn=document.createElement('button');
+      retBtn.type='button';
+      retBtn.className='btn bsm by';
+      retBtn.textContent='去退货处理核对';
+      retBtn.onclick=function(){cm();window._fgTab='returns';go('fgstock');};
+      var hint=document.createElement('span');
+      hint.style.cssText='font-size:11px;color:#6B7280';
+      hint.textContent='这类异常需要先核对原送货单、布卷 outId、退货单引用关系，再决定重建、改引用或作废。';
+      manOps.appendChild(outBtn);
+      manOps.appendChild(retBtn);
+      manOps.appendChild(hint);
+      body.appendChild(manOps);
     }
 
     // ── 孤儿引用区 ──
@@ -1488,7 +1543,7 @@ function withoutCloudColumns(payload,columns){
 function missingCloudColumnsForSchemaError(key,message){
   var msg=String(message||'').toLowerCase();
   if(key==='ret'&&msg.indexOf("'deduct_kg' column")>=0)return ['deduct_kg','deduct_kG'];
-  if(key==='fgo'&&msg.indexOf("'duplicate_of' column")>=0)return ['duplicate_of'];
+  if(key==='fgo'&&(msg.indexOf("'duplicate_of' column")>=0||msg.indexOf("'no_restock_on_void' column")>=0||msg.indexOf("'void_reason' column")>=0||msg.indexOf("'voided_at' column")>=0))return ['duplicate_of','no_restock_on_void','void_reason','voided_at'];
   if(key==='ar'&&msg.indexOf("'receipt_account_")>=0)return ['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note'];
   return [];
 }

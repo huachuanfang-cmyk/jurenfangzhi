@@ -2514,6 +2514,61 @@ function resolveARecReceiptAccount(r){
   };
 }
 function arOutIsVoided(o){return !!(o&&(o.voided||o.status==='voided'||o.status==='cancelled'));}
+function shipmentRollKeyFromIds(rollIds){
+  return (rollIds||[]).slice().filter(Boolean).sort().join('|');
+}
+function shipmentRollKey(out){
+  return shipmentRollKeyFromIds(out&&out.rollIds);
+}
+function findDuplicateShipmentByRollIds(rollIds,list,skipId){
+  var key=shipmentRollKeyFromIds(rollIds);
+  if(!key)return null;
+  return (list||[]).find(function(x){
+    return x&&x.id!==skipId&&!arOutIsVoided(x)&&shipmentRollKey(x)===key;
+  })||null;
+}
+function findDuplicateShipmentKeeper(out){
+  if(!out)return null;
+  return findDuplicateShipmentByRollIds(out.rollIds||[],DB.fgouts||[],out.id);
+}
+function validateRollsAvailableForShipment(rollIds,allRolls){
+  var bad=[];
+  (rollIds||[]).forEach(function(rid){
+    var r=(allRolls||[]).find(function(x){return x.id===rid;});
+    if(!r)bad.push(rid+' 不存在');
+    else if(r.status!=='in'||r.outId)bad.push('疋'+(r.rollNo||rid)+' 已出货/不可用');
+  });
+  return bad;
+}
+function markDuplicateShipmentVoidNoRestock(rid){
+  var list=DB.fgouts||[];
+  var r2=list.find(function(x){return x.id===rid;});
+  if(!r2)return alert('找不到出货记录');
+  if(r2.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再处理。');
+  var keeper=findDuplicateShipmentKeeper(r2);
+  if(!keeper)return alert('未找到同批疋料的另一张有效送货单，不能按重复单处理。请使用普通作废或先人工核对。');
+  if(!confirm('确认将 '+(r2.no||'')+' 标记为重复作废？\n\n不会恢复库存；布卷仍保持已出货，并指向有效送货单 '+(keeper.no||'')+'。'))return;
+  verifyPwd(function(){
+    var allR=fgRolls();
+    (r2.rollIds||[]).forEach(function(rlid){
+      var rl=allR.find(function(x){return x.id===rlid;});
+      if(rl&&rl.outId===r2.id){
+        rl.status='out';
+        rl.outId=keeper.id;
+      }
+    });
+    saveFgRolls(allR);
+    r2.voided=true;
+    r2.status='voided';
+    r2.noRestockOnVoid=true;
+    r2.voidReason='重复送货单作废（不回仓）';
+    r2.voidedAt=new Date().toISOString();
+    r2.duplicateOf=keeper.id;
+    DB.save('fgo',list);
+    pgFGStock();
+    showToast('已重复作废，不回仓：'+(r2.no||''),'success');
+  });
+}
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
 var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪']};
 
@@ -12274,6 +12329,7 @@ function pgFGStock(){
             if(rec&&rec.isQuick)printQuickOut(rid);else printFGOut(rid);
           };}(r.id)));
           if(!hasRetD)opDTd2.appendChild(mkBtn('退货','btn bsm by',function(rid){return function(){openFGReturn(rid);};}(r.id)));
+          if(!r.voided&&findDuplicateShipmentKeeper(r))opDTd2.appendChild(mkBtn('重复作废','btn bsm brd',function(rid){return function(){markDuplicateShipmentVoidNoRestock(rid);};}(r.id)));
           if(!r.voided)opDTd2.appendChild(mkBtn('作废','btn bsm br',(function(rid,rSnap,rlsSnap,totKGSnap,totMSnap){return function(){
             if(rSnap&&rSnap.arecId)return alert('此出货单已关联对账单，请先到对账单页面移除后再作废。');
             var _ov2=document.createElement('div');
@@ -12875,11 +12931,15 @@ function openFGOutFromGroup(k,grp){
     var feeAmt=(document.getElementById('fgo2-feeAmt')||{value:''}).value;
     var rm=(document.getElementById('fgo2-rm')||{value:''}).value;
     var rollIds=[];selCbs.forEach(function(cb){rollIds.push(cb.value);});
+    var allR=fgRolls();
+    var stale=validateRollsAvailableForShipment(rollIds,allR);
+    if(stale.length)return alert('以下疋料已不在库存，不能重复出货：\n'+stale.join('\n'));
+    var dup=findDuplicateShipmentByRollIds(rollIds,DB.fgouts||[]);
+    if(dup)return alert('这批疋料已生成送货单 '+(dup.no||'')+'，不能重复出货。');
     var outNo=fgOutNo();
     var custOrdNo=(document.getElementById('fgo2-cono')||{value:''}).value;
     var outRec={id:'fgo_'+Date.now(),no:outNo,date:date,ordId:grp.ordId,ordNo:grp.ordNo,custNm:grp.custNm,dlvNo:dlvNo,custOrdNo:custOrdNo,approxM:approxM,feeNm:feeNm,feeAmt:feeAmt,rm:rm,rollIds:rollIds};
     var list=DB.fgouts||[];list.push(outRec);DB.fgouts=list;
-    var allR=fgRolls();
     rollIds.forEach(function(rid){var r=allR.find(function(x){return x.id===rid;});if(r){r.status='out';r.outId=outRec.id;}});
     saveFgRolls(allR);
     window._fgLastAction={type:'out',ordId:grp.ordId,ordNo:grp.ordNo,custNm:grp.custNm||'',ts:Date.now()};window._fgTab='out';
@@ -14700,6 +14760,14 @@ function openFGOutM(id){
 
     // Create 出货单：批量入口也按颜色+缸号拆成多张正式送货单
     var list=DB.fgouts||[];
+    for(var gi=0;gi<fgoGroupsByKey.length;gi++){
+      var checkGroup=fgoGroupsByKey[gi];
+      var groupRollIds=checkGroup.rolls.map(function(r){return r.id;});
+      var stale=validateRollsAvailableForShipment(groupRollIds,allRolls);
+      if(stale.length)return alert('以下疋料已不在库存，不能重复出货：\n'+stale.join('\n'));
+      var dup=findDuplicateShipmentByRollIds(groupRollIds,list);
+      if(dup)return alert('这批疋料已生成送货单 '+(dup.no||'')+'，不能重复出货。');
+    }
     var createdOutIds=[];
     var createdNos=[];
     fgoGroupsByKey.forEach(function(g,idx){

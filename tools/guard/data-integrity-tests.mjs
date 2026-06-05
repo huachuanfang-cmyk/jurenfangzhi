@@ -41,6 +41,27 @@ test('master-data delete paths use reference guards', () => {
   assert.match(html, /function\s+canDeleteMaterial\s*\(/);
 });
 
+test('duplicate finished-goods shipments can be voided without returning stock', () => {
+  assert.match(html, /function\s+markDuplicateShipmentVoidNoRestock\s*\(/);
+  assert.match(html, /function\s+findDuplicateShipmentKeeper\s*\(/);
+  const fnStart = html.indexOf('function markDuplicateShipmentVoidNoRestock');
+  const fnEnd = html.indexOf('function ', fnStart + 20);
+  const fn = html.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 2500);
+  assert.match(fn, /noRestockOnVoid=true/);
+  assert.match(fn, /voidReason='重复送货单作废（不回仓）'/);
+  assert.match(fn, /rl\.outId=keeper\.id/);
+  assert.doesNotMatch(fn, /rl\.status='in'/);
+});
+
+test('finished-goods shipment save rechecks stale or duplicated roll selections', () => {
+  assert.match(html, /function\s+validateRollsAvailableForShipment\s*\(/);
+  assert.match(html, /function\s+findDuplicateShipmentByRollIds\s*\(/);
+  assert.match(html, /validateRollsAvailableForShipment\(groupRollIds,allRolls\)/);
+  assert.match(html, /findDuplicateShipmentByRollIds\(groupRollIds,list\)/);
+  assert.match(html, /validateRollsAvailableForShipment\(rollIds,allR\)/);
+  assert.match(html, /findDuplicateShipmentByRollIds\(rollIds,DB\.fgouts\|\|\[\]\)/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

@@ -994,7 +994,16 @@ function orderRefMatches(row,ord){
   var rno=textVal(row.ordNo||row.ord_no||row.orderNo||row.order_no);
   return (!!rid&&rid===textVal(ord.id)) || (!!rno&&rno===textVal(ord.no));
 }
-function orderExistsForRow(row){
+function isLegalNoOrderShipment(row,key){
+  if(key&&key!=='fgo')return false;
+  if(!row)return false;
+  var rid=textVal(row.ordId||row.ord_id||row.orderId||row.order_id).split('::')[0];
+  var rno=textVal(row.ordNo||row.ord_no||row.orderNo||row.order_no);
+  if(rid)return false;
+  return rno==='—'||rno==='-'||rno==='无订单'||rno==='无订单出货'||rno==='(无订单号)';
+}
+function orderExistsForRow(row,key){
+  if(isLegalNoOrderShipment(row,key))return true;
   var rid=textVal(row&& (row.ordId||row.ord_id||row.orderId||row.order_id)).split('::')[0];
   var rno=textVal(row&& (row.ordNo||row.ord_no||row.orderNo||row.order_no));
   if(!rid&&!rno)return true;
@@ -1107,7 +1116,7 @@ function findDataIntegrityIssues(){
     ['fgi','成品入库批次'],['fgr','成品配料/库存'],['fgo','成品出货单'],['ret','退货单']
   ].forEach(function(pair){
     (DB.load(pair[0])||[]).forEach(function(row){
-      if(!orderExistsForRow(row))issues.push({type:'orphan_order_ref',message:pair[1]+' '+(row.no||row.id||'')+' 引用了不存在的销售订单'});
+      if(!orderExistsForRow(row,pair[0]))issues.push({type:'orphan_order_ref',message:pair[1]+' '+(row.no||row.id||'')+' 引用了不存在的销售订单'});
     });
   });
   var outIds={};
@@ -1159,6 +1168,22 @@ function findDataIntegrityIssues(){
   return issues;
 }
 
+function repairDeleteBlockReason(target){
+  if(!target||!target.row)return '';
+  var row=target.row;
+  if(target.table==='fgo'){
+    var id=textVal(row.id);
+    var no=textVal(row.no);
+    if(row.arecId)return '成品出货单 '+(no||id)+' 已关联对账单，仍有业务联动，不能在修复工具删除。';
+    var arecs=(DB.arecs||DB.load('ar')||[]).filter(function(ar){return ar&&ar.status!=='voided'&&ar.status!=='作废';});
+    var linked=arecs.find(function(ar){
+      return (ar.outIds||[]).indexOf(id)>=0 || (ar.outIds||[]).indexOf(no)>=0 || (ar.outNos||[]).indexOf(no)>=0;
+    });
+    if(linked)return '成品出货单 '+(no||id)+' 已被对账单 '+(linked.no||linked.id||'')+' 引用，仍有业务联动，不能在修复工具删除。';
+  }
+  return '';
+}
+
 // ══════════════════════════════════════════════════════════════
 // 数据完整性修复工具：列出孤儿引用 + 重复订单号，可勾选批量清理
 // 强约束：执行前要管理员密码 + 自动留快照（受 _SNAP_KEYS 保护，可恢复）
@@ -1175,6 +1200,7 @@ function openIntegrityRepairTool(){
   // orphan_order_ref
   [['yn','纱线采购'],['yo','发料/回仓'],['t','加工跟踪'],['wd','织厂加工单'],['dd','染整加工单'],['fgi','成品入库批次'],['fgr','疋料/库存'],['fgo','成品出货单'],['ret','退货单']].forEach(function(pair){
     (DB.load(pair[0])||[]).forEach(function(row){
+      if(isLegalNoOrderShipment(row,pair[0]))return;
       var rid=(row.ordId||row.ord_id||row.orderId||'').toString().split('::')[0];
       var rno=(row.ordNo||row.ord_no||row.orderNo||'').toString();
       if(!rid&&!rno)return;
@@ -1289,6 +1315,11 @@ function openIntegrityRepairTool(){
       if(!cbs.length){alert('请先勾选要删除的记录');return;}
       var idxs=Array.from(cbs).map(function(cb){return parseInt(cb.dataset.idx);});
       var targets=idxs.map(function(i){return orphans[i];});
+      var blocked=targets.map(repairDeleteBlockReason).filter(Boolean);
+      if(blocked.length){
+        alert('以下记录仍有业务联动，不能删除：\n\n'+blocked.join('\n'));
+        return;
+      }
       verifyPwd(function(){
         // 1. 留快照：按表分组，对受影响的表保存当前完整副本
         var snapTables={};

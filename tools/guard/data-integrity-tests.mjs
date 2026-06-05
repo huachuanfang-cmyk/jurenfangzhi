@@ -83,6 +83,22 @@ test('integrity repair tool exposes duplicate shipment groups with safe handling
   assert.match(html, /go\('fgstock'\)/);
 });
 
+test('legal quick no-order finished-goods shipments are whitelisted from orphan order repair', () => {
+  assert.match(html, /function\s+isLegalNoOrderShipment\s*\(/);
+  assert.match(html, /orderExistsForRow\(row,pair\[0\]\)/);
+  assert.match(html, /isLegalNoOrderShipment\(row,pair\[0\]\)/);
+  assert.match(html, /无订单出货/);
+});
+
+test('integrity repair delete blocks receivable-linked delivery notes', () => {
+  assert.match(html, /function\s+repairDeleteBlockReason\s*\(/);
+  assert.match(html, /target\.table==='fgo'/);
+  assert.match(html, /row\.arecId/);
+  assert.match(html, /DB\.arecs\|\|\[\]/);
+  assert.match(html, /outIds\|\|\[\]/);
+  assert.match(html, /仍有业务联动/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

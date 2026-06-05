@@ -2527,9 +2527,24 @@ function findDuplicateShipmentByRollIds(rollIds,list,skipId){
     return x&&x.id!==skipId&&!arOutIsVoided(x)&&shipmentRollKey(x)===key;
   })||null;
 }
+function shipmentNoRank(out){
+  var m=String((out&&out.no)||'').match(/\d+/g);
+  return m?parseInt(m[m.length-1],10):Number.MAX_SAFE_INTEGER;
+}
 function findDuplicateShipmentKeeper(out){
   if(!out)return null;
-  return findDuplicateShipmentByRollIds(out.rollIds||[],DB.fgouts||[],out.id);
+  var key=shipmentRollKey(out);
+  if(!key)return null;
+  var same=(DB.fgouts||[]).filter(function(x){
+    return x&&!arOutIsVoided(x)&&shipmentRollKey(x)===key;
+  });
+  if(same.length<2)return null;
+  same.sort(function(a,b){
+    var na=shipmentNoRank(a),nb=shipmentNoRank(b);
+    if(na!==nb)return na-nb;
+    return String(a.id||'').localeCompare(String(b.id||''));
+  });
+  return same[0]&&same[0].id!==out.id?same[0]:null;
 }
 function validateRollsAvailableForShipment(rollIds,allRolls){
   var bad=[];

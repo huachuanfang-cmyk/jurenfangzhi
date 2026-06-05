@@ -860,6 +860,56 @@ test('calcShipStatus excludes repaired/voided rolls from ratio', () => {
   assert.equal(status, 'stocked');
 });
 
+test('core helper excludes voided shipments from active receivable candidates', () => {
+  const store = createGuardStore();
+  store.injectRecord('fgo', { id: 'out-active', no: 'DH-A', custNm: '客户A', amt: 100 });
+  store.injectRecord('fgo', { id: 'out-void', no: 'DH-V', custNm: '客户A', status: 'voided', amt: 200 });
+  store.injectRecord('fgo', { id: 'out-dup', no: 'DH-D', custNm: '客户A', status: 'voided', noRestockOnVoid: true, amt: 300 });
+
+  const candidates = store.receivableShipmentCandidates();
+
+  assert.deepEqual(candidates.map((x) => x.id), ['out-active']);
+});
+
+test('core helper computes quick no-order sample amount from meters and unit price', () => {
+  const store = createGuardStore();
+  const amount = store.calcQuickShipmentAmount({
+    no: '20260040',
+    custNm: '新昌丝绸服装（深圳）有限公司',
+    qtyM: '3',
+    unitPr: '40',
+    prUnit: 'M',
+    rm: 'SAMPLE 打样用',
+  });
+
+  assert.equal(amount, 120);
+});
+
+test('core helper groups no-order shipments separately from sales orders', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-1', no: 'G20260693', custNm: '清远幸运龙服装有限公司' });
+  store.receiveFinishedGoods({
+    id: 'in-1',
+    ordId: 'ord-1',
+    rolls: [{ id: 'roll-1', rollNo: '1', kg: '10', m: '100' }],
+  });
+  store.shipFinishedGoods({ id: 'out-order', ordId: 'ord-1', no: 'DH20260026', rollIds: ['roll-1'] });
+  store.injectRecord('fgo', {
+    id: 'out-quick',
+    no: '20260040',
+    custNm: '新昌丝绸服装（深圳）有限公司',
+    quickOut: true,
+    qtyM: '3',
+    unitPr: '40',
+    prUnit: 'M',
+  });
+
+  const groups = store.groupReceivableShipmentsByOrder();
+
+  assert.ok(groups.some((group) => group.key === 'G20260693'));
+  assert.ok(groups.some((group) => group.key === 'NO_ORDER'));
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

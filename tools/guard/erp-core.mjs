@@ -170,6 +170,36 @@ export function createGuardStore() {
       return record ? clone(record) : null;
     },
 
+    isActiveShipment(shipment) {
+      return Boolean(shipment && !shipment.voided && shipment.status !== 'voided' && shipment.status !== 'cancelled');
+    },
+
+    calcQuickShipmentAmount(out) {
+      const unitPr = parseFloat(out.unitPr || out.price || out.pr || 0) || 0;
+      const qtyM = parseFloat(out.qtyM || out.m || out.meter || out.totalM || 0) || 0;
+      const qtyKG = parseFloat(out.qtyKG || out.kg || out.totalKG || 0) || 0;
+      const manual = parseFloat(out.amt || out.amount || out.totalAmt || 0) || 0;
+      const prUnit = String(out.prUnit || out.unit || '').toUpperCase();
+      if (manual > 0) return Number(manual.toFixed(2));
+      if (prUnit.includes('KG')) return Number((qtyKG * unitPr).toFixed(2));
+      return Number((qtyM * unitPr).toFixed(2));
+    },
+
+    receivableShipmentCandidates() {
+      return clone(data.fgo.filter((shipment) => this.isActiveShipment(shipment)));
+    },
+
+    groupReceivableShipmentsByOrder() {
+      const groups = new Map();
+      for (const shipment of this.receivableShipmentCandidates()) {
+        const order = data.o.find((item) => item.id === shipment.ordId);
+        const key = order ? order.no : 'NO_ORDER';
+        if (!groups.has(key)) groups.set(key, { key, shipments: [] });
+        groups.get(key).shipments.push(clone(shipment));
+      }
+      return [...groups.values()];
+    },
+
     returnFinishedGoods(ret) {
       const shipment = requireRecord('fgo', ret.outId, 'shipment');
       var totalKG = 0;

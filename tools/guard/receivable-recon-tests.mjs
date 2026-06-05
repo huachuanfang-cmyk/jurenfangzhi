@@ -19,7 +19,17 @@ test('legacy unreconciled shipment warning cross-checks receivable outIds', () =
 });
 
 test('legacy unreconciled shipment warning ignores voided delivery notes', () => {
-  must(/if\(o\.voided\|\|o\.status==='voided'\|\|o\.status==='cancelled'\)return;/, 'warning skips voided or cancelled shipments');
+  must(/if\(arOutIsVoided\(o\)\)return;/, 'warning skips voided or cancelled shipments');
+});
+
+test('receivable statements never print or export voided delivery notes', () => {
+  must(/function arOutIsVoided\(o\)\{return !!\(o&&\(o\.voided\|\|o\.status==='voided'\|\|o\.status==='cancelled'\)\);\}/, 'shared voided shipment helper');
+  must(/var out=fgoutsDB\.find\(function\(x\)\{return x\.id===oid;\}\);if\(!out\|\|arOutIsVoided\(out\)\)return;/, 'Excel skips voided delivery notes in saved outIds');
+  must(/var out=fgoutsDB\.find\(function\(x\)\{return x\.id===oid;\}\);if\(!out\|\|arOutIsVoided\(out\)\)return;/, 'PDF skips voided delivery notes in saved outIds');
+});
+
+test('receivable edit refetch drops voided delivery notes even if saved before', () => {
+  must(/if\(arOutIsVoided\(o\)\)return false;/, 'edit fetch excludes voided saved shipment rows');
 });
 
 test('legacy warning exposes delivery note numbers for true unmatched shipments', () => {

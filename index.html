@@ -2417,6 +2417,7 @@ function resolveARecReceiptAccount(r){
     note:(r&&r.receiptAccountNote)||d.note
   };
 }
+function arOutIsVoided(o){return !!(o&&(o.voided||o.status==='voided'||o.status==='cancelled'));}
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
 var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪']};
 
@@ -8743,7 +8744,7 @@ function pgARec(){
     // 找所有未挂对账单、出货超过1天的记录，按客户汇总；同时交叉核对对账单outIds，避免旧数据arecId未回写造成误报
     var legacyMap={};
     fgoutsAll.forEach(function(o){
-      if(o.voided||o.status==='voided'||o.status==='cancelled')return;
+      if(arOutIsVoided(o))return;
       if(o.arecId||liveArecOutIds[o.id])return; // 已对账
       if(!o.date)return;
       var d=new Date(o.date);
@@ -8991,7 +8992,7 @@ function exportARecExcel(id){
   var outDataList=[];
   var grandTotal=0,totalFee=0;
   (r.outIds||[]).forEach(function(oid){
-    var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out)return;
+    var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out||arOutIsVoided(out))return;
     var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
     var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
     var kg=oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
@@ -9223,6 +9224,7 @@ function exportARecExcel(id){
 function printARec(id){
   var r=(DB.arecs||[]).find(function(x){return x.id===id;});
   if(!r)return alert('找不到对账单');
+  function arOutIsVoided(o){return !!(o&&(o.voided||o.status==='voided'||o.status==='cancelled'));}
   var receiptAccount=(typeof resolveARecReceiptAccount==='function')?resolveARecReceiptAccount(r):(function(){
     return {
       type:(r&&r.receiptAccountType)||'company',
@@ -9246,7 +9248,7 @@ function printARec(id){
   var hasMeter=false;
 
   (r.outIds||[]).forEach(function(oid){
-    var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out)return;
+    var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out||arOutIsVoided(out))return;
     var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
     var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
     // KG/米：有疋数据用疋数求和，无疋数据从出货记录取
@@ -9639,7 +9641,7 @@ function openARecModal(id){
       // 找该客人所有未对账的出货记录（编辑模式下，也要包含已经挂在本单里的记录）
       // 拉取：本月出货 + 历史遗留未对账（未挂任何对账单的旧记录）
       var matched=fgouts.filter(function(o){
-        if((o.voided||o.status==='voided'||o.status==='cancelled')&&savedOutIds.indexOf(o.id)<0)return false;
+        if(arOutIsVoided(o))return false;
         if(o.arecId&&o.arecId!==curRecId)return false; // 已在其它对账单
         if((o.custNm||'')!==cNm)return false; // 客户不匹配
         var outYM=(o.date||'').slice(0,7);

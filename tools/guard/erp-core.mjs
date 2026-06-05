@@ -200,6 +200,25 @@ export function createGuardStore() {
       return [...groups.values()];
     },
 
+    markDuplicateShipmentVoidNoRestock(duplicateId, keeperId) {
+      const duplicate = requireRecord('fgo', duplicateId, 'duplicate shipment');
+      const keeper = requireRecord('fgo', keeperId, 'keeper shipment');
+      duplicate.voided = true;
+      duplicate.status = 'voided';
+      duplicate.noRestockOnVoid = true;
+      duplicate.voidReason = '重复送货单作废（不回仓）';
+      duplicate.voidedAt = duplicate.voidedAt || new Date().toISOString();
+      duplicate.duplicateOf = keeper.id;
+      for (const rollId of duplicate.rollIds || []) {
+        const roll = byId(data.fgr, rollId);
+        if (roll) {
+          roll.status = 'out';
+          roll.outId = keeper.id;
+        }
+      }
+      return clone(duplicate);
+    },
+
     returnFinishedGoods(ret) {
       const shipment = requireRecord('fgo', ret.outId, 'shipment');
       var totalKG = 0;

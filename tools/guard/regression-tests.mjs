@@ -910,6 +910,28 @@ test('core helper groups no-order shipments separately from sales orders', () =>
   assert.ok(groups.some((group) => group.key === 'NO_ORDER'));
 });
 
+test('duplicate shipment void keeps stock out and links duplicate to keeper', () => {
+  const store = createGuardStore();
+  store.createOrder({ id: 'ord-dup-core', no: 'G20260682', custNm: '清远幸运龙服装有限公司' });
+  store.receiveFinishedGoods({
+    id: 'in-dup-core',
+    ordId: 'ord-dup-core',
+    rolls: [{ id: 'roll-dup-core', rollNo: '1500', kg: '19', m: '1535' }],
+  });
+  store.shipFinishedGoods({ id: 'out-keeper', no: 'DH20260038', ordId: 'ord-dup-core', rollIds: ['roll-dup-core'] });
+  store.injectRecord('fgo', { id: 'out-dup', no: 'DH20260039', ordId: 'ord-dup-core', rollIds: ['roll-dup-core'] });
+
+  store.markDuplicateShipmentVoidNoRestock('out-dup', 'out-keeper');
+
+  const duplicate = store.getShipment('out-dup');
+  const roll = store.getRoll('roll-dup-core');
+  assert.equal(duplicate.status, 'voided');
+  assert.equal(duplicate.noRestockOnVoid, true);
+  assert.equal(duplicate.duplicateOf, 'out-keeper');
+  assert.equal(roll.status, 'out');
+  assert.equal(roll.outId, 'out-keeper');
+});
+
 let passed = 0;
 
 for (const { name, fn } of tests) {

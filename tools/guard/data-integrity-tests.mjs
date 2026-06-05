@@ -63,6 +63,17 @@ test('finished-goods shipment save rechecks stale or duplicated roll selections'
   assert.match(html, /findDuplicateShipmentByRollIds\(rollIds,DB\.fgouts\|\|\[\]\)/);
 });
 
+test('duplicate shipment void stores audit metadata and never returns stock', () => {
+  const fnStart = html.indexOf('function markDuplicateShipmentVoidNoRestock');
+  const fnEnd = html.indexOf('function ', fnStart + 20);
+  const fn = html.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 3000);
+  assert.match(fn, /duplicateOf=keeper\.id/);
+  assert.match(fn, /voidedAt=new Date\(\)\.toISOString\(\)/);
+  assert.match(fn, /noRestockOnVoid=true/);
+  assert.match(fn, /rl\.outId=keeper\.id/);
+  assert.doesNotMatch(fn, /rl\.status='in'/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

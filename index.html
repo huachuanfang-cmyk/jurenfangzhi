@@ -8743,6 +8743,7 @@ function pgARec(){
     // 找所有未挂对账单、出货超过1天的记录，按客户汇总；同时交叉核对对账单outIds，避免旧数据arecId未回写造成误报
     var legacyMap={};
     fgoutsAll.forEach(function(o){
+      if(o.voided||o.status==='voided'||o.status==='cancelled')return;
       if(o.arecId||liveArecOutIds[o.id])return; // 已对账
       if(!o.date)return;
       var d=new Date(o.date);
@@ -9638,6 +9639,7 @@ function openARecModal(id){
       // 找该客人所有未对账的出货记录（编辑模式下，也要包含已经挂在本单里的记录）
       // 拉取：本月出货 + 历史遗留未对账（未挂任何对账单的旧记录）
       var matched=fgouts.filter(function(o){
+        if((o.voided||o.status==='voided'||o.status==='cancelled')&&savedOutIds.indexOf(o.id)<0)return false;
         if(o.arecId&&o.arecId!==curRecId)return false; // 已在其它对账单
         if((o.custNm||'')!==cNm)return false; // 客户不匹配
         var outYM=(o.date||'').slice(0,7);

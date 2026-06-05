@@ -18,6 +18,10 @@ test('legacy unreconciled shipment warning cross-checks receivable outIds', () =
   must(/if\(o\.arecId\|\|liveArecOutIds\[o\.id\]\)return;/, 'warning skips shipments already listed in receivable outIds');
 });
 
+test('legacy unreconciled shipment warning ignores voided delivery notes', () => {
+  must(/if\(o\.voided\|\|o\.status==='voided'\|\|o\.status==='cancelled'\)return;/, 'warning skips voided or cancelled shipments');
+});
+
 test('legacy warning exposes delivery note numbers for true unmatched shipments', () => {
   must(/legacyMap\[cust\]=\{count:0,maxDays:0,amt:0,nos:\[\]\}/, 'warning stores delivery note numbers');
   must(/legacyMap\[cust\]\.nos\.push\(o\.no\|\|o\.id\|\|''\)/, 'warning records unmatched delivery number');

@@ -156,6 +156,10 @@ test('应收对账单支持选择收款账户并打印账户风险提示', () =>
 test('应收对账单从独立收款账户档案读取并只读展示', () => {
   const checks = [
     { field: '收款账户档案函数', pattern: /function receiptAccounts\(\)/ },
+    { field: '内置个人代收账户', pattern: /receipt_personal_jjs_agbank/ },
+    { field: '个人账户收款人', pattern: /name:'蒋劲松'/ },
+    { field: '个人账户开户行', pattern: /bank:'农业银行'/ },
+    { field: '个人账户账号', pattern: /no:'6228480604742603912'/ },
     { field: '收款账户设置路径', pattern: /function openReceiptAccountManager\(\)/ },
     { field: '对账单账户只读展示', pattern: /accNameView\.textContent=acc\.name/ },
     { field: '保存仍使用隐藏字段快照', pattern: /accNameHid\.type='hidden';accNameHid\.id='ar-acc-name'/ },

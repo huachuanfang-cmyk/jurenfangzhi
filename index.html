@@ -2421,14 +2421,27 @@ var CO={nm:'东莞市巨人纺织有限公司',addr:'广东省东莞市虎门镇
 function defaultReceiptAccount(){
   return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
 }
+function builtinReceiptAccounts(){
+  var d=defaultReceiptAccount();
+  return [
+    {id:'receipt_company_default',label:'公司对公账户',type:d.type,name:d.name,bank:d.bank,no:d.no,note:d.note,isDefault:true},
+    {id:'receipt_personal_jjs_agbank',label:'个人代收账户-蒋劲松',type:'personal',name:'蒋劲松',bank:'农业银行',no:'6228480604742603912',note:'客户不需开票时使用；请确认收入已入账申报。',isDefault:false}
+  ];
+}
 function receiptAccounts(){
   var list=DB.load('receipt_accounts')||[];
   var d=defaultReceiptAccount();
+  var builtins=builtinReceiptAccounts();
   var changed=false;
   if(!Array.isArray(list))list=[];
   if(!list.length){
-    list=[{id:'receipt_company_default',label:'公司对公账户',type:d.type,name:d.name,bank:d.bank,no:d.no,note:d.note,isDefault:true}];
+    list=builtins.map(function(a){return Object.assign({},a);});
     changed=true;
+  }else{
+    builtins.forEach(function(seed){
+      var exists=list.some(function(a){return a&&(a.id===seed.id||((a.no||'')===seed.no&&(a.type||'')===seed.type));});
+      if(!exists){list.push(Object.assign({},seed,{isDefault:false}));changed=true;}
+    });
   }
   list=list.map(function(a,idx){
     a=a||{};

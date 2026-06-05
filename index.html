@@ -8737,19 +8737,22 @@ function pgARec(){
   // ── 未对账出货遗留预警 ──
   (function(){
     var fgoutsAll=DB.fgouts||[];
+    var liveArecOutIds={};
+    (DB.arecs||[]).forEach(function(ar){if(ar&&ar.status!=='voided')(ar.outIds||[]).forEach(function(oid){liveArecOutIds[oid]=true;});});
     var today=new Date();
-    // 找所有未挂对账单、出货超过30天的记录，按客户汇总
+    // 找所有未挂对账单、出货超过1天的记录，按客户汇总；同时交叉核对对账单outIds，避免旧数据arecId未回写造成误报
     var legacyMap={};
     fgoutsAll.forEach(function(o){
-      if(o.arecId)return; // 已对账
+      if(o.arecId||liveArecOutIds[o.id])return; // 已对账
       if(!o.date)return;
       var d=new Date(o.date);
       var days=Math.floor((today-d)/86400000);
       if(days<1)return; // 今天出货的不算
       var cust=o.custNm||'未知客户';
-      if(!legacyMap[cust])legacyMap[cust]={count:0,maxDays:0,amt:0};
+      if(!legacyMap[cust])legacyMap[cust]={count:0,maxDays:0,amt:0,nos:[]};
       legacyMap[cust].count++;
       if(days>legacyMap[cust].maxDays)legacyMap[cust].maxDays=days;
+      legacyMap[cust].nos.push(o.no||o.id||'');
     });
     var legacyCusts=Object.keys(legacyMap);
     if(!legacyCusts.length)return;
@@ -8763,10 +8766,12 @@ function pgARec(){
       var info=legacyMap[cust];
       var row=document.createElement('div');
       row.style.cssText='font-size:10px;color:#92400E;padding:2px 0;display:flex;align-items:center;gap:8px';
+      row.title="送货单："+esc(info.nos.join('、'));
       var urgColor=info.maxDays>=60?'#DC2626':info.maxDays>=30?'#F97316':'#D97706';
       row.innerHTML='<span style="font-weight:600">'+esc(cust)+'</span>'
         +'<span>共 <strong>'+info.count+'</strong> 笔未对账</span>'
-        +'<span style="color:'+urgColor+';font-weight:700">最长已'+info.maxDays+'天未对账</span>';
+        +'<span style="color:'+urgColor+';font-weight:700">最长已'+info.maxDays+'天未对账</span>'
+        +'<span style="color:#64748B">送货单：'+esc(info.nos.slice(0,6).join('、'))+(info.nos.length>6?'…':'')+'</span>';
       warn.appendChild(row);
     });
     pg.appendChild(warn);

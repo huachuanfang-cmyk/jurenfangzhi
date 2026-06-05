@@ -39,6 +39,21 @@ test('legacy warning exposes delivery note numbers for true unmatched shipments'
   must(/送货单：'\+esc\(info\.nos\.slice\(0,6\)\.join\('、'\)\)/, 'warning displays delivery note numbers');
 });
 
+test('receivable edit mode can split an accidental merged statement by order', () => {
+  must(/var selectedOuts=Array\.from\(outWrap\.querySelectorAll\('\.ar-out-cb:checked:not\(\.ar-ret-cb\)'\)\)/, 'split uses selected shipment rows');
+  must(/if\(rec&&rec\.status!=='voided'\)\{/, 'split handles existing receivable records');
+  must(/rec\.status='voided';/, 'existing merged statement is voided during split rebuild');
+  must(/rec\.voidReason='按'\+dimLabel\+'拆分重建';/, 'split rebuild keeps an audit reason');
+  must(/按订单号拆分/, 'order-number split control exists');
+});
+
+test('receivable save warns before merging multiple order numbers', () => {
+  must(/var selectedOrderNos=\{\};/, 'save collects selected order numbers');
+  must(/Object\.keys\(selectedOrderNos\)\.filter\(function\(k\)\{return k;\}\);/, 'save counts distinct order numbers');
+  must(/本次勾选包含多个订单号/, 'save warns about multi-order merge');
+  must(/按订单号拆分/, 'warning points user to split by order');
+});
+
 let passed = 0;
 for (const t of tests) {
   try {

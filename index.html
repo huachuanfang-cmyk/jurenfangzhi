@@ -2407,6 +2407,102 @@ var CO={nm:'东莞市巨人纺织有限公司',addr:'广东省东莞市虎门镇
 function defaultReceiptAccount(){
   return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
 }
+function receiptAccounts(){
+  var list=DB.load('receipt_accounts')||[];
+  var d=defaultReceiptAccount();
+  var changed=false;
+  if(!Array.isArray(list))list=[];
+  if(!list.length){
+    list=[{id:'receipt_company_default',label:'公司对公账户',type:d.type,name:d.name,bank:d.bank,no:d.no,note:d.note,isDefault:true}];
+    changed=true;
+  }
+  list=list.map(function(a,idx){
+    a=a||{};
+    if(!a.id){a.id='receipt_'+Date.now()+'_'+idx;changed=true;}
+    if(!a.label){a.label=(a.type==='personal'?'个人代收账户':'公司对公账户')+' '+(idx+1);changed=true;}
+    if(!a.type){a.type='company';changed=true;}
+    if(a.isDefault&&idx!==0)changed=true;
+    return {
+      id:a.id,
+      label:a.label,
+      type:a.type==='personal'?'personal':'company',
+      name:a.name||d.name,
+      bank:a.bank||d.bank,
+      no:a.no||d.no,
+      note:a.note||'',
+      isDefault:!!a.isDefault
+    };
+  });
+  if(!list.some(function(a){return a.isDefault;})){list[0].isDefault=true;changed=true;}
+  if(changed)DB.save('receipt_accounts',list);
+  return list;
+}
+function receiptAccountLabel(a){
+  return (a&&a.label)||((a&&a.type)==='personal'?'个人代收账户':'公司对公账户');
+}
+function openReceiptAccountManager(){
+  var modal=buildModal('收款账户设置','ml',function(body){
+    body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px';
+    var tip=document.createElement('div');
+    tip.style.cssText='font-size:11px;color:#475569;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:8px 10px;line-height:1.7';
+    tip.textContent='这里维护打印对账单时可选的收款账户。生成或编辑对账单时只读取账户快照，避免在单据窗口误改账号。';
+    body.appendChild(tip);
+    var wrap=document.createElement('div');wrap.id='receipt-account-rows';body.appendChild(wrap);
+    function addAccountRow(acc){
+      acc=acc||{id:'',label:'',type:'company',name:'',bank:'',no:'',note:'',isDefault:false};
+      var row=document.createElement('div');row.className='receipt-account-row';
+      row.style.cssText='display:grid;grid-template-columns:90px 120px 1fr 1fr 1fr 1fr 54px 44px;gap:6px;align-items:center;border:1px solid #DBEAFE;background:#F8FBFF;border-radius:8px;padding:8px;margin-bottom:8px';
+      function inp(cls,val,ph){
+        var i=document.createElement('input');i.className=cls;i.value=val||'';i.placeholder=ph||'';
+        i.style.cssText='width:100%;padding:6px 8px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:11px;background:#fff;box-sizing:border-box';
+        return i;
+      }
+      var type=document.createElement('select');type.className='receipt-account-type';type.style.cssText='width:100%;padding:6px 8px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:11px;background:#fff';
+      [{v:'company',l:'对公'},{v:'personal',l:'个人'}].forEach(function(o){var opt=new Option(o.l,o.v);if(acc.type===o.v)opt.selected=true;type.appendChild(opt);});
+      var id=inp('receipt-account-id',acc.id,'');id.type='hidden';
+      var label=inp('receipt-account-label',acc.label,'显示名称');
+      var name=inp('receipt-account-name',acc.name,'账户名称');
+      var bank=inp('receipt-account-bank',acc.bank,'开户银行');
+      var no=inp('receipt-account-no',acc.no,'账号');
+      var note=inp('receipt-account-note',acc.note,'备注');
+      var def=document.createElement('label');def.style.cssText='display:flex;gap:4px;align-items:center;font-size:10px;color:#1e3a8a;justify-content:center';
+      var defCb=document.createElement('input');defCb.type='radio';defCb.name='receipt-account-default';defCb.className='receipt-account-default';defCb.checked=!!acc.isDefault;
+      def.appendChild(defCb);def.appendChild(document.createTextNode('默认'));
+      var del=mkBtn('删除','btn bsm br',function(){if(wrap.querySelectorAll('.receipt-account-row').length<=1)return alert('至少保留一个收款账户');row.remove();});
+      row.appendChild(id);row.appendChild(type);row.appendChild(label);row.appendChild(name);row.appendChild(bank);row.appendChild(no);row.appendChild(note);row.appendChild(def);row.appendChild(del);
+      wrap.appendChild(row);
+    }
+    receiptAccounts().forEach(addAccountRow);
+    body.appendChild(mkBtn('＋ 新增收款账户','btn bsm bs',function(){addAccountRow({type:'company'});}));
+  },function(){
+    var rows=Array.from(document.querySelectorAll('.receipt-account-row'));
+    var list=[];
+    for(var i=0;i<rows.length;i++){
+      var row=rows[i];
+      var type=(row.querySelector('.receipt-account-type')||{value:'company'}).value;
+      var label=(row.querySelector('.receipt-account-label')||{value:''}).value.trim();
+      var name=(row.querySelector('.receipt-account-name')||{value:''}).value.trim();
+      var bank=(row.querySelector('.receipt-account-bank')||{value:''}).value.trim();
+      var no=(row.querySelector('.receipt-account-no')||{value:''}).value.trim();
+      if(!name||!bank||!no)return alert('第 '+(i+1)+' 行请完整填写账户名称、开户银行和账号');
+      list.push({
+        id:(row.querySelector('.receipt-account-id')||{value:''}).value||('receipt_'+Date.now()+'_'+i),
+        label:label||(type==='personal'?'个人代收账户':'公司对公账户')+' '+(i+1),
+        type:type,
+        name:name,
+        bank:bank,
+        no:no,
+        note:(row.querySelector('.receipt-account-note')||{value:''}).value.trim(),
+        isDefault:!!(row.querySelector('.receipt-account-default')||{}).checked
+      });
+    }
+    if(!list.length)return alert('请至少保留一个收款账户');
+    if(!list.some(function(a){return a.isDefault;}))list[0].isDefault=true;
+    DB.save('receipt_accounts',list);
+    cm();pgARec();showToast('收款账户设置已保存','success');
+  },'保存账户档案');
+  om(modal);
+}
 function resolveARecReceiptAccount(r){
   var d=defaultReceiptAccount();
   return {
@@ -8712,8 +8808,11 @@ function pgARec(){
   var hdr=document.createElement('div');
   hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
   var ht=document.createElement('div');ht.style.cssText='font-size:14px;font-weight:700;color:var(--t1)';ht.textContent='对账单';
+  var hb=document.createElement('div');hb.style.cssText='display:flex;gap:8px;align-items:center';
+  var ab=mkBtn('收款账户设置','btn bs',openReceiptAccountManager);
   var nb=mkBtn('＋ 新建对账单','btn bp',function(){openARecModal(null);});
-  hdr.appendChild(ht);hdr.appendChild(nb);pg.appendChild(hdr);
+  hb.appendChild(ab);hb.appendChild(nb);
+  hdr.appendChild(ht);hdr.appendChild(hb);pg.appendChild(hdr);
 
   // 统计卡（作废单据不计入任何应收汇总 — 行业合规要求）
   var sr=document.createElement('div');sr.className='sr';
@@ -9590,37 +9689,54 @@ function openARecModal(id){
     var receiptAccount=resolveARecReceiptAccount(rec||{});
     var sAccLbl=document.createElement('div');sAccLbl.style.cssText='font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;margin-top:2px';sAccLbl.textContent='② 收款账户（打印对账单时显示）';
     body.appendChild(sAccLbl);
-    var accWrap=document.createElement('div');accWrap.style.cssText='border:1px solid #BFDBFE;background:#F8FBFF;border-radius:8px;padding:10px;display:grid;grid-template-columns:160px 1fr 1fr 1fr;gap:10px;align-items:end';
-    var accType=document.createElement('select');accType.id='ar-acc-type';accType.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:12px;background:#fff;outline:none';
-    [{v:'company',l:'公司对公账户'},{v:'personal',l:'个人代收账户'}].forEach(function(o){var opt=new Option(o.l,o.v);if(receiptAccount.type===o.v)opt.selected=true;accType.appendChild(opt);});
-    var accName=mInp('acc-name',receiptAccount.name,'账户名称');
-    var accBank=mInp('acc-bank',receiptAccount.bank,'开户银行');
-    var accNo=mInp('acc-no',receiptAccount.no,'账号');
-    accWrap.appendChild(mFld('账户类型',accType));
-    accWrap.appendChild(mFld('账户名称',accName));
-    accWrap.appendChild(mFld('开户银行',accBank));
-    accWrap.appendChild(mFld('账号',accNo));
+    var accountList=receiptAccounts();
+    var accWrap=document.createElement('div');accWrap.style.cssText='border:1px solid #BFDBFE;background:#F8FBFF;border-radius:8px;padding:10px;display:grid;grid-template-columns:180px 150px 1fr 1fr 1fr;gap:10px;align-items:end';
+    var accSel=document.createElement('select');accSel.id='ar-acc-preset';accSel.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:12px;background:#fff;outline:none;color:#1E40AF;font-weight:600';
+    function sameAccount(a,b){return a&&b&&a.type===b.type&&a.name===b.name&&a.bank===b.bank&&a.no===b.no&&(a.note||'')===(b.note||'');}
+    var selectedAccount=accountList.find(function(a){return rec?sameAccount(a,receiptAccount):a.isDefault;})||accountList[0]||receiptAccount;
+    accountList.forEach(function(a){var opt=new Option(receiptAccountLabel(a),a.id);if(selectedAccount&&selectedAccount.id===a.id)opt.selected=true;accSel.appendChild(opt);});
+    if(rec&&!accountList.some(function(a){return sameAccount(a,receiptAccount);})){
+      var curOpt=new Option('当前对账单账户快照','__current__');curOpt.selected=true;accSel.appendChild(curOpt);selectedAccount=receiptAccount;
+    }
+    accSel.disabled=!!rec;
+    function roBox(){var d=document.createElement('div');d.style.cssText='min-height:30px;padding:7px 10px;border:1.5px solid #DBEAFE;border-radius:6px;background:#F1F5F9;color:#0f172a;font-size:12px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';return d;}
+    var accTypeView=roBox(),accNameView=roBox(),accBankView=roBox(),accNoView=roBox();
+    var accTypeHid=document.createElement('input');accTypeHid.type='hidden';accTypeHid.id='ar-acc-type';
+    var accNameHid=document.createElement('input');accNameHid.type='hidden';accNameHid.id='ar-acc-name';
+    var accBankHid=document.createElement('input');accBankHid.type='hidden';accBankHid.id='ar-acc-bank';
+    var accNoHid=document.createElement('input');accNoHid.type='hidden';accNoHid.id='ar-acc-no';
+    var accNoteHid=document.createElement('input');accNoteHid.type='hidden';accNoteHid.id='ar-acc-note';
+    function applyReceiptAccount(acc){
+      acc=acc||defaultReceiptAccount();
+      accTypeHid.value=acc.type||'company';
+      accNameHid.value=acc.name||'';
+      accBankHid.value=acc.bank||'';
+      accNoHid.value=acc.no||'';
+      accNoteHid.value=acc.note||'';
+      accTypeView.textContent=acc.type==='personal'?'个人代收账户':'公司对公账户';
+      accNameView.textContent=acc.name||'—';
+      accBankView.textContent=acc.bank||'—';
+      accNoView.textContent=acc.no||'—';
+      accRisk.style.display=acc.type==='personal'?'block':'none';
+    }
+    accWrap.appendChild(mFld(rec?'账户快照':'选择账户',accSel));
+    accWrap.appendChild(mFld('账户类型',accTypeView));
+    accWrap.appendChild(mFld('账户名称',accNameView));
+    accWrap.appendChild(mFld('开户银行',accBankView));
+    accWrap.appendChild(mFld('账号',accNoView));
     body.appendChild(accWrap);
     var accRisk=document.createElement('div');accRisk.id='ar-acc-risk';accRisk.style.cssText='display:none;margin-top:-8px;padding:8px 10px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;border-radius:6px;font-size:11px;line-height:1.7';
     accRisk.textContent='个人代收账户仅作为特殊收款渠道记录。请确认已获财务负责人批准，并保证收入入账申报；不开票不等于不入账。';
     body.appendChild(accRisk);
-    var accNote=mInp('acc-note',receiptAccount.note,'内部备注（如：客户不开发票、已财务确认）');
-    body.appendChild(mFld('账户备注（内部留痕）',accNote));
-    function applyAccType(){
-      var d=defaultReceiptAccount();
-      if(accType.value==='company'){
-        if(!accName.value||accName.dataset.auto==='1')accName.value=d.name;
-        if(!accBank.value||accBank.dataset.auto==='1')accBank.value=d.bank;
-        if(!accNo.value||accNo.dataset.auto==='1')accNo.value=d.no;
-        accName.dataset.auto=accBank.dataset.auto=accNo.dataset.auto='1';
-        accRisk.style.display='none';
-      }else{
-        accRisk.style.display='block';
-        accName.dataset.auto=accBank.dataset.auto=accNo.dataset.auto='0';
-      }
-    }
-    accType.onchange=applyAccType;
-    applyAccType();
+    var accHelp=document.createElement('div');accHelp.style.cssText='font-size:10.5px;color:#64748B;margin-top:-8px';
+    accHelp.textContent='账户资料请在右上角「收款账户设置」维护；对账单内只保存并打印账户快照，避免误改。';
+    body.appendChild(accHelp);
+    body.appendChild(accTypeHid);body.appendChild(accNameHid);body.appendChild(accBankHid);body.appendChild(accNoHid);body.appendChild(accNoteHid);
+    accSel.onchange=function(){
+      var acc=accountList.find(function(a){return a.id===accSel.value;})||selectedAccount||defaultReceiptAccount();
+      applyReceiptAccount(acc);
+    };
+    applyReceiptAccount(selectedAccount);
 
     // ③ 出货明细（已有记录直接显示）
     var s2lbl=document.createElement('div');s2lbl.style.cssText='font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;margin-top:4px';s2lbl.textContent='③ 出货明细（从成品库存出货记录自动匹配）';
@@ -9842,110 +9958,140 @@ function openARecModal(id){
 
       // ── 🔀 批量拆分生成对账单（按订单 / 跟单员 / 布类 自动分组）──
       // 默认行为：底部「保存」生成一张合并对账单。点这里拆分则按维度生成多张。
-      // 拆分场景：客户内部按 PO 分账、多业务员各自提成、不同布类财务核算
-      if(!rec){ // 仅新建模式显示拆分按钮（编辑现有对账单不允许拆）
-        var splitBar=document.createElement('div');
-        splitBar.style.cssText='margin-top:10px;padding:10px 14px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px';
-        splitBar.innerHTML='<div style="font-size:11px;font-weight:700;color:#0369A1;margin-bottom:6px">🔀 批量拆分生成对账单（可选 — 默认走底部「保存」生成一张合并对账单）</div>'
-          +'<div style="font-size:10px;color:#475569;margin-bottom:8px">适用场景：客户按 PO 单独结账 / 多业务员各自提成 / 不同布类财务分账。<b>拆分生成的对账单不含扣减/附加/收款，需事后单独补录。</b></div>';
-        var btnRow=document.createElement('div');
-        btnRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
-        function _doSplit(dim){
-          var dimLabel={ordNo:'订单号',follower:'跟单员',fab:'布类'}[dim];
-          var groupsX={};
-          matched.forEach(function(o){
-            var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
-            var key;
-            if(dim==='ordNo')key=o.ordNo||'(无订单号)';
-            else if(dim==='follower')key=ord.follower||'(无跟单员)';
-            else if(dim==='fab')key=ord.fab||'(无布类)';
-            if(!groupsX[key])groupsX[key]={key:key,outs:[]};
-            groupsX[key].outs.push(o);
-          });
-          var keysX=Object.keys(groupsX);
-          if(keysX.length<=1){
-            alert('当前所有出货都属于同一【'+dimLabel+'】（'+keysX[0]+'），无需拆分。直接点底部「保存」即可生成一张对账单。');
-            return;
-          }
-          var summary='按【'+dimLabel+'】拆分将自动生成 '+keysX.length+' 张对账单：\n\n';
-          keysX.forEach(function(k){summary+='  · '+k+' — '+groupsX[k].outs.length+' 笔出货\n';});
-          summary+='\n⚠ 拆分生成的对账单只含货款，不含扣减/附加费/收款 — 需要后续单独打开各张补录。\n\n确认继续？';
-          if(!confirm(summary))return;
-          verifyPwd(function(){
-            // 修复：之前用错了 input id（ar-due / ar-pay-sel 不存在）导致拆分单的付款方式/到期日空白
-            // 真实 id 是 ar-payType（隐藏 input，由客户档案自动带入）；到期日用 calcDueDate 算
-            var payTypeEl=document.getElementById('ar-payType');
-            var payTypeVal=(payTypeEl&&payTypeEl.value)||'月结30天';
-            var dueDate=calcDueDate(payTypeVal,mVal);
-            var fgoutsDB=DB.fgouts||[];
-            var rollsX=typeof fgRolls==='function'?fgRolls():[];
-            var arList=DB.arecs||[];
-            var nowYear=new Date().getFullYear();
-            var maxNo=arList.reduce(function(m,x){
-              if(x.no&&x.no.startsWith('STM'+nowYear)){var n=parseInt(x.no.slice(7))||0;if(n>m)return n;}
-              return m;
-            },0);
-            var created=[];
-            keysX.forEach(function(k,idx){
-              var grp=groupsX[k];
-              var outIds=grp.outs.map(function(o){return o.id;});
-              var totalAmt=0,shipFeeTotal=0;
-              grp.outs.forEach(function(o){
-                var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
-                var oRolls=rollsX.filter(function(rr){return (o.rollIds||[]).indexOf(rr.id)>=0;});
-                var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
-                var mTot=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.m)||0);},0):(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
-                var unitPr=parseFloat(ord.unitPr)||0;
-                var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-                var amt=0;
-                if(unitPr>0){
-                  if(oRolls.length>0){
-                    amt=oRolls.reduce(function(s,rr){
-                      var clr=(ord.colors||[]).find(function(c){return c.nm===rr.colorNm;})||{};
-                      var extraPr=parseFloat(clr.extraPr)||0;
-                      var qty=byM?(parseFloat(rr.m)||0):(parseFloat(rr.kg)||0);
-                      return s+qty*(unitPr+extraPr);
-                    },0);
-                  } else { amt=(byM?mTot:kg)*unitPr; }
-                }
-                totalAmt+=amt;
-                shipFeeTotal+=parseFloat(o.feeAmt)||0;
-              });
-              var balance=totalAmt+shipFeeTotal;
-              var arNo='STM'+nowYear+String(maxNo+idx+1).padStart(3,'0');
-              var arId='ar_'+Date.now()+'_'+idx;
-              var data={
-                id:arId,no:arNo,
-                custNm:cNm,month:mVal,payType:payTypeVal,dueDate:dueDate,
-                outIds:outIds,retIds:[],
-                totalAmt:String(totalAmt),shipFeeTotal:String(shipFeeTotal),returnTotal:'0',
-                adjustments:[],deductTotal:'0',addTotal:'0',
-                payments:[],paidTotal:'0',
-                balanceAmt:String(balance),
-                status:balance<=0?'settled':'pending',
-                createdDate:new Date().toISOString().slice(0,10),
-                splitBy:dim,splitKey:k
-              };
-              arList.push(data);
-              outIds.forEach(function(oid){
-                var oo=fgoutsDB.find(function(x){return x.id===oid;});
-                if(oo)oo.arecId=arId;
-              });
-              created.push(arNo);
-            });
-            DB.arecs=arList;
-            DB.fgouts=fgoutsDB;
-            cm();
-            pgARec();
-            showToast('✓ 按【'+dimLabel+'】拆分生成 '+created.length+' 张对账单：'+created.join('、'),'success');
-          });
+      // 编辑旧合并单时也允许拆分：原单作废留痕，新单重新挂选中的送货单。
+      var splitBar=document.createElement('div');
+      splitBar.style.cssText='margin-top:10px;padding:10px 14px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px';
+      splitBar.innerHTML='<div style="font-size:11px;font-weight:700;color:#0369A1;margin-bottom:6px">🔀 批量拆分生成对账单（推荐同月多订单时使用）</div>'
+        +'<div style="font-size:10px;color:#475569;margin-bottom:8px">适用场景：客户按 PO 单独结账 / 多业务员各自提成 / 不同布类财务分账。<b>拆分生成的对账单不含扣减/附加/收款，需事后单独补录。</b></div>';
+      var btnRow=document.createElement('div');
+      btnRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+      function _doSplit(dim){
+        var dimLabel={ordNo:'订单号',follower:'跟单员',fab:'布类'}[dim];
+        var selectedOuts=Array.from(outWrap.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)')).map(function(c){
+          return matched.find(function(o){return o.id===c.value;});
+        }).filter(Boolean);
+        if(!selectedOuts.length)return alert('请先勾选需要拆分生成对账单的出货记录');
+        if(rec&&rec.status!=='voided'){
+          var hasPayments=(rec.payments||[]).some(function(p){return (parseFloat(p.amt)||0)>0&&p.voided!=='1';});
+          var hasAdjustments=(rec.adjustments||[]).some(function(a){return parseFloat(a.amt)||0;});
+          if(hasPayments)return alert('当前对账单已有收款记录，不能自动拆分。请先撤销收款后再拆分。');
+          if(hasAdjustments)return alert('当前对账单已有扣减/附加费，系统无法判断如何分摊。请先手工处理扣减/附加费后再拆分。');
         }
-        btnRow.appendChild(mkBtn('📂 按订单号拆分','btn bsm bs',function(){_doSplit('ordNo');}));
-        btnRow.appendChild(mkBtn('👤 按跟单员拆分','btn bsm bs',function(){_doSplit('follower');}));
-        btnRow.appendChild(mkBtn('🎨 按布类拆分','btn bsm bs',function(){_doSplit('fab');}));
-        splitBar.appendChild(btnRow);
-        outWrap.appendChild(splitBar);
+        var groupsX={};
+        selectedOuts.forEach(function(o){
+          var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
+          var key;
+          if(dim==='ordNo')key=o.ordNo||'(无订单号)';
+          else if(dim==='follower')key=ord.follower||'(无跟单员)';
+          else if(dim==='fab')key=ord.fab||'(无布类)';
+          if(!groupsX[key])groupsX[key]={key:key,outs:[]};
+          groupsX[key].outs.push(o);
+        });
+        var keysX=Object.keys(groupsX);
+        if(keysX.length<=1){
+          alert('当前勾选的出货都属于同一【'+dimLabel+'】（'+keysX[0]+'），无需拆分。直接点底部「保存」即可生成一张对账单。');
+          return;
+        }
+        var summary='按【'+dimLabel+'】拆分将自动生成 '+keysX.length+' 张对账单：\n\n';
+        keysX.forEach(function(k){summary+='  · '+k+' — '+groupsX[k].outs.length+' 笔出货\n';});
+        if(rec)summary+='\n当前合并单 '+(rec.no||'')+' 将作废留痕，不删除历史记录。';
+        summary+='\n\n⚠ 拆分生成的对账单只含货款，不含扣减/附加费/收款 — 需要后续单独打开各张补录。\n\n确认继续？';
+        if(!confirm(summary))return;
+        verifyPwd(function(){
+          // 修复：之前用错了 input id（ar-due / ar-pay-sel 不存在）导致拆分单的付款方式/到期日空白
+          // 真实 id 是 ar-payType（隐藏 input，由客户档案自动带入）；到期日用 calcDueDate 算
+          var payTypeEl=document.getElementById('ar-payType');
+          var payTypeVal=(payTypeEl&&payTypeEl.value)||'月结30天';
+          var dueDate=calcDueDate(payTypeVal,mVal);
+          var splitReceiptAccount={
+            type:(document.getElementById('ar-acc-type')||{value:'company'}).value||'company',
+            name:(document.getElementById('ar-acc-name')||{value:''}).value.trim(),
+            bank:(document.getElementById('ar-acc-bank')||{value:''}).value.trim(),
+            no:(document.getElementById('ar-acc-no')||{value:''}).value.trim(),
+            note:(document.getElementById('ar-acc-note')||{value:''}).value.trim()
+          };
+          var fgoutsDB=DB.fgouts||[];
+          var rollsX=typeof fgRolls==='function'?fgRolls():[];
+          var arList=DB.arecs||[];
+          if(rec&&rec.status!=='voided'){
+            (rec.outIds||[]).forEach(function(oid){
+              var oldOut=fgoutsDB.find(function(x){return x.id===oid;});
+              if(oldOut&&oldOut.arecId===rec.id)oldOut.arecId='';
+            });
+            rec.status='voided';
+            rec.voidReason='按'+dimLabel+'拆分重建';
+            rec.voidedAt=new Date().toISOString();
+          }
+          var nowYear=new Date().getFullYear();
+          var maxNo=arList.reduce(function(m,x){
+            if(x.no&&x.no.startsWith('STM'+nowYear)){var n=parseInt(x.no.slice(7))||0;if(n>m)return n;}
+            return m;
+          },0);
+          var created=[];
+          keysX.forEach(function(k,idx){
+            var grp=groupsX[k];
+            var outIds=grp.outs.map(function(o){return o.id;});
+            var totalAmt=0,shipFeeTotal=0;
+            grp.outs.forEach(function(o){
+              var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
+              var oRolls=rollsX.filter(function(rr){return (o.rollIds||[]).indexOf(rr.id)>=0;});
+              var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
+              var mTot=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.m)||0);},0):(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
+              var unitPr=parseFloat(ord.unitPr)||0;
+              var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+              var amt=0;
+              if(unitPr>0){
+                if(oRolls.length>0){
+                  amt=oRolls.reduce(function(s,rr){
+                    var clr=(ord.colors||[]).find(function(c){return c.nm===rr.colorNm;})||{};
+                    var extraPr=parseFloat(clr.extraPr)||0;
+                    var qty=byM?(parseFloat(rr.m)||0):(parseFloat(rr.kg)||0);
+                    return s+qty*(unitPr+extraPr);
+                  },0);
+                } else { amt=(byM?mTot:kg)*unitPr; }
+              }
+              totalAmt+=amt;
+              shipFeeTotal+=parseFloat(o.feeAmt)||0;
+            });
+            var balance=totalAmt+shipFeeTotal;
+            var arNo='STM'+nowYear+String(maxNo+idx+1).padStart(3,'0');
+            var arId='ar_'+Date.now()+'_'+idx;
+            var data={
+              id:arId,no:arNo,
+              custNm:cNm,month:mVal,payType:payTypeVal,dueDate:dueDate,
+              outIds:outIds,retIds:[],
+              totalAmt:String(totalAmt),shipFeeTotal:String(shipFeeTotal),returnTotal:'0',
+              adjustments:[],deductTotal:'0',addTotal:'0',
+              payments:[],paidTotal:'0',
+              balanceAmt:String(balance),
+              receiptAccountType:splitReceiptAccount.type,
+              receiptAccountName:splitReceiptAccount.name,
+              receiptAccountBank:splitReceiptAccount.bank,
+              receiptAccountNo:splitReceiptAccount.no,
+              receiptAccountNote:splitReceiptAccount.note,
+              status:balance<=0?'settled':'pending',
+              createdDate:new Date().toISOString().slice(0,10),
+              splitBy:dim,splitKey:k,sourceArecId:rec?rec.id:''
+            };
+            arList.push(data);
+            outIds.forEach(function(oid){
+              var oo=fgoutsDB.find(function(x){return x.id===oid;});
+              if(oo)oo.arecId=arId;
+            });
+            created.push(arNo);
+          });
+          DB.arecs=arList;
+          DB.fgouts=fgoutsDB;
+          cm();
+          pgARec();
+          showToast('✓ 按【'+dimLabel+'】拆分生成 '+created.length+' 张对账单：'+created.join('、'),'success');
+        });
       }
+      btnRow.appendChild(mkBtn('📂 按订单号拆分','btn bsm bs',function(){_doSplit('ordNo');}));
+      btnRow.appendChild(mkBtn('👤 按跟单员拆分','btn bsm bs',function(){_doSplit('follower');}));
+      btnRow.appendChild(mkBtn('🎨 按布类拆分','btn bsm bs',function(){_doSplit('fab');}));
+      splitBar.appendChild(btnRow);
+      outWrap.appendChild(splitBar);
     });
     body.appendChild(fetchBtn);
 
@@ -10095,6 +10241,15 @@ function openARecModal(id){
     document.querySelectorAll('.ar-out-cb:checked:not(.ar-ret-cb)').forEach(function(c){
       if(c.value)selOutIds.push(c.value);
     });
+    var selectedOrderNos={};
+    selOutIds.forEach(function(oid){
+      var out=(DB.fgouts||[]).find(function(x){return x.id===oid;});
+      if(out&&out.ordNo)selectedOrderNos[out.ordNo]=true;
+    });
+    var distinctOrderNos=Object.keys(selectedOrderNos).filter(function(k){return k;});
+    if(distinctOrderNos.length>1){
+      if(!confirm('本次勾选包含多个订单号：\n'+distinctOrderNos.join('、')+'\n\n如果不同订单由不同跟单人负责，建议取消保存并使用「按订单号拆分」。\n\n确认仍然合并成一张对账单？'))return;
+    }
 
     // ── 智能重复检测：支持拆分对账场景 ──
     // 旧逻辑：同客户同月份只允许 1 张 → 现在支持拆分（按订单/跟单/布类），需放宽

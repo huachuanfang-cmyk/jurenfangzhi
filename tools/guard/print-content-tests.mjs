@@ -153,6 +153,21 @@ test('应收对账单支持选择收款账户并打印账户风险提示', () =>
   }
 });
 
+test('应收对账单从独立收款账户档案读取并只读展示', () => {
+  const checks = [
+    { field: '收款账户档案函数', pattern: /function receiptAccounts\(\)/ },
+    { field: '收款账户设置路径', pattern: /function openReceiptAccountManager\(\)/ },
+    { field: '对账单账户只读展示', pattern: /accNameView\.textContent=acc\.name/ },
+    { field: '保存仍使用隐藏字段快照', pattern: /accNameHid\.type='hidden';accNameHid\.id='ar-acc-name'/ },
+    { field: '账户资料不在对账单内直接编辑', pattern: /账户资料请在右上角「收款账户设置」维护/ },
+  ];
+
+  const failures = checks.filter(c => !c.pattern.test(html));
+  if (failures.length) {
+    throw new Error('应收对账收款账户只读化缺少: ' + failures.map(f => f.field).join(', '));
+  }
+});
+
 // ══ 加工单 · prtD → buildDH ══
 test('染整加工单包含订单号、布类、颜色分配', () => {
   const fn = extractFunction('buildDH');

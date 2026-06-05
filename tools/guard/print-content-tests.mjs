@@ -137,6 +137,22 @@ test('应收对账拉取出货记录时自动带入送货单附加费', () => {
   }
 });
 
+test('应收对账单支持选择收款账户并打印账户风险提示', () => {
+  const checks = [
+    { field: '保存收款账户类型', pattern: /receiptAccountType:receiptAccount\.type/ },
+    { field: '保存收款账户名称', pattern: /receiptAccountName:receiptAccount\.name/ },
+    { field: '保存收款账户开户行', pattern: /receiptAccountBank:receiptAccount\.bank/ },
+    { field: '保存收款账号', pattern: /receiptAccountNo:receiptAccount\.no/ },
+    { field: '打印读取对账单收款账户', pattern: /resolveARecReceiptAccount\(r\)/ },
+    { field: '个人代收风险提示', pattern: /个人代收账户/ },
+  ];
+
+  const failures = checks.filter(c => !c.pattern.test(html));
+  if (failures.length) {
+    throw new Error('应收对账收款账户功能缺少: ' + failures.map(f => f.field).join(', '));
+  }
+});
+
 // ══ 加工单 · prtD → buildDH ══
 test('染整加工单包含订单号、布类、颜色分配', () => {
   const fn = extractFunction('buildDH');

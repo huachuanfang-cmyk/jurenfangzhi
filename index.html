@@ -2404,6 +2404,19 @@ function clrStatusBadge(v){
 }
 
 var CO={nm:'东莞市巨人纺织有限公司',addr:'广东省东莞市虎门镇宁馨南路17号1号楼',tel:'(86)769-85390688',fax:'(86)769-85394002',email:'13798269736@163.com'};
+function defaultReceiptAccount(){
+  return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
+}
+function resolveARecReceiptAccount(r){
+  var d=defaultReceiptAccount();
+  return {
+    type:(r&&r.receiptAccountType)||d.type,
+    name:(r&&r.receiptAccountName)||d.name,
+    bank:(r&&r.receiptAccountBank)||d.bank,
+    no:(r&&r.receiptAccountNo)||d.no,
+    note:(r&&r.receiptAccountNote)||d.note
+  };
+}
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
 var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪']};
 
@@ -8954,6 +8967,15 @@ function exportARecExcel(id){
   if(typeof ExcelJS==='undefined'){return alert('Excel导出库未加载，请确保联网后刷新页面（Ctrl+Shift+R）再试。');}
   var r=(DB.arecs||[]).find(function(x){return x.id===id;});
   if(!r)return alert('找不到对账单');
+  var receiptAccount=(typeof resolveARecReceiptAccount==='function')?resolveARecReceiptAccount(r):(function(){
+    return {
+      type:(r&&r.receiptAccountType)||'company',
+      name:(r&&r.receiptAccountName)||'东莞市巨人纺织有限公司',
+      bank:(r&&r.receiptAccountBank)||'东莞银行股份有限公司长安支行',
+      no:(r&&r.receiptAccountNo)||'539000015553633',
+      note:(r&&r.receiptAccountNote)||''
+    };
+  })();
   var displayNo=(r.no||'').replace(/^INV/,'STM');
   var fgoutsDB=DB.fgouts||[];
   var orders=DB.orders||[];
@@ -9151,7 +9173,7 @@ function exportARecExcel(id){
 
   // ── 收款账户栏 ──
   ws.addRow([]).height=4;
-  var bankRow=ws.addRow(['收款账户：'+CO.nm,'','','开户银行：东莞银行股份有限公司长安支行','','','账号：539000015553633','','','']);
+  var bankRow=ws.addRow(['收款账户：'+receiptAccount.name,'','','开户银行：'+receiptAccount.bank,'','','账号：'+receiptAccount.no,'','','']);
   bankRow.height=22;
   [1,2,3,4,5,6,7,8,9,10].forEach(function(c){
     sc(bankRow.getCell(c),F_FOOTER,{size:10,color:{argb:BLUE}},{horizontal:'left'},null);
@@ -9161,6 +9183,12 @@ function exportARecExcel(id){
   ws.mergeCells('A'+bankRow.number+':C'+bankRow.number);
   ws.mergeCells('D'+bankRow.number+':F'+bankRow.number);
   ws.mergeCells('G'+bankRow.number+':J'+bankRow.number);
+  if(receiptAccount.type==='personal'){
+    var warnRow=ws.addRow(['提示：本单指定个人代收账户，请确认已获财务负责人批准，并保证收入入账申报。','','','','','','','','','']);
+    warnRow.height=18;
+    sc(warnRow.getCell(1),F_FOOTER,{bold:true,size:9,color:{argb:'FFB45309'}},{horizontal:'left'},null);
+    ws.mergeCells('A'+warnRow.number+':J'+warnRow.number);
+  }
 
   // ── 生成下载（作废单加前缀 + 工作表首行红字警示）──
   var _isVoidedX=(r.status==='voided');
@@ -9189,6 +9217,15 @@ function exportARecExcel(id){
 function printARec(id){
   var r=(DB.arecs||[]).find(function(x){return x.id===id;});
   if(!r)return alert('找不到对账单');
+  var receiptAccount=(typeof resolveARecReceiptAccount==='function')?resolveARecReceiptAccount(r):(function(){
+    return {
+      type:(r&&r.receiptAccountType)||'company',
+      name:(r&&r.receiptAccountName)||'东莞市巨人纺织有限公司',
+      bank:(r&&r.receiptAccountBank)||'东莞银行股份有限公司长安支行',
+      no:(r&&r.receiptAccountNo)||'539000015553633',
+      note:(r&&r.receiptAccountNote)||''
+    };
+  })();
   // 打印显示时统一用STM前缀（兼容旧的INV编号）
   var displayNo=(r.no||'').replace(/^INV/,'STM');
   var fgoutsDB=DB.fgouts||[];
@@ -9411,10 +9448,11 @@ function printARec(id){
     +'<div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:4px;padding:7px 14px;margin-bottom:6px;display:flex;align-items:center;gap:28px">'
     +'<div style="font-size:9px;color:#1e3a8a;font-weight:700;white-space:nowrap;letter-spacing:.5px">📌 收款账户</div>'
     +'<div style="font-size:10px;color:#111;display:flex;gap:28px;flex-wrap:wrap">'
-    +'<span><span style="color:#555">公司名称：</span><strong>东莞市巨人纺织有限公司</strong></span>'
-    +'<span><span style="color:#555">开户银行：</span><strong>东莞银行股份有限公司长安支行</strong></span>'
-    +'<span><span style="color:#555">账&emsp;&emsp;号：</span><strong style="font-family:monospace;letter-spacing:.5px;color:#1e3a8a">539000015553633</strong></span>'
+    +'<span><span style="color:#555">'+(receiptAccount.type==='personal'?'账户名称：':'公司名称：')+'</span><strong>'+esc(receiptAccount.name)+'</strong></span>'
+    +'<span><span style="color:#555">开户银行：</span><strong>'+esc(receiptAccount.bank)+'</strong></span>'
+    +'<span><span style="color:#555">账&emsp;&emsp;号：</span><strong style="font-family:monospace;letter-spacing:.5px;color:#1e3a8a">'+esc(receiptAccount.no)+'</strong></span>'
     +'</div></div>'
+    +(receiptAccount.type==='personal'?'<div style="margin:-2px 0 6px;padding:5px 10px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;font-size:9.5px;font-weight:700;border-radius:4px">个人代收账户：请确认已获财务负责人批准，并保证收入入账申报。'+(receiptAccount.note?' '+esc(receiptAccount.note):'')+'</div>':'')
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #ccc">'
     +'<div style="padding:8px 12px;border-right:1px solid #ccc">'
     +'<div style="font-size:9px;color:#999;letter-spacing:.5px;margin-bottom:5px">制单人</div>'
@@ -9540,8 +9578,44 @@ function openARecModal(id){
 
     if(rec)setTimeout(updatePayAndDue,50);
 
-    // ② 出货明细（已有记录直接显示）
-    var s2lbl=document.createElement('div');s2lbl.style.cssText='font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;margin-top:4px';s2lbl.textContent='② 出货明细（从成品库存出货记录自动匹配）';
+    // ② 收款账户
+    var receiptAccount=resolveARecReceiptAccount(rec||{});
+    var sAccLbl=document.createElement('div');sAccLbl.style.cssText='font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;margin-top:2px';sAccLbl.textContent='② 收款账户（打印对账单时显示）';
+    body.appendChild(sAccLbl);
+    var accWrap=document.createElement('div');accWrap.style.cssText='border:1px solid #BFDBFE;background:#F8FBFF;border-radius:8px;padding:10px;display:grid;grid-template-columns:160px 1fr 1fr 1fr;gap:10px;align-items:end';
+    var accType=document.createElement('select');accType.id='ar-acc-type';accType.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:12px;background:#fff;outline:none';
+    [{v:'company',l:'公司对公账户'},{v:'personal',l:'个人代收账户'}].forEach(function(o){var opt=new Option(o.l,o.v);if(receiptAccount.type===o.v)opt.selected=true;accType.appendChild(opt);});
+    var accName=mInp('acc-name',receiptAccount.name,'账户名称');
+    var accBank=mInp('acc-bank',receiptAccount.bank,'开户银行');
+    var accNo=mInp('acc-no',receiptAccount.no,'账号');
+    accWrap.appendChild(mFld('账户类型',accType));
+    accWrap.appendChild(mFld('账户名称',accName));
+    accWrap.appendChild(mFld('开户银行',accBank));
+    accWrap.appendChild(mFld('账号',accNo));
+    body.appendChild(accWrap);
+    var accRisk=document.createElement('div');accRisk.id='ar-acc-risk';accRisk.style.cssText='display:none;margin-top:-8px;padding:8px 10px;border:1px solid #FCD34D;background:#FFFBEB;color:#92400E;border-radius:6px;font-size:11px;line-height:1.7';
+    accRisk.textContent='个人代收账户仅作为特殊收款渠道记录。请确认已获财务负责人批准，并保证收入入账申报；不开票不等于不入账。';
+    body.appendChild(accRisk);
+    var accNote=mInp('acc-note',receiptAccount.note,'内部备注（如：客户不开发票、已财务确认）');
+    body.appendChild(mFld('账户备注（内部留痕）',accNote));
+    function applyAccType(){
+      var d=defaultReceiptAccount();
+      if(accType.value==='company'){
+        if(!accName.value||accName.dataset.auto==='1')accName.value=d.name;
+        if(!accBank.value||accBank.dataset.auto==='1')accBank.value=d.bank;
+        if(!accNo.value||accNo.dataset.auto==='1')accNo.value=d.no;
+        accName.dataset.auto=accBank.dataset.auto=accNo.dataset.auto='1';
+        accRisk.style.display='none';
+      }else{
+        accRisk.style.display='block';
+        accName.dataset.auto=accBank.dataset.auto=accNo.dataset.auto='0';
+      }
+    }
+    accType.onchange=applyAccType;
+    applyAccType();
+
+    // ③ 出货明细（已有记录直接显示）
+    var s2lbl=document.createElement('div');s2lbl.style.cssText='font-size:10px;font-weight:700;color:#1e3a8a;letter-spacing:1px;margin-top:4px';s2lbl.textContent='③ 出货明细（从成品库存出货记录自动匹配）';
     body.appendChild(s2lbl);
 
     var outWrap=document.createElement('div');outWrap.id='ar-out-wrap';
@@ -9996,6 +10070,15 @@ function openARecModal(id){
 
     var payType=(document.getElementById('ar-payType')||{value:''}).value||'月结30天';
     var dueDate=calcDueDate(payType,month);
+    var receiptAccount={
+      type:(document.getElementById('ar-acc-type')||{value:'company'}).value||'company',
+      name:(document.getElementById('ar-acc-name')||{value:''}).value.trim(),
+      bank:(document.getElementById('ar-acc-bank')||{value:''}).value.trim(),
+      no:(document.getElementById('ar-acc-no')||{value:''}).value.trim(),
+      note:(document.getElementById('ar-acc-note')||{value:''}).value.trim()
+    };
+    if(!receiptAccount.name||!receiptAccount.bank||!receiptAccount.no)return alert('请完整填写收款账户名称、开户银行和账号');
+    if(receiptAccount.type==='personal'&&!confirm('本单选择了【个人代收账户】。\n\n请确认已获财务负责人批准，并保证收入入账申报；不开票不等于不入账。\n\n确认继续保存？'))return;
 
     // 收集勾选的出货单（送货单行）和退货行
     var selOutIds=[];
@@ -10087,6 +10170,11 @@ function openARecModal(id){
       adjustments:adjustments,deductTotal:String(deductTotal),addTotal:String(addTotal),
       payments:payments,paidTotal:String(paidTotal),
       balanceAmt:String(balance),
+      receiptAccountType:receiptAccount.type,
+      receiptAccountName:receiptAccount.name,
+      receiptAccountBank:receiptAccount.bank,
+      receiptAccountNo:receiptAccount.no,
+      receiptAccountNote:receiptAccount.note,
       status:balance<=0?'settled':'pending',
       createdDate:rec?rec.createdDate:new Date().toISOString().slice(0,10)
     };

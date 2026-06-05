@@ -341,6 +341,11 @@ CREATE TABLE ar_records (
   payments JSONB DEFAULT '[]',
   paid_total TEXT DEFAULT '',
   balance_amt TEXT DEFAULT '',
+  receipt_account_type TEXT DEFAULT 'company',
+  receipt_account_name TEXT DEFAULT '',
+  receipt_account_bank TEXT DEFAULT '',
+  receipt_account_no TEXT DEFAULT '',
+  receipt_account_note TEXT DEFAULT '',
   status TEXT DEFAULT 'pending',
   created_date TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()

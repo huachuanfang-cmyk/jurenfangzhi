@@ -1562,9 +1562,9 @@ function tombstoneIdsForKey(key){
 // 普通刷新走"本地优先软合并"——只合并云端新增，不覆盖本地修改
 // 这个函数会先留快照，再无视本地优先锁强行拉云端覆盖本地
 async function forceFullSync(){
-  if(!confirm('强制全量同步会用云端最新数据覆盖本地，适用场景：\n\n  · 你在另一台电脑改了数据，想在这台电脑看到最新版\n  · 怀疑本地数据已损坏\n\n操作前会自动留快照（误覆盖可恢复）。\n\n确认继续？'))return;
+  if(!confirm('拉取主电脑最新版会用云端最新数据覆盖本机缓存，适用场景：\n\n  · A主力电脑刚新增、作废或修改了数据\n  · 备用电脑/出差电脑准备开始操作前\n  · 怀疑本机看到的是旧数据\n\n操作前会自动留快照（误覆盖可恢复）。\n\n确认继续？'))return;
   verifyPwd(async function(){
-    showToast('正在留快照 + 拉取云端最新数据...','info');
+    showToast('正在留快照 + 拉取主电脑最新版...','info');
     // 1) 留全表快照
     try{
       var _allKeys=['c','f','mat','o','t','wd','qt','ar','rc','dd','yn','yo','fgi','gfy','fgo','fgr','cnotices','ret'];
@@ -1580,7 +1580,7 @@ async function forceFullSync(){
     window._forceFullSyncMode=true;
     try{
       await pullFromSupabase();
-      showToast('✓ 强制全量同步完成','success');
+      showToast('✓ 已拉取主电脑最新版','success');
       setTimeout(function(){location.reload();},800);
     }catch(e){
       showToast('同步失败：'+e.message,'error');
@@ -1898,9 +1898,11 @@ async function openSyncSafetyModal(){
     }).join('')
     +'</tbody></table></div>'
     +'<div style="font-size:11px;color:#64748B;margin-top:12px;line-height:1.7">说明：本机条数=当前浏览器缓存；云端条数=Supabase；快照条数=本机急救快照。若出现红色或黄色状态，先以当前录入电脑为准，不要用其它电脑继续录入。</div>'
+    +'<div style="font-size:11px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:9px 11px;margin-top:10px;line-height:1.7">备用电脑/出差电脑开始录入前：先点「拉取主电脑最新版」。普通重试同步不会覆盖本机已有旧记录，适合把本机待上传数据推上云端；拉取主电脑最新版才适合把 A 电脑已作废、已修改的记录同步到这台电脑。</div>'
     +'</div>'
     +'<div style="padding:12px 20px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:10px">'
     +'<button id="_syncsafe_retry" style="padding:7px 16px;border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:6px;font-size:12px;cursor:pointer">重试同步</button>'
+    +'<button id="_syncsafe_force" style="padding:7px 16px;border:none;background:#EA580C;color:#fff;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">拉取主电脑最新版</button>'
     +'<button id="_syncsafe_ok" style="padding:7px 18px;border:none;background:#1565C0;color:#fff;border-radius:6px;font-size:12px;cursor:pointer">知道了</button>'
     +'</div>';
   overlay.appendChild(box);document.body.appendChild(overlay);
@@ -1913,6 +1915,10 @@ async function openSyncSafetyModal(){
     await pullFromSupabase();
     close();
     setTimeout(function(){openSyncSafetyModal();},300);
+  };
+  document.getElementById('_syncsafe_force').onclick=function(){
+    close();
+    forceFullSync();
   };
 }
 
@@ -3258,12 +3264,12 @@ function pgDash(){
   [['+ 新建销售订单','btn bp',function(){go('orders');setTimeout(openOM,80);}],
    ['⚡ 快速出货（无订单）','btn bs',function(){go('fgstock');setTimeout(openQuickOut,80);}],
    ['刷新前检查','btn bs',openSyncSafetyModal],
-   ['🔄 强制全量同步','btn boo',forceFullSync]
+   ['🔄 拉取主电脑最新版','btn boo',forceFullSync]
   ].forEach(function(b){qcb.appendChild(mkBtn(b[0],b[1],b[2]));});
   var syncDot=document.createElement('span');
   var dirtySyncCnt=countDirtySyncKeys();
   syncDot.style.cssText='margin-left:auto;font-size:11px;color:'+(dirtySyncCnt?'#DC2626':'#16A34A')+';display:flex;align-items:center;gap:4px;flex-shrink:0;font-weight:700';
-  syncDot.innerHTML='<span style="width:7px;height:7px;background:'+(dirtySyncCnt?'#DC2626':'#16A34A')+';border-radius:50%;display:inline-block;animation:_pulse 2s infinite"></span>'+(dirtySyncCnt?'有 '+dirtySyncCnt+' 项未同步':'云端已同步');
+  syncDot.innerHTML='<span style="width:7px;height:7px;background:'+(dirtySyncCnt?'#DC2626':'#16A34A')+';border-radius:50%;display:inline-block;animation:_pulse 2s infinite"></span>'+(dirtySyncCnt?'本机有 '+dirtySyncCnt+' 项待上传':'本机无待上传');
   qcb.appendChild(syncDot);
   qc.appendChild(qch);qc.appendChild(qcb);pg.appendChild(qc);
 

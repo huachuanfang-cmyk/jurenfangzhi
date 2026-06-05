@@ -46,6 +46,21 @@ test('refresh safety check compares local, cloud, and snapshot counts', () => {
   assert.match(html, /云端少于本机/);
 });
 
+test('sync status wording does not claim cloud is fully synced from dirty count only', () => {
+  assert.doesNotMatch(html, /云端已同步/);
+  assert.match(html, /本机无待上传/);
+  assert.match(html, /本机有 \'\+dirtySyncCnt\+\' 项待上传/);
+});
+
+test('backup computer workflow exposes force-pull latest cloud data', () => {
+  assert.match(html, /拉取主电脑最新版/);
+  assert.match(html, /备用电脑/);
+  assert.match(html, /出差电脑/);
+  assert.match(html, /普通重试同步不会覆盖本机已有旧记录/);
+  assert.match(html, /id="_syncsafe_force"/);
+  assert.match(html, /forceFullSync\(\)/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

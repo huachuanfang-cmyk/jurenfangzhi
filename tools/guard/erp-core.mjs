@@ -447,6 +447,21 @@ export function createGuardStore() {
     calcShipmentAmount(shipmentId) {
       const shipment = byId(data.fgo, shipmentId);
       if (!shipment) return null;
+      if (shipment.isQuick) {
+        const pcs = shipment.pcsData || [];
+        const kg = pcs.reduce(function(s, p){ return s + (parseFloat(p.kg) || 0); }, 0);
+        const mTot = pcs.reduce(function(s, p){ return s + (parseFloat(p.meter) || parseFloat(p.m) || 0); }, 0);
+        const byM = shipment.prUnit === 'meter' || shipment.prUnit === 'M' || shipment.prUnit === '米';
+        const free = shipment.prUnit === 'free';
+        const unitPr = free ? 0 : (parseFloat(shipment.unitPr) || 0);
+        const qty = byM ? mTot : kg;
+        return {
+          kg: Math.round(kg * 10) / 10,
+          m: Math.round(mTot * 10) / 10,
+          amt: Math.round(qty * unitPr * 100) / 100,
+          byM: byM,
+        };
+      }
       const order = byId(data.o, shipment.ordId);
       if (!order) return { kg: 0, m: 0, amt: 0, byM: false };
 

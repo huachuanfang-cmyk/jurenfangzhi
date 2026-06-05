@@ -366,6 +366,29 @@ test('AR shipment amount computed by M with extraPr when prUnit is M', () => {
   assert.equal(info.byM, true);
 });
 
+test('AR shipment amount computed for quick no-order sample delivery', () => {
+  const store = createGuardStore();
+  store.injectRecord('fgo', {
+    id: 'quick-sample-001',
+    no: 'DH20260040',
+    isQuick: true,
+    custNm: '新昌丝绸服装（深圳）有限公司',
+    ordNo: '—',
+    fab: '慕斯羊毛洗系列',
+    clr: '黑色-19',
+    lot: '6378-19',
+    prUnit: 'meter',
+    unitPr: '40',
+    pcsData: [{ piNo: '1', kg: 3, meter: '3' }],
+  });
+
+  const info = store.calcShipmentAmount('quick-sample-001');
+  assert.equal(info.kg, 3);
+  assert.equal(info.m, 3);
+  assert.equal(info.amt, 120);
+  assert.equal(info.byM, true);
+});
+
 // ══ 应收对账详情 getReceivableDetails ══
 
 test('receivable details show balance and auto-settle when paid in full', () => {

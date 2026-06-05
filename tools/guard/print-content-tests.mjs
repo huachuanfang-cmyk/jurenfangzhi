@@ -137,6 +137,20 @@ test('应收对账拉取出货记录时自动带入送货单附加费', () => {
   }
 });
 
+test('应收对账支持快速无订单出货金额', () => {
+  const checks = [
+    { field: '快速出货金额函数', pattern: /function calcQuickOutAmount\(out\)/ },
+    { field: '快速出货按pcsData汇总', pattern: /function quickOutTotals\(out\)/ },
+    { field: '对账拉取快速出货金额', pattern: /if\(o\.isQuick\)\{[\s\S]*?var qInfo=calcQuickOutAmount\(o\);[\s\S]*?amt=qInfo\.amt/ },
+    { field: '对账打印快速出货金额', pattern: /if\(out\.isQuick\)\{[\s\S]*?var qInfo=calcQuickOutAmount\(out\);[\s\S]*?grandTotal\+=qInfo\.amt/ },
+  ];
+
+  const failures = checks.filter(c => !c.pattern.test(html));
+  if (failures.length) {
+    throw new Error('应收对账快速出货金额缺少: ' + failures.map(f => f.field).join(', '));
+  }
+});
+
 test('应收对账单支持选择收款账户并打印账户风险提示', () => {
   const checks = [
     { field: '保存收款账户类型', pattern: /receiptAccountType:receiptAccount\.type/ },

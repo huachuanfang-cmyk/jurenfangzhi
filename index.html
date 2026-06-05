@@ -2541,6 +2541,26 @@ function resolveARecReceiptAccount(r){
   };
 }
 function arOutIsVoided(o){return !!(o&&(o.voided||o.status==='voided'||o.status==='cancelled'));}
+function quickOutTotals(out){
+  var pcs=(out&&out.pcsData)||[];
+  var kg=pcs.reduce(function(s,p){return s+(parseFloat(p.kg)||0);},0);
+  var m=pcs.reduce(function(s,p){return s+(parseFloat(p.meter)||parseFloat(p.m)||0);},0);
+  if(!m&&out&&out.approxM)m=parseFloat(String(out.approxM).replace(/[^0-9.]/g,''))||0;
+  return {pcs:pcs.length,kg:Number(kg.toFixed(1)),m:Number(m.toFixed(1))};
+}
+function quickOutByMeter(out){
+  var u=String((out&&out.prUnit)||'meter');
+  return u==='meter'||u==='M'||u.indexOf('米')>=0;
+}
+function calcQuickOutAmount(out){
+  var totals=quickOutTotals(out||{});
+  var byM=quickOutByMeter(out||{});
+  var free=(out&&out.prUnit)==='free';
+  var unitPr=free?0:(parseFloat((out&&out.unitPr)||0)||0);
+  var qty=byM?totals.m:totals.kg;
+  var amt=qty*unitPr;
+  return {pcs:totals.pcs,kg:totals.kg,m:totals.m,unitPr:unitPr,prUnit:(byM?'米':'KG'),byM:byM,amt:parseFloat(amt.toFixed(2))};
+}
 function shipmentRollKeyFromIds(rollIds){
   return (rollIds||[]).slice().filter(Boolean).sort().join('|');
 }
@@ -9191,6 +9211,18 @@ function exportARecExcel(id){
     var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out||arOutIsVoided(out))return;
     var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
     var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
+    if(out.isQuick){
+      var qInfo=calcQuickOutAmount(out);
+      grandTotal+=qInfo.amt;
+      var qFeeAmt=parseFloat(out.feeAmt)||0;
+      if(qFeeAmt)totalFee+=qFeeAmt;
+      outDataList.push({date:out.date||'',fab:out.fab||'',clr:out.clr||out.colorNm||'',pcs:qInfo.pcs,
+        kg:qInfo.kg,m:qInfo.m,
+        unitPr:qInfo.unitPr,prUnit:qInfo.prUnit,amt:qInfo.amt,
+        no:(out.no||'').replace(/^[A-Z]+/,''),custNo:out.custNo||out.custOrdNo||'',
+        rm:out.feeNm&&qFeeAmt?(out.feeNm+'¥'+qFeeAmt.toFixed(0)):(out.rm||'')});
+      return;
+    }
     var kg=oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0);
     var mSum=oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0);
     var unitPr=parseFloat(ord.unitPr)||0;
@@ -9447,6 +9479,28 @@ function printARec(id){
     var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out||arOutIsVoided(out))return;
     var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
     var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
+    if(out.isQuick){
+      var qInfo=calcQuickOutAmount(out);
+      grandTotal+=qInfo.amt;
+      var qFeeAmt=parseFloat(out.feeAmt)||0;
+      var qFeeNm=out.feeNm||'';
+      if(qInfo.m>0)hasMeter=true;
+      var qNoClean=(out.no||'').replace(/^[A-Z]+/,'');
+      var qRm=[];
+      if(qFeeNm&&qFeeAmt){
+        totalFee+=qFeeAmt;
+        feeDetails.push(qNoClean);
+        qRm.push(qFeeNm+'¥'+qFeeAmt.toFixed(0));
+      }
+      if(out.rm)qRm.push(out.rm);
+      outDataList.push({
+        date:out.date||'',no:qNoClean,fab:out.fab||'',clr:out.clr||out.colorNm||'',
+        pcs:qInfo.pcs,kg:qInfo.kg,meter:qInfo.m>0?qInfo.m.toFixed(1):'',unitPr:qInfo.unitPr,amt:qInfo.amt,
+        prUnit:qInfo.prUnit,
+        custNo:out.custNo||out.custOrdNo||'',rm:qRm.join('；')
+      });
+      return;
+    }
     // KG/米：有疋数据用疋数求和，无疋数据从出货记录取
     var kg=oRolls.length>0
       ?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0)
@@ -9892,7 +9946,9 @@ function openARecModal(id){
       var thead=document.createElement('thead');
       // 判断本批出货是否为米计价（取第一条出货的订单prUnit）
       var _firstOrd=orders.find(function(x){return matched.length&&x.no===matched[0].ordNo;})||{};
-      var _byMHeader=(String(_firstOrd.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(_firstOrd.prUnit||'').indexOf('米')>=0);
+      var _byMHeader=matched.length&&matched[0].isQuick
+        ?quickOutByMeter(matched[0])
+        :((String(_firstOrd.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(_firstOrd.prUnit||'').indexOf('米')>=0));
       var _qtyLabel=_byMHeader?'米数':'KG';
       thead.innerHTML='<tr style="background:#EFF6FF;border-bottom:2px solid #1e3a8a">'
         +'<th style="padding:5px 8px;width:28px"><input type="checkbox" checked id="ar-all-cb2"></th>'
@@ -9908,50 +9964,57 @@ function openARecModal(id){
       var tbody=document.createElement('tbody');
       matched.forEach(function(o,idx){
         var oRolls=rolls.filter(function(r){return (o.rollIds||[]).indexOf(r.id)>=0;});
-        // KG：有疋数据求和；无疋数据从出货记录字段取
-        var kg=oRolls.length>0
-          ?oRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0)
-          :(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
-        var mTot=oRolls.length>0
-          ?oRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0)
-          :(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
-        // 找订单单价 + 计价单位
         var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
-        var baseUnitPr=parseFloat(ord.unitPr)||0;
-        var _pu=String(ord.prUnit||'').toUpperCase();
-        var byM=(_pu.indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
-        // 金额计算：有疋数据按疋累加；无疋数据按汇总数量×单价
-        var amt=0;
-        if(baseUnitPr>0){
-          if(oRolls.length>0){
-            // ── 关键：按颜色分组汇总后四舍五入到送货单凭证精度（1 位小数）再计费 ──
-            // 否则 17 疋累加得 1060.55，× 42 = 44543.10，但送货单显示 1060.5 × 42 = 44541，账不平
-            var _byClr={};
-            oRolls.forEach(function(r){
-              var c=r.colorNm||'';
-              if(!_byClr[c])_byClr[c]={kg:0,m:0};
-              _byClr[c].kg+=parseFloat(r.kg)||0;
-              _byClr[c].m+=parseFloat(r.m)||0;
-            });
-            amt=Object.keys(_byClr).reduce(function(s,c){
-              var clr=(ord.colors||[]).find(function(x){return x.nm===c;})||{};
-              var extraPr=parseFloat(clr.extraPr)||0;
-              // 与送货单 toFixed(1) 一致，避开 Math.round 在 .x5 处的行为差异
-              var qty=byM?Number(_byClr[c].m.toFixed(1)):Number(_byClr[c].kg.toFixed(1));
-              return s+qty*(baseUnitPr+extraPr);
-            },0);
-          } else {
-            // 无疋数据：直接用汇总量×单价（与送货单同精度）
-            var qty2=byM?Number(mTot.toFixed(1)):Number(kg.toFixed(1));
-            amt=qty2*baseUnitPr;
+        var kg=0,mTot=0,byM=false,amt=0,unitPr=0,baseUnitPr=0;
+        if(o.isQuick){
+          var qInfo=calcQuickOutAmount(o);
+          kg=qInfo.kg;mTot=qInfo.m;byM=qInfo.byM;amt=qInfo.amt;unitPr=qInfo.unitPr;baseUnitPr=qInfo.unitPr;
+          ord={fab:o.fab||'',prUnit:qInfo.prUnit,follower:''};
+        }else{
+          // KG：有疋数据求和；无疋数据从出货记录字段取
+          kg=oRolls.length>0
+            ?oRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0)
+            :(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
+          mTot=oRolls.length>0
+            ?oRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0)
+            :(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
+          // 找订单单价 + 计价单位
+          baseUnitPr=parseFloat(ord.unitPr)||0;
+          var _pu=String(ord.prUnit||'').toUpperCase();
+          byM=(_pu.indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+          // 金额计算：有疋数据按疋累加；无疋数据按汇总数量×单价
+          if(baseUnitPr>0){
+            if(oRolls.length>0){
+              // ── 关键：按颜色分组汇总后四舍五入到送货单凭证精度（1 位小数）再计费 ──
+              // 否则 17 疋累加得 1060.55，× 42 = 44543.10，但送货单显示 1060.5 × 42 = 44541，账不平
+              var _byClr={};
+              oRolls.forEach(function(r){
+                var c=r.colorNm||'';
+                if(!_byClr[c])_byClr[c]={kg:0,m:0};
+                _byClr[c].kg+=parseFloat(r.kg)||0;
+                _byClr[c].m+=parseFloat(r.m)||0;
+              });
+              amt=Object.keys(_byClr).reduce(function(s,c){
+                var clr=(ord.colors||[]).find(function(x){return x.nm===c;})||{};
+                var extraPr=parseFloat(clr.extraPr)||0;
+                // 与送货单 toFixed(1) 一致，避开 Math.round 在 .x5 处的行为差异
+                var qty=byM?Number(_byClr[c].m.toFixed(1)):Number(_byClr[c].kg.toFixed(1));
+                return s+qty*(baseUnitPr+extraPr);
+              },0);
+            } else {
+              // 无疋数据：直接用汇总量×单价（与送货单同精度）
+              var qty2=byM?Number(mTot.toFixed(1)):Number(kg.toFixed(1));
+              amt=qty2*baseUnitPr;
+            }
           }
+          unitPr=baseUnitPr;
         }
         var feeAmt=parseFloat(o.feeAmt)||0;
         var feeNm=o.feeNm||'';
-        var unitPr=baseUnitPr;
         var clrNms=oRolls.length>0
           ?[...new Set(oRolls.map(function(r){return r.colorNm||'';}).filter(Boolean))].join('、')
           :(o.clrNm||o.colorNm||'');
+        if(o.isQuick)clrNms=o.clr||o.colorNm||clrNms;
         var tr=document.createElement('tr');
         // 遗留记录：橙色背景警示
         if(o._isLegacy){
@@ -9968,7 +10031,7 @@ function openARecModal(id){
         tr.appendChild(cbTd);
         // 数量列：米计价显示米数，KG计价显示KG
         var _qtyDisp=byM?(mTot>0?mTot.toFixed(1):'—'):kg.toFixed(1);
-        var _unitDisp=unitPr?(unitPr+(ord.prUnit||'/KG')):'—';
+        var _unitDisp=unitPr?(unitPr+'/'+(o.isQuick?(byM?'米':'KG'):(ord.prUnit||'KG'))):'—';
         // 遗留标签
         var _legacyTag=o._isLegacy
           ?'<span style="display:inline-block;background:#F97316;color:#fff;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:600">⚠ '+(o.date||'').slice(0,7)+' 遗留</span>'
@@ -10130,6 +10193,12 @@ function openARecModal(id){
             var outIds=grp.outs.map(function(o){return o.id;});
             var totalAmt=0,shipFeeTotal=0;
             grp.outs.forEach(function(o){
+              if(o.isQuick){
+                var qInfo=calcQuickOutAmount(o);
+                totalAmt+=qInfo.amt;
+                shipFeeTotal+=parseFloat(o.feeAmt)||0;
+                return;
+              }
               var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
               var oRolls=rollsX.filter(function(rr){return (o.rollIds||[]).indexOf(rr.id)>=0;});
               var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.kg)||0);

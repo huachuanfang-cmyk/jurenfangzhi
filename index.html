@@ -1072,6 +1072,25 @@ function canDeleteMaterial(id){
   });
   return refs.length?{ok:false,refs:refs,message:buildDeleteBlockMessage('物料',mat.mid||mat.fab||id,refs)}:{ok:true,refs:[],message:''};
 }
+function findDuplicateShipmentRollGroups(){
+  var groups={};
+  (DB.fgouts||[]).forEach(function(out){
+    if(arOutIsVoided(out))return;
+    var key=shipmentRollKey(out);
+    if(!key)return;
+    if(!groups[key])groups[key]=[];
+    groups[key].push(out);
+  });
+  return Object.keys(groups).map(function(key){
+    var list=groups[key].slice();
+    list.sort(function(a,b){
+      var na=shipmentNoRank(a),nb=shipmentNoRank(b);
+      if(na!==nb)return na-nb;
+      return String(a.id||'').localeCompare(String(b.id||''));
+    });
+    return {key:key,shipments:list,keeper:list[0],duplicates:list.slice(1)};
+  }).filter(function(group){return group.shipments.length>1;});
+}
 function findDataIntegrityIssues(){
   var issues=[];
   var noMap={};
@@ -1118,18 +1137,8 @@ function findDataIntegrityIssues(){
       if(out.ordId&&roll.ordId&&roll.ordId!==out.ordId)issues.push({type:'roll_order_mismatch',message:'成品出货单 '+(out.no||out.id||'')+' 的布卷 '+rollId+' 不属于该销售订单'});
     });
   });
-  var shipmentRollGroups={};
-  (DB.fgouts||[]).forEach(function(out){
-    if(arOutIsVoided(out))return;
-    var key=shipmentRollKey(out);
-    if(!key)return;
-    if(!shipmentRollGroups[key])shipmentRollGroups[key]=[];
-    shipmentRollGroups[key].push(out);
-  });
-  Object.keys(shipmentRollGroups).forEach(function(key){
-    var group=shipmentRollGroups[key];
-    if(group.length<2)return;
-    var nos=group.map(function(x){return x.no||x.id||'未编号';}).join('、');
+  findDuplicateShipmentRollGroups().forEach(function(g){
+    var nos=g.shipments.map(function(x){return x.no||x.id||'未编号';}).join('、');
     issues.push({type:'duplicate_shipment_rolls',message:'重复送货单占用同一批布卷：'+nos+'。请保留较早有效单，较后重复单使用「重复作废」处理，不要普通作废回仓。'});
   });
   (DB.fgreturns||[]).forEach(function(ret){
@@ -1178,6 +1187,7 @@ function openIntegrityRepairTool(){
   // duplicate order no
   var noMap={};(DB.orders||[]).forEach(function(o){if(!o.no)return;if(!noMap[o.no])noMap[o.no]=[];noMap[o.no].push(o);});
   var dupGroups=Object.keys(noMap).filter(function(n){return noMap[n].length>1;});
+  var dupShipGroups=findDuplicateShipmentRollGroups();
 
   var modal=buildModal('🧹 数据完整性修复 — '+issues.length+' 项异常','mlg',function(body){
     body.innerHTML='';
@@ -1198,6 +1208,37 @@ function openIntegrityRepairTool(){
         box.style.cssText='border:1px solid #FECACA;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:11.5px;background:#FFFBFB';
         box.innerHTML='<b>订单号：'+esc(no)+'</b>（共 '+orders.length+' 条，建议保留最早一条）<div style="margin-top:6px;color:#6B7280;font-size:10.5px">'
           +orders.map(function(o){return '· '+esc(o.id).slice(0,12)+' '+(o.ordDate||'')+' '+(o.custNm||'');}).join('<br>')+'</div>';
+        body.appendChild(box);
+      });
+    }
+
+    // ── 重复送货占用区 ──
+    if(dupShipGroups.length){
+      var shipH=document.createElement('div');
+      shipH.style.cssText='font-size:13px;font-weight:700;color:#B45309;margin:14px 0 8px;padding:6px 10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:4px';
+      shipH.textContent='🟠 重复送货占用 ('+dupShipGroups.length+' 组) — 保留较早有效单，较后单用「重复作废不回仓」';
+      body.appendChild(shipH);
+      dupShipGroups.forEach(function(g){
+        var box=document.createElement('div');
+        box.style.cssText='border:1px solid #FDE68A;border-radius:6px;padding:9px 12px;margin-bottom:8px;font-size:11.5px;background:#FFFDF5';
+        var nos=g.shipments.map(function(x){return x.no||x.id||'未编号';});
+        var keeperNo=(g.keeper&&g.keeper.no)||'未编号';
+        var dupNos=g.duplicates.map(function(x){return x.no||x.id||'未编号';}).join('、')||'—';
+        box.innerHTML='<div style="font-weight:700;color:#92400E">同一批布卷被多张送货单占用：'+esc(nos.join('、'))+'</div>'
+          +'<div style="margin-top:5px;color:#6B7280;line-height:1.7">建议保留：<b style="color:#065F46">'+esc(keeperNo)+'</b>；建议重复作废：<b style="color:#B91C1C">'+esc(dupNos)+'</b>。处理时不会恢复库存，布卷仍指向保留单。</div>';
+        var jump=document.createElement('button');
+        jump.type='button';
+        jump.className='btn bsm by';
+        jump.style.marginTop='8px';
+        jump.textContent='去出货记录处理';
+        jump.onclick=function(){
+          cm();
+          window._fgTab='out';
+          window._fgoutDate='all';
+          window._fgoutSrch=nos[0]||'';
+          go('fgstock');
+        };
+        box.appendChild(jump);
         body.appendChild(box);
       });
     }

@@ -74,6 +74,15 @@ test('duplicate shipment void stores audit metadata and never returns stock', ()
   assert.doesNotMatch(fn, /rl\.status='in'/);
 });
 
+test('integrity repair tool exposes duplicate shipment groups with safe handling path', () => {
+  assert.match(html, /function\s+findDuplicateShipmentRollGroups\s*\(/);
+  assert.match(html, /重复送货占用/);
+  assert.match(html, /保留较早有效单/);
+  assert.match(html, /重复作废不回仓/);
+  assert.match(html, /window\._fgTab='out'/);
+  assert.match(html, /go\('fgstock'\)/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

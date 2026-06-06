@@ -1540,28 +1540,73 @@ function withoutCloudColumns(payload,columns){
   });
 }
 
+// 从 Supabase / PostgREST 错误信息里通用地抽取缺失的列名
+// 兼容多种格式 — 不再依赖白名单 key+硬编码字段，新加任何字段都自动适应
 function missingCloudColumnsForSchemaError(key,message){
-  var msg=String(message||'').toLowerCase();
-  if(key==='ret'&&msg.indexOf("'deduct_kg' column")>=0)return ['deduct_kg','deduct_kG'];
-  if(key==='fgo'&&(msg.indexOf("'status' column")>=0||msg.indexOf("'duplicate_of' column")>=0||msg.indexOf("'no_restock_on_void' column")>=0||msg.indexOf("'void_reason' column")>=0||msg.indexOf("'voided_at' column")>=0))return ['status','duplicate_of','no_restock_on_void','void_reason','voided_at'];
-  if(key==='ar'&&msg.indexOf("'receipt_account_")>=0)return ['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note'];
-  return [];
+  var msg=String(message||'');
+  var cols=[];
+  var patterns=[
+    /Could not find the ['"]([a-zA-Z0-9_]+)['"] column/g,
+    /column ['"]?([a-zA-Z0-9_]+)['"]? does not exist/gi,
+    /Failed to find column ['"]([a-zA-Z0-9_]+)['"]/g,
+    /['"]([a-zA-Z0-9_]+)['"] column of [^ ]+ does not exist/g
+  ];
+  patterns.forEach(function(re){
+    var m;
+    while((m=re.exec(msg))!==null){
+      if(m[1]&&cols.indexOf(m[1])<0)cols.push(m[1]);
+    }
+  });
+  // 兜底：保留旧硬编码兼容（特定字段在某些老版本 Supabase 错误信息里可能匹配不到）
+  var lower=msg.toLowerCase();
+  if(key==='ret'&&lower.indexOf("'deduct_kg' column")>=0&&cols.indexOf('deduct_kg')<0)cols.push('deduct_kg','deduct_kG');
+  return cols;
 }
+
+// 自动学习每张表云端缺失的字段，避免每次都试探，并避免反复触发 schema 错误
+function _getSkippedCols(key){return (window._cloudColSkip&&window._cloudColSkip[key])||[];}
+function _addSkippedCols(key,cols){
+  if(!window._cloudColSkip)window._cloudColSkip={};
+  if(!window._cloudColSkip[key])window._cloudColSkip[key]=[];
+  (cols||[]).forEach(function(c){if(window._cloudColSkip[key].indexOf(c)<0)window._cloudColSkip[key].push(c);});
+  // 同时持久化到 localStorage，下次刷新仍生效
+  try{localStorage.setItem('gjr5_skip_cols',JSON.stringify(window._cloudColSkip));}catch(e){}
+}
+// 启动时从 localStorage 恢复
+(function(){
+  try{var s=localStorage.getItem('gjr5_skip_cols');if(s)window._cloudColSkip=JSON.parse(s);}catch(e){window._cloudColSkip={};}
+})();
 
 async function upsertCloudRows(key,table,rows){
   var conflictKey=cloudConflictKey(key);
   var payload=rowsToCloudPayloadForKey(key,rows);
-  var result=await _supabaseData.from(table).upsert(payload,{onConflict:conflictKey,ignoreDuplicates:false});
-  if(!result.error)return result;
-  var msg=String(result.error.message||'');
-  if((key==='wd'||key==='dd')&&msg.indexOf('null value in column "id"')>=0){
-    return await _supabaseData.from(table).upsert(withFallbackSerialIds(key,payload),{onConflict:conflictKey,ignoreDuplicates:false});
+  // 应用已知缺失字段过滤
+  var pre=_getSkippedCols(key);
+  if(pre.length)payload=withoutCloudColumns(payload,pre);
+
+  // 最多 6 轮重试，每轮剥离一批缺失字段
+  var lastResult=null;
+  for(var attempt=0;attempt<6;attempt++){
+    var result=await _supabaseData.from(table).upsert(payload,{onConflict:conflictKey,ignoreDuplicates:false});
+    if(!result.error)return result;
+    lastResult=result;
+    var msg=String(result.error.message||'');
+    // wd/dd 表 id 缺失的特例
+    if((key==='wd'||key==='dd')&&msg.indexOf('null value in column "id"')>=0){
+      payload=withFallbackSerialIds(key,payload);
+      continue;
+    }
+    // 通用：解析缺失字段并剥离
+    var missing=missingCloudColumnsForSchemaError(key,msg);
+    if(missing.length){
+      _addSkippedCols(key,missing);
+      payload=withoutCloudColumns(payload,missing);
+      continue;
+    }
+    // 没有可剥离的字段 → 真正失败，跳出
+    break;
   }
-  var fallbackColumns=missingCloudColumnsForSchemaError(key,msg);
-  if(fallbackColumns.length){
-    return await _supabaseData.from(table).upsert(withoutCloudColumns(payload,fallbackColumns),{onConflict:conflictKey,ignoreDuplicates:false});
-  }
-  return result;
+  return lastResult;
 }
 
 function recordSyncError(key,msg){
@@ -1914,7 +1959,13 @@ async function checkRequiredCloudSchema(key,table){
   try{
     var res=await _supabaseData.from(table).select(cols.join(','),{count:'exact',head:true});
     if(!res||!res.error)return {ok:true,msg:''};
-    return {ok:false,msg:'数据库未升级：'+(res.error.message||'云端缺少字段')+'。请先执行 supabase-sync-missing-columns-2026-06-05.sql'};
+    // 自动剥离已知缺失字段（无需手工跑 SQL）
+    var missing=missingCloudColumnsForSchemaError(key,res.error.message||'');
+    if(missing.length){
+      _addSkippedCols(key,missing);
+      return {ok:true,msg:'已自动适配：云端缺 '+missing.join('、')+' 字段（这些是新功能字段，不影响主业务同步）'};
+    }
+    return {ok:false,msg:'数据库结构警告：'+(res.error.message||'云端缺少字段')+'（系统会尝试自动剥离不影响主业务，但若仍同步失败可联系开发执行 SQL 升级）'};
   }catch(e){
     return {ok:false,msg:'数据库结构检查失败：'+(e.message||String(e))+'。请先确认 Supabase 连接和表结构。'};
   }

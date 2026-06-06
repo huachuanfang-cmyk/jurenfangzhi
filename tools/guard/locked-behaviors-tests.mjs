@@ -277,6 +277,35 @@ test('applyCompanyBranding 函数必须存在并更新 document.title', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 17-18：制单人 + 银行账户迁移 (Phase D)
+// 原 bug：制单人「蒋劲松」硬编码 10+ 处，银行账号硬编码在 fallback
+// ═══════════════════════════════════════════════
+test('打印模板的制单人不能再硬编码「蒋劲松」（必须用 CO.preparer）', () => {
+  const lines = html.split('\n');
+  const offenders = [];
+  lines.forEach((line, i) => {
+    if (!line.includes('蒋劲松')) return;
+    // 白名单：CO_DEFAULT 默认值、设置面板 placeholder、个人代收账户具名记录
+    if (/CO_DEFAULT|preparer:'蒋劲松'|cfg-preparer|receipt_personal|个人代收账户/.test(line)) return;
+    offenders.push((i + 1) + ': ' + line.trim().slice(0, 80));
+  });
+  if (offenders.length) {
+    throw new Error('打印模板仍有硬编码制单人「蒋劲松」：\n' + offenders.join('\n'));
+  }
+});
+
+test('默认收款账户必须从 CO 读取（不能硬编码银行账号）', () => {
+  const m = html.match(/function defaultReceiptAccount\(\)\{[\s\S]{0,300}?\}/);
+  if (!m) throw new Error('找不到 defaultReceiptAccount 函数');
+  if (/539000015553633/.test(m[0])) {
+    throw new Error('defaultReceiptAccount 仍硬编码银行账号，应改用 CO.bankAccount');
+  }
+  if (!/CO\.bankAccount/.test(m[0])) {
+    throw new Error('defaultReceiptAccount 没有引用 CO.bankAccount');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

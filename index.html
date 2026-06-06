@@ -2703,7 +2703,8 @@ function applyCompanyBranding(){
   }catch(e){}
 }
 function defaultReceiptAccount(){
-  return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
+  // 默认对公收款账户从公司档案读取，同行填一次设置即生效
+  return {type:'company',name:CO.bankAccountHolder||CO.nm,bank:CO.bankName,no:CO.bankAccount,note:''};
 }
 function builtinReceiptAccounts(){
   var d=defaultReceiptAccount();
@@ -4279,7 +4280,7 @@ function openColorNoticeModal(id){
     body.appendChild(r1);
     // 行2：FROM REF 数量
     var r2=row('1fr 1fr 1fr');
-    r2.appendChild(fv('FROM',inp('cn-from',rec?rec.from:'蒋劲松 · 13798269736','')));
+    r2.appendChild(fv('FROM',inp('cn-from',rec?rec.from:(CO.preparer+(CO.preparerTel?' · '+CO.preparerTel:'')),'')));
     r2.appendChild(fv('REF NO.',inp('cn-ref',rec?rec.refNo:genRefNo(),'')));
     r2.appendChild(fv('数量说明',inp('cn-qty',rec?rec.qty:'每色打 A、B、C 一式三份','')));
     body.appendChild(r2);
@@ -4430,7 +4431,7 @@ function prtColorNotice(id){
     +'<div class="ri"><span class="rn">3.</span><span>如有撞色或特殊工艺要求，已在备注栏注明，请染厂特别留意处理。</span></div>'
     +'</div>'
     +'<div class="footer">收到原办后，烦请尽快安排打色，<strong>3天</strong>交色办。如有疑问请来电，谢谢合作！</div>'
-    +'<div class="sgn"><div class="sgc">主管：</div><div class="sgc">制单：蒋劲松</div><div class="sgc">染厂跟单：</div></div>'
+    +'<div class="sgn"><div class="sgc">主管：</div><div class="sgc">制单：'+esc(CO.preparer)+'</div><div class="sgc">染厂跟单：</div></div>'
     +'</body></html>';
   printHTML(html);
 }
@@ -7367,7 +7368,7 @@ function buildWH(d){
       '<div style="margin-top:20px;border-bottom:1px solid #bbb;margin-bottom:4px"></div>'+
       '<div style="font-size:8px;color:#aaa">签字：________________　日期：________</div></div>'+
     '<div class="sgc"><div style="font-size:8px;color:#999;font-weight:700;letter-spacing:1px;margin-bottom:4px">制　单</div>'+
-      '<div style="font-size:11px;font-weight:700;margin-bottom:4px">蒋劲松</div>'+
+      '<div style="font-size:11px;font-weight:700;margin-bottom:4px">'+esc(CO.preparer)+'</div>'+
       '<div style="border-bottom:1px solid #bbb;margin-bottom:4px"></div>'+
       '<div style="font-size:8px;color:#aaa">签字：________________　日期：________</div></div>'+
     '<div class="sgc"><div style="font-size:8px;color:#999;font-weight:700;letter-spacing:1px;margin-bottom:4px">织厂确认</div>'+
@@ -8095,7 +8096,7 @@ function buildDH(d){
   // ── 签名栏加高 ──
   '<div class="sgn" style="grid-template-columns:1fr 1fr 2fr;min-height:60px">'+
     '<div class="sgc" style="padding:28px 14px 8px">主管：</div>'+
-    '<div class="sgc" style="padding:28px 14px 8px">制单：蒋劲松</div>'+
+    '<div class="sgc" style="padding:28px 14px 8px">制单：'+esc(CO.preparer)+'</div>'+
     '<div class="sgc" style="padding:28px 14px 8px">染厂跟单：</div>'+
   '</div>'+
   '</div>';
@@ -9077,7 +9078,7 @@ function printQuot(id){
         +'<div class="info-cap">QUOTATION DETAILS</div>'
         +'<div class="info-f"><span class="info-lbl">报价日期</span><span class="info-val">'+esc((r.date||'').replace(/-/g,'/'))+'</span></div>'
         +'<div class="info-f"><span class="info-lbl">有效期至</span><span class="info-val">'+esc((r.validTo||r.validDate||'').replace(/-/g,'/')||'—')+'</span></div>'
-        +'<div class="info-f"><span class="info-lbl">报价员</span><span class="info-val">蒋劲松</span></div>'
+        +'<div class="info-f"><span class="info-lbl">报价员</span><span class="info-val">'+esc(CO.preparer)+'</span></div>'
       +'</div>'
     +'</div>'
 
@@ -9113,7 +9114,7 @@ function printQuot(id){
         +'<div class="sign-hint">Confirmed by &nbsp;/&nbsp; Date</div>'
       +'</div>'
       +'<div class="maker-b">'
-        +'<div>制单：<span class="maker-name">蒋劲松</span></div>'
+        +'<div>制单：<span class="maker-name">'+esc(CO.preparer)+'</span></div>'
         +'<div style="color:#aaa;font-size:9.5px">联系电话：13798269736</div>'
       +'</div>'
     +'</div>'
@@ -9301,7 +9302,7 @@ function openMultiColorSheet(){
         +'</div>'
         // 签字栏
         +'<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:30px;padding:8px;margin-top:6px">'
-        +'<div><p style="font-size:12px;margin:4px 0"><strong>制单人：</strong>蒋劲松</p>'
+        +'<div><p style="font-size:12px;margin:4px 0"><strong>制单人：</strong>'+esc(CO.preparer)+'</p>'
         +'<p style="font-size:12px;margin:4px 0"><strong>发货仓库：</strong>东莞仓</p></div>'
         +'<div><p style="font-size:12px;margin:4px 0"><strong>客户收货签章：</strong>________________</p>'
         +'<p style="font-size:10px;color:#666;margin-top:8px">注：请于七天内核对数量质量，逾期或经裁剪本公司恕不负责。</p></div>'
@@ -9607,9 +9608,9 @@ function exportARecExcel(id){
   var receiptAccount=(typeof resolveARecReceiptAccount==='function')?resolveARecReceiptAccount(r):(function(){
     return {
       type:(r&&r.receiptAccountType)||'company',
-      name:(r&&r.receiptAccountName)||'东莞市巨人纺织有限公司',
-      bank:(r&&r.receiptAccountBank)||'东莞银行股份有限公司长安支行',
-      no:(r&&r.receiptAccountNo)||'539000015553633',
+      name:(r&&r.receiptAccountName)||CO.bankAccountHolder||CO.nm,
+      bank:(r&&r.receiptAccountBank)||CO.bankName,
+      no:(r&&r.receiptAccountNo)||CO.bankAccount,
       note:(r&&r.receiptAccountNote)||''
     };
   })();
@@ -9870,9 +9871,9 @@ function printARec(id){
   var receiptAccount=(typeof resolveARecReceiptAccount==='function')?resolveARecReceiptAccount(r):(function(){
     return {
       type:(r&&r.receiptAccountType)||'company',
-      name:(r&&r.receiptAccountName)||'东莞市巨人纺织有限公司',
-      bank:(r&&r.receiptAccountBank)||'东莞银行股份有限公司长安支行',
-      no:(r&&r.receiptAccountNo)||'539000015553633',
+      name:(r&&r.receiptAccountName)||CO.bankAccountHolder||CO.nm,
+      bank:(r&&r.receiptAccountBank)||CO.bankName,
+      no:(r&&r.receiptAccountNo)||CO.bankAccount,
       note:(r&&r.receiptAccountNote)||''
     };
   })();
@@ -10128,7 +10129,7 @@ function printARec(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #ccc">'
     +'<div style="padding:8px 12px;border-right:1px solid #ccc">'
     +'<div style="font-size:9px;color:#999;letter-spacing:.5px;margin-bottom:5px">制单人</div>'
-    +'<div style="font-size:11px;font-weight:600">蒋劲松</div>'
+    +'<div style="font-size:11px;font-weight:600">'+esc(CO.preparer)+'</div>'
     +'<div style="font-size:9.5px;color:#555;margin-top:3px">联系电话：'+esc(CO.tel||'')+'</div>'
     +'</div>'
     +'<div style="padding:8px 12px;border-right:1px solid #ccc">'
@@ -14685,7 +14686,7 @@ function printQuickOut(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #ddd;border-radius:4px;margin-top:6px;overflow:hidden">'
     +'<div style="padding:10px 14px;border-right:1px solid #eee;background:#fafafa">'
     +'<div style="font-size:8px;color:#999;letter-spacing:.5px;margin-bottom:4px">制单</div>'
-    +'<div style="font-size:11px;font-weight:700;color:#1e3a8a">蒋劲松</div>'
+    +'<div style="font-size:11px;font-weight:700;color:#1e3a8a">'+esc(CO.preparer)+'</div>'
     +'<div style="font-size:9px;color:#888;margin-top:2px">13798269736</div>'
     +'</div>'
     +'<div style="padding:10px 14px;border-right:1px solid #eee">'
@@ -14975,7 +14976,7 @@ function printFGOut(outId){
     '<div class="disc">如有问题，请于七天内通知或退回，逾期或经裁剪，本公司恕不负责。</div>'+
 
     '<div class="sign">'+
-      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">蒋劲松</div></div>'+
+      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(CO.preparer)+'</div></div>'+
       '<div class="sc"><div class="sc-lbl">客户收货确认 / Received by</div><div class="sc-line"></div></div>'+
       '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(out.rm||'')+'</div></div>'+
     '</div>'+
@@ -15153,7 +15154,7 @@ function printFGReturn(retId){
     '<div class="disc">退货回仓布匹标注为 B 级（二等品），如有品质争议请于七日内提出。</div>'+
 
     '<div class="sign">'+
-      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">蒋劲松</div></div>'+
+      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(CO.preparer)+'</div></div>'+
       '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(ret.rm||'')+'</div></div>'+
     '</div>'+
     '</body></html>';

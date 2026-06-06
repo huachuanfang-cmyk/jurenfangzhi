@@ -126,7 +126,7 @@ function createSandbox(mockDB) {
 
     // Globals used by helpers/print functions
     LOGO: '',
-    CO: { nm: '测试布业有限公司', addr: '广东省东莞市虎门镇', tel: '0769-88888888', fax: '0769-88888888' },
+    CO: { nm: '测试布业有限公司', shortNm: '测试布业', addr: '广东省东莞市虎门镇', tel: '0769-88888888', fax: '0769-88888888', email: 'test@example.com', preparer: '测试制单员', preparerTel: '0769-88888888', bankName: '测试银行测试支行', bankAccount: '1234567890123456', bankAccountHolder: '测试布业有限公司' },
     DOC_CSS: '',
     WV_RMK: '备注：以上数量仅供参考，具体以实际交货数量结算。',
     DY_RMK_LINES: [

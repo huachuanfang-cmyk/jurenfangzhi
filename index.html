@@ -2683,14 +2683,23 @@ var CO_DEFAULT={
   // ④ 默认收款账户（与 defaultReceiptAccount 保持兼容）
   bankName:'东莞银行股份有限公司长安支行',
   bankAccount:'539000015553633',
-  bankAccountHolder:'东莞市巨人纺织有限公司'
+  bankAccountHolder:'东莞市巨人纺织有限公司',
+  // ⑤ Logo（base64 data URI；空则用内置默认 LOGO）
+  logo:''
 };
+var LOGO_DEFAULT=LOGO; // 备份内置默认 logo，便于"恢复默认"时还原
 var CO=Object.assign({},CO_DEFAULT,DB.load('company')||{});
+applyCustomLogo();
+function applyCustomLogo(){
+  // 用户上传的 logo 直接覆盖全局 LOGO → 打印/Excel/favicon/登录页全部自动生效
+  LOGO=(CO.logo&&/^data:image\//.test(CO.logo))?CO.logo:LOGO_DEFAULT;
+}
 function refreshCO(){
   // 让设置面板保存后立即生效，不用刷新页面
   var saved=DB.load('company')||{};
   for(var k in CO)delete CO[k];
   Object.assign(CO,CO_DEFAULT,saved);
+  applyCustomLogo();
 }
 // 把公司名应用到全局品牌位置：浏览器标题、登录页副标题、顶栏
 function applyCompanyBranding(){
@@ -4117,13 +4126,47 @@ function pgSettings(){
     var rb=document.getElementById('cfg-reset-btn');if(rb){rb.disabled=locked;rb.style.opacity=locked?'.45':'1';rb.style.cursor=locked?'not-allowed':'pointer';}
     var ub=document.getElementById('cfg-unlock-btn');if(ub)ub.style.display=locked?'inline-flex':'none';
     var lockTag=document.getElementById('cfg-lock-tag');if(lockTag)lockTag.style.display=locked?'none':'inline-flex';
+    // Logo 上传/恢复按钮跟随锁定
+    ['cfg-logo-pick','cfg-logo-clear'].forEach(function(bid){var b=document.getElementById(bid);if(b){b.disabled=locked;b.style.opacity=locked?'.45':'1';b.style.cursor=locked?'not-allowed':'pointer';}});
   }
 
   // ━━ ① 基本信息 ━━
   var sec1=section('① 基本信息（公司全称+简称）','🏢','#EFF6FF','#BFDBFE','#1e3a8a');
   field(sec1.body,'公司全称 *','cfg-nm',CO.nm,'例：东莞市巨人纺织有限公司',true);
   field(sec1.body,'公司简称','cfg-shortNm',CO.shortNm,'例：巨人纺织');
-  field(sec1.body,'公司 Logo URL（可选）','cfg-logo','','留空使用默认 Logo');
+  // Logo 上传（本地图片 → base64）
+  (function(){
+    var w=document.createElement('div');
+    var l=document.createElement('label');l.style.cssText='display:block;font-size:10.5px;font-weight:600;color:#475569;margin-bottom:4px';
+    l.textContent='公司 Logo（上传本地图片，自动用于所有单据）';
+    var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px';
+    // 预览
+    var preview=document.createElement('img');preview.id='cfg-logo-preview';
+    preview.src=(CO.logo&&/^data:image\//.test(CO.logo))?CO.logo:LOGO;
+    preview.style.cssText='width:44px;height:44px;object-fit:contain;border:1px solid #E2E8F0;border-radius:6px;background:#fff;flex-shrink:0';
+    // 隐藏存值（base64）
+    var hid=document.createElement('input');hid.type='hidden';hid.id='cfg-logo';hid.value=CO.logo||'';
+    // 文件选择
+    var fileInp=document.createElement('input');fileInp.type='file';fileInp.accept='image/png,image/jpeg,image/jpg,image/webp';fileInp.id='cfg-logo-file';fileInp.style.display='none';
+    var pickBtn=document.createElement('button');pickBtn.type='button';pickBtn.id='cfg-logo-pick';pickBtn.textContent='📁 选择图片';
+    pickBtn.style.cssText='padding:7px 14px;background:#fff;border:1.5px solid #CBD5E1;border-radius:6px;font-size:11.5px;cursor:pointer;color:#475569;font-weight:600';
+    pickBtn.onclick=function(){if(this.disabled)return;fileInp.click();};
+    var clearBtn=document.createElement('button');clearBtn.type='button';clearBtn.id='cfg-logo-clear';clearBtn.textContent='↺ 用默认';
+    clearBtn.style.cssText='padding:7px 12px;background:#fff;border:1px solid #E2E8F0;border-radius:6px;font-size:11px;cursor:pointer;color:#94A3B8';
+    clearBtn.onclick=function(){if(this.disabled)return;hid.value='';preview.src=LOGO_DEFAULT;showToast('Logo 将恢复为默认（保存后生效）','info');};
+    fileInp.onchange=function(){
+      var f=this.files&&this.files[0];if(!f)return;
+      if(f.size>500*1024){alert('图片过大（建议 <500KB）。请压缩后再上传，避免拖慢同步。');this.value='';return;}
+      var reader=new FileReader();
+      reader.onload=function(e){hid.value=e.target.result;preview.src=e.target.result;showToast('Logo 已选好（点保存后生效）','success');};
+      reader.readAsDataURL(f);
+    };
+    var hint=document.createElement('div');hint.style.cssText='font-size:10px;color:#94A3B8;margin-top:4px';
+    hint.textContent='支持 PNG/JPG，建议正方形、<500KB。会同步到云端，备用电脑也用同一 Logo。';
+    row.appendChild(preview);row.appendChild(pickBtn);row.appendChild(clearBtn);row.appendChild(fileInp);
+    w.appendChild(l);w.appendChild(row);w.appendChild(hint);
+    sec1.body.appendChild(w);
+  })();
   cb.appendChild(sec1.el);
 
   // ━━ ② 联络信息 ━━
@@ -4183,7 +4226,8 @@ function pgSettings(){
       preparerTel:document.getElementById('cfg-preparerTel').value.trim(),
       bankName:document.getElementById('cfg-bankName').value.trim(),
       bankAccount:document.getElementById('cfg-bankAccount').value.trim(),
-      bankAccountHolder:document.getElementById('cfg-bankAccountHolder').value.trim()
+      bankAccountHolder:document.getElementById('cfg-bankAccountHolder').value.trim(),
+      logo:(document.getElementById('cfg-logo')||{value:''}).value
     };
     if(!data.nm){alert('「公司全称」必填');return;}
     if(!data.addr){alert('「公司地址」必填');return;}

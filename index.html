@@ -2716,10 +2716,11 @@ function defaultReceiptAccount(){
   return {type:'company',name:CO.bankAccountHolder||CO.nm,bank:CO.bankName,no:CO.bankAccount,note:''};
 }
 function builtinReceiptAccounts(){
+  // 模板只内置「公司对公账户」（从公司档案 CO 自动读取）
+  // 个人代收账户等其它账户由用户在「收款账户设置」里自行添加，不写死
   var d=defaultReceiptAccount();
   return [
-    {id:'receipt_company_default',label:'公司对公账户',type:d.type,name:d.name,bank:d.bank,no:d.no,note:d.note,isDefault:true},
-    {id:'receipt_personal_jjs_agbank',label:'个人代收账户-蒋劲松',type:'personal',name:'蒋劲松',bank:'农业银行',no:'6228480604742603912',note:'客户不需开票时使用；请确认收入已入账申报。',isDefault:false}
+    {id:'receipt_company_default',label:'公司对公账户',type:d.type,name:d.name,bank:d.bank,no:d.no,note:d.note,isDefault:true}
   ];
 }
 function receiptAccounts(){
@@ -4184,10 +4185,22 @@ function pgSettings(){
   cb.appendChild(sec3.el);
 
   // ━━ ④ 财务信息 ━━
-  var sec4=section('④ 财务信息（对账单收款账户）','💰','#FEF2F2','#FECACA','#991B1B');
+  var sec4=section('④ 财务信息（默认对公收款账户）','💰','#FEF2F2','#FECACA','#991B1B');
   field(sec4.body,'开户行 *','cfg-bankName',CO.bankName,'例：东莞银行股份有限公司长安支行',true);
   field(sec4.body,'银行账号 *','cfg-bankAccount',CO.bankAccount,'例：539000015553633');
   field(sec4.body,'账户名（一般同公司全称）','cfg-bankAccountHolder',CO.bankAccountHolder,'账户持有人名称');
+  // 多账户管理入口（公司有多个收款账户 / 个人代收账户时用）
+  (function(){
+    var w=document.createElement('div');w.style.gridColumn='span 2';
+    w.style.cssText+=';margin-top:2px;padding:10px 12px;background:#fff;border:1px dashed #FCA5A5;border-radius:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    var txt=document.createElement('div');txt.style.cssText='flex:1;font-size:11px;color:#991B1B;line-height:1.6;min-width:200px';
+    txt.innerHTML='<b>多个收款账户？</b> 上面是<b>默认对公账户</b>。若还有其它对公账户或个人代收账户，点右侧管理 —— 打印对账单时可逐张选用哪个账户。';
+    var mgrBtn=document.createElement('button');mgrBtn.type='button';mgrBtn.textContent='🏦 管理多个收款账户';
+    mgrBtn.style.cssText='padding:8px 16px;background:#DC2626;border:none;color:#fff;border-radius:6px;font-size:11.5px;cursor:pointer;font-weight:700;white-space:nowrap';
+    mgrBtn.onclick=function(){openReceiptAccountManager();};
+    w.appendChild(txt);w.appendChild(mgrBtn);
+    sec4.body.appendChild(w);
+  })();
   cb.appendChild(sec4.el);
 
   // ━━ 提示 ━━

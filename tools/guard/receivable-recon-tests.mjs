@@ -71,13 +71,16 @@ test('receivable account fields are readonly snapshot displays', () => {
   must(/对账单内只保存并打印账户快照/, 'account snapshot help text exists');
 });
 
-test('personal receipt account is selectable but never default', () => {
-  must(/id:'receipt_personal_jjs_agbank'/, 'personal receipt account id exists');
-  must(/label:'个人代收账户-蒋劲松'/, 'personal receipt account label exists');
-  must(/no:'6228480604742603912'/, 'personal receipt account number exists');
-  must(/isDefault:false/, 'personal receipt account is not default');
+test('personal receipt account is supported but never auto-default', () => {
+  // 新约定（模板化）：不再写死个人银行卡号种子，用户自行在管理器添加
+  // 但「个人账户类型」「不强制为默认」「合规警告」三项契约必须保留
+  must(/type:a\.type==='personal'\?'personal':'company'/, 'personal account type supported');
   must(/个人代收账户仅作为特殊收款渠道记录/, 'personal account UI warning exists');
   must(/不开票不等于不入账/, 'personal account compliance warning exists');
+  // 模板种子不再含个人卡号
+  if (/6228480604742603912/.test(html)) {
+    throw new Error('模板种子仍写死个人银行卡号，应已移除');
+  }
 });
 
 let passed = 0;

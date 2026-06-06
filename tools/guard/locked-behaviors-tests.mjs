@@ -306,6 +306,41 @@ test('默认收款账户必须从 CO 读取（不能硬编码银行账号）', (
 });
 
 // ═══════════════════════════════════════════════
+// 锁 19-21：设置面板增强 (Q2/Q3/Q4)
+// ═══════════════════════════════════════════════
+test('公司档案必须有密码锁（setSettingsLocked + verifyPwd 解锁）', () => {
+  if (!/function setSettingsLocked\(/.test(html)) {
+    throw new Error('setSettingsLocked 被删除 — 公司档案防误改密码锁失效');
+  }
+  if (!/cfg-unlock-btn[\s\S]{0,400}?verifyPwd/.test(html)) {
+    throw new Error('解锁按钮不再调用 verifyPwd — 谁都能改公司档案');
+  }
+});
+
+test('公司 Logo 必须支持本地上传（FileReader → base64 → CO.logo）', () => {
+  if (!/function applyCustomLogo\(\)/.test(html)) {
+    throw new Error('applyCustomLogo 被删除 — 自定义 logo 无法生效');
+  }
+  if (!/cfg-logo-file/.test(html)) {
+    throw new Error('Logo 文件选择控件 cfg-logo-file 缺失');
+  }
+  if (!/readAsDataURL/.test(html)) {
+    throw new Error('Logo 上传不再用 FileReader.readAsDataURL — 本地上传失效');
+  }
+  if (!/LOGO=\(CO\.logo&&/.test(html)) {
+    throw new Error('applyCustomLogo 不再用 CO.logo 覆盖全局 LOGO');
+  }
+});
+
+test('收款账户模板种子不能写死个人银行卡号', () => {
+  const m = html.match(/function builtinReceiptAccounts\(\)\{[\s\S]{0,400}?\n\}/);
+  if (!m) throw new Error('找不到 builtinReceiptAccounts 函数');
+  if (/6228480604742603912/.test(m[0])) {
+    throw new Error('模板种子又写死了个人银行卡号 — 同行复用会带上别人的私人账户');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

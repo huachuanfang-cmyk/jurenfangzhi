@@ -2351,6 +2351,8 @@ async function onAuthSuccess(){
     location.reload();
     return;
   }
+  // R3：按角色隐藏左侧菜单
+  applyRoleMenu();
 
   // 自动迁移：如果本地有数据但Supabase没有，推上去
   if(isOnline() && _supabase){
@@ -2791,6 +2793,40 @@ function resolveCurrentUser(){
 }
 // 当前角色是否管理员（blocked 用户不是管理员）
 function isAdmin(){return !_currentUser||(_currentUser.role==='admin'&&!_currentUser.blocked);}
+
+// ── R3：页面级权限 — 每个角色能进哪些菜单 ──
+// admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
+var ROLE_PAGES={
+  finance:  ['dash','recon','arec','quot','custs','settings'],
+  sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice'],
+  purchase: ['dash','yarn','greyfab','yarnout','ystock','dw','dd','facts','mat'],
+  warehouse:['dash','fgstock','ystock']
+};
+function canAccessPage(page){
+  if(!_currentUser)return true; // 未建用户体系 → 不限制
+  var role=_currentUser.role;
+  if(role==='admin'||role==='readonly')return true; // 管理员全开；只读可看全部（编辑限制留待 R4）
+  var allowed=ROLE_PAGES[role]||['dash'];
+  return allowed.indexOf(page)>=0;
+}
+// 按当前角色显示/隐藏左侧菜单项 + 空分组标题
+function applyRoleMenu(){
+  if(!_currentUser)return;
+  document.querySelectorAll('#sb .ni').forEach(function(el){
+    var pg=el.dataset.page;if(!pg)return;
+    if(pg==='recv'||pg==='payb')return; // 这两个默认隐藏，不动
+    el.style.display=canAccessPage(pg)?'':'none';
+  });
+  // 隐藏后面没有任何可见菜单项的分组标题
+  document.querySelectorAll('#sb .nl').forEach(function(lbl){
+    var sib=lbl.nextElementSibling,anyVisible=false;
+    while(sib&&!sib.classList.contains('nl')){
+      if(sib.classList.contains('ni')&&sib.style.display!=='none'){anyVisible=true;break;}
+      sib=sib.nextElementSibling;
+    }
+    lbl.style.display=anyVisible?'':'none';
+  });
+}
 // 制单人：优先用当前登录人姓名，没有则回退公司档案默认制单人
 function currentPreparer(){
   if(_currentUser&&_currentUser.name)return _currentUser.name;
@@ -3025,6 +3061,8 @@ document.querySelectorAll('.ni').forEach(function(el){
 // 页面初始化：加载工作台（延迟确保所有函数和DOM就绪）
 setTimeout(function(){if(!_testMode)go('dash');},0);
 function go(p){
+  // R3：越权拦截 — 当前角色不能进的页面，挡回工作台
+  if(!canAccessPage(p)){showToast('你的角色无权访问该功能','error');p='dash';}
   document.querySelectorAll('.ni').forEach(function(el){el.classList.toggle('on',el.dataset.page===p);});
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];

@@ -188,6 +188,8 @@ input[type=number]{-moz-appearance:textfield}
   <div class="ni" data-page="facts"><span class="nic">&#127981;</span>加工厂档案</div>
   <div class="ni" data-page="mat"><span class="nic">&#129529;</span>物料档案</div>
   <div class="ni" data-page="cnotice"><span class="nic">&#127881;</span>打办通知单</div>
+  <div class="nl">系统</div>
+  <div class="ni" data-page="settings"><span class="nic">&#9881;&#65039;</span>公司档案</div>
 </div>
 <div id="mn">
   <div class="topb">
@@ -2913,7 +2915,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings};
   if(fn[p])fn[p]();
 }
 
@@ -4038,6 +4040,137 @@ function compSort(arr){
   main.sort(function(a,b){return (parseFloat(b.pct)||0)-(parseFloat(a.pct)||0);});
   return main.concat(last);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ═══ 公司档案 / 系统设置 (Phase B) ═══
+// 提供 UI 让用户编辑 CO 对象，保存到 DB('company')
+// 修改后调用 refreshCO() 让全系统打印模板立刻用新值
+// 后续 Phase C/D 把硬编码字符串迁移到 CO.xxx 时无需改这里
+// ═══════════════════════════════════════════════════════════════
+function pgSettings(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  refreshCO(); // 进入页面前先同步一次，避免显示老数据
+
+  // 头部说明
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:linear-gradient(90deg,#EFF6FF,#F0FDF4);border:1px solid #BFDBFE;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
+  hdr.innerHTML='<span style="font-size:24px">⚙️</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#1e3a8a">公司档案 — 系统级配置</div>'
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">这里的所有信息会自动用到销售合同、送货单、对账单、加工单等打印模板。同行复用本系统只需修改这里。</div></div>';
+  pg.appendChild(hdr);
+
+  // 表单容器
+  var card=document.createElement('div');card.className='card';
+  var cb=document.createElement('div');cb.className='cb';cb.style.cssText='padding:18px 22px;display:flex;flex-direction:column;gap:18px';
+
+  // 工具函数：分区块
+  function section(title,iconChar,bg,border,labelColor){
+    var s=document.createElement('div');
+    s.style.cssText='border:1px solid '+border+';background:'+bg+';border-radius:8px;overflow:hidden';
+    var h=document.createElement('div');
+    h.style.cssText='padding:10px 14px;background:'+border+'33;border-bottom:1px solid '+border+';font-size:11px;font-weight:700;letter-spacing:1.5px;color:'+labelColor;
+    h.textContent=iconChar+'  '+title;
+    s.appendChild(h);
+    var body=document.createElement('div');body.style.cssText='padding:14px 16px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px';
+    s.appendChild(body);
+    return {el:s,body:body};
+  }
+  // 工具函数：字段
+  function field(parent,label,id,val,placeholder,fullWidth){
+    var w=document.createElement('div');
+    if(fullWidth)w.style.gridColumn='span 2';
+    var l=document.createElement('label');l.style.cssText='display:block;font-size:10.5px;font-weight:600;color:#475569;margin-bottom:4px';
+    l.textContent=label;
+    var i=document.createElement('input');i.type='text';i.id=id;i.value=val||'';i.placeholder=placeholder||'';
+    i.style.cssText='padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12.5px;background:#fff;color:#0f172a;width:100%;box-sizing:border-box;outline:none;transition:border-color .12s';
+    i.onfocus=function(){this.style.borderColor='#3B82F6';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)';};
+    i.onblur=function(){this.style.borderColor='#E2E8F0';this.style.boxShadow='none';};
+    w.appendChild(l);w.appendChild(i);parent.appendChild(w);
+  }
+
+  // ━━ ① 基本信息 ━━
+  var sec1=section('① 基本信息（公司全称+简称）','🏢','#EFF6FF','#BFDBFE','#1e3a8a');
+  field(sec1.body,'公司全称 *','cfg-nm',CO.nm,'例：东莞市巨人纺织有限公司',true);
+  field(sec1.body,'公司简称','cfg-shortNm',CO.shortNm,'例：巨人纺织');
+  field(sec1.body,'公司 Logo URL（可选）','cfg-logo','','留空使用默认 Logo');
+  cb.appendChild(sec1.el);
+
+  // ━━ ② 联络信息 ━━
+  var sec2=section('② 联络信息（打印抬头使用）','📞','#F0FDF4','#BBF7D0','#166534');
+  field(sec2.body,'公司地址 *','cfg-addr',CO.addr,'例：广东省东莞市虎门镇...',true);
+  field(sec2.body,'电话 *','cfg-tel',CO.tel,'例：(86)769-85390688');
+  field(sec2.body,'传真','cfg-fax',CO.fax,'例：(86)769-85394002');
+  field(sec2.body,'邮箱','cfg-email',CO.email,'例：contact@company.com');
+  cb.appendChild(sec2.el);
+
+  // ━━ ③ 单据制单 ━━
+  var sec3=section('③ 单据制单（打印落款）','✍️','#FFFBEB','#FDE68A','#92400E');
+  field(sec3.body,'默认制单人姓名 *','cfg-preparer',CO.preparer,'例：蒋劲松');
+  field(sec3.body,'制单人联系电话','cfg-preparerTel',CO.preparerTel,'例：(86)769-85390688');
+  cb.appendChild(sec3.el);
+
+  // ━━ ④ 财务信息 ━━
+  var sec4=section('④ 财务信息（对账单收款账户）','💰','#FEF2F2','#FECACA','#991B1B');
+  field(sec4.body,'开户行 *','cfg-bankName',CO.bankName,'例：东莞银行股份有限公司长安支行',true);
+  field(sec4.body,'银行账号 *','cfg-bankAccount',CO.bankAccount,'例：539000015553633');
+  field(sec4.body,'账户名（一般同公司全称）','cfg-bankAccountHolder',CO.bankAccountHolder,'账户持有人名称');
+  cb.appendChild(sec4.el);
+
+  // ━━ 提示 ━━
+  var tip=document.createElement('div');
+  tip.style.cssText='background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:6px;padding:10px 14px;font-size:11px;color:#475569;line-height:1.8';
+  tip.innerHTML='💡 <b>保存后的效果：</b><br>'
+    +'· 所有打印模板（销售合同、送货单、对账单、加工单等）会立即用新信息<br>'
+    +'· 配置存在本机 + 自动同步到云端，备用电脑刷新后也是新值<br>'
+    +'· 改错了想还原：点底部「恢复默认（巨人纺织）」即可';
+  cb.appendChild(tip);
+
+  // ━━ 操作按钮 ━━
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:10px;justify-content:flex-end;margin-top:6px';
+  var resetBtn=document.createElement('button');
+  resetBtn.type='button';resetBtn.textContent='↺ 恢复默认（巨人纺织）';
+  resetBtn.style.cssText='padding:9px 18px;background:#F3F4F6;border:1px solid #D1D5DB;color:#374151;border-radius:6px;font-size:12px;cursor:pointer;font-weight:500';
+  resetBtn.onclick=function(){
+    if(!confirm('确认恢复为默认的"东莞市巨人纺织"配置？\n\n当前自定义内容将被清除。'))return;
+    DB.remove('company','*'); // 占位，下面用 save({}) 真正清除
+    DB.save('company',{}); refreshCO(); pgSettings();
+    showToast('已恢复默认配置 ✓','success');
+  };
+  var saveBtn=document.createElement('button');
+  saveBtn.type='button';saveBtn.textContent='💾 保存公司档案';
+  saveBtn.style.cssText='padding:9px 22px;background:#1565C0;border:none;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700';
+  saveBtn.onclick=function(){
+    var data={
+      nm:document.getElementById('cfg-nm').value.trim(),
+      shortNm:document.getElementById('cfg-shortNm').value.trim(),
+      addr:document.getElementById('cfg-addr').value.trim(),
+      tel:document.getElementById('cfg-tel').value.trim(),
+      fax:document.getElementById('cfg-fax').value.trim(),
+      email:document.getElementById('cfg-email').value.trim(),
+      preparer:document.getElementById('cfg-preparer').value.trim(),
+      preparerTel:document.getElementById('cfg-preparerTel').value.trim(),
+      bankName:document.getElementById('cfg-bankName').value.trim(),
+      bankAccount:document.getElementById('cfg-bankAccount').value.trim(),
+      bankAccountHolder:document.getElementById('cfg-bankAccountHolder').value.trim()
+    };
+    if(!data.nm){alert('「公司全称」必填');return;}
+    if(!data.addr){alert('「公司地址」必填');return;}
+    if(!data.tel){alert('「电话」必填');return;}
+    if(!data.preparer){alert('「默认制单人姓名」必填');return;}
+    if(!data.bankName||!data.bankAccount){alert('「开户行」和「银行账号」必填');return;}
+    DB.save('company',data);
+    refreshCO();
+    // 顶部副标题立即生效
+    var ps=document.getElementById('ps');if(ps)ps.textContent=CO.nm;
+    showToast('公司档案已保存 ✓ 所有打印模板和落款将立即使用新信息','success');
+  };
+  btnRow.appendChild(resetBtn);btnRow.appendChild(saveBtn);
+  cb.appendChild(btnRow);
+
+  card.appendChild(cb);pg.appendChild(card);
+}
+// ═══════════════════════════════════════════════════════════════
 
 // ═══ 打办通知单模块 ═══
 function pgColorNotice(){

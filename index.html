@@ -2340,6 +2340,17 @@ async function onAuthSuccess(){
   refreshCO();applyCompanyBranding();
   // 解析当前登录用户的姓名+角色（R2：制单人随登录人变）
   resolveCurrentUser();
+  // 安全边界：已建用户名单但登录邮箱不在内（陌生人）或已停用 → 拒绝进入并登出
+  if(_currentUser&&_currentUser.blocked){
+    var _bmsg=_currentUser.role===null
+      ?'此账号未被授权使用本系统。\n请联系管理员在「用户管理」里添加你的邮箱后再登录。'
+      :'此账号已被停用。\n请联系管理员。';
+    alert('⛔ 登录被拒绝\n\n'+_bmsg+'\n\n登录邮箱：'+(_currentUser.email||''));
+    try{ if(_supabase) await _supabase.auth.signOut(); }catch(e){}
+    _authUser=null;_currentUser=null;
+    location.reload();
+    return;
+  }
 
   // 自动迁移：如果本地有数据但Supabase没有，推上去
   if(isOnline() && _supabase){
@@ -2760,20 +2771,26 @@ var _currentUser=null;
 function appUsers(){var l=DB.load('users');return Array.isArray(l)?l:[];}
 function saveAppUsers(v){DB.save('users',v);}
 // 根据登录邮箱解析当前用户档案（姓名+角色）
+// 返回 {blocked:true} 表示该登录身份不被允许（陌生邮箱 / 已停用），调用方应拒绝进入
 function resolveCurrentUser(){
   var email=(_authUser&&_authUser.email||'').trim().toLowerCase();
   var users=appUsers();
   var hit=users.find(function(u){return u&&(u.email||'').trim().toLowerCase()===email;});
   if(hit){
-    _currentUser={email:email,name:hit.name||'',role:hit.role||'admin',active:hit.active!==false};
+    var active=hit.active!==false;
+    _currentUser={email:email,name:hit.name||'',role:hit.role||'sales',active:active,blocked:!active};
+  }else if(users.length===0){
+    // 名单为空 = 还没建用户体系 → 向后兼容：谁登录都是管理员（单人模式）
+    _currentUser={email:email,name:'',role:'admin',active:true,blocked:false};
   }else{
-    // 档案里没有该邮箱 → 默认按管理员处理（向后兼容：未建用户体系时谁登录都是管理员）
-    _currentUser={email:email,name:'',role:'admin',active:true};
+    // 名单已建立但该邮箱不在内 = 陌生人 → 拦截，不给任何权限
+    // 这是关键安全边界：即使有人偷偷在 Supabase 注册，没进名单也进不来
+    _currentUser={email:email,name:'',role:null,active:false,blocked:true};
   }
   return _currentUser;
 }
-// 当前角色是否管理员
-function isAdmin(){return !_currentUser||_currentUser.role==='admin';}
+// 当前角色是否管理员（blocked 用户不是管理员）
+function isAdmin(){return !_currentUser||(_currentUser.role==='admin'&&!_currentUser.blocked);}
 // 制单人：优先用当前登录人姓名，没有则回退公司档案默认制单人
 function currentPreparer(){
   if(_currentUser&&_currentUser.name)return _currentUser.name;

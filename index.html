@@ -2303,11 +2303,15 @@ async function onAuthSuccess(){
   _authReady = true;
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
+  // 登录后用公司档案刷新一次品牌（标题/顶栏），云端同步完成后会再刷一次
+  refreshCO();applyCompanyBranding();
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
 
   // 从Supabase拉取数据
   await pullFromSupabase();
+  // 云端可能带回最新公司档案，再刷一次品牌
+  refreshCO();applyCompanyBranding();
 
   // 自动迁移：如果本地有数据但Supabase没有，推上去
   if(isOnline() && _supabase){
@@ -2687,6 +2691,16 @@ function refreshCO(){
   var saved=DB.load('company')||{};
   for(var k in CO)delete CO[k];
   Object.assign(CO,CO_DEFAULT,saved);
+}
+// 把公司名应用到全局品牌位置：浏览器标题、登录页副标题、顶栏
+function applyCompanyBranding(){
+  try{
+    if(document&&document.title!==undefined)document.title=CO.nm+' ERP';
+    var loginSub=document.querySelector('.sub');if(loginSub)loginSub.textContent=CO.nm;
+    var ps=document.getElementById('ps');
+    // 顶栏副标题仅当前是公司名（工作台）时才更新，避免覆盖页面描述
+    if(ps&&(ps.textContent===CO_DEFAULT.nm||ps.textContent===CO.nm))ps.textContent=CO.nm;
+  }catch(e){}
 }
 function defaultReceiptAccount(){
   return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
@@ -4161,8 +4175,7 @@ function pgSettings(){
     if(!data.bankName||!data.bankAccount){alert('「开户行」和「银行账号」必填');return;}
     DB.save('company',data);
     refreshCO();
-    // 顶部副标题立即生效
-    var ps=document.getElementById('ps');if(ps)ps.textContent=CO.nm;
+    applyCompanyBranding();
     showToast('公司档案已保存 ✓ 所有打印模板和落款将立即使用新信息','success');
   };
   btnRow.appendChild(resetBtn);btnRow.appendChild(saveBtn);
@@ -11579,8 +11592,8 @@ function openYarnM(id){
     supLeft.appendChild(supSel);supLeft.appendChild(supInp);
     var supRight=document.createElement('div');
     supRight.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">需方（乙方）</div>'
-      +'<div style="font-size:12px;font-weight:700;color:var(--t1)">东莞市巨人纺织有限公司</div>'
-      +'<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.7">联系人：蒋劲松 · 13798269736<br>传真：(86)769-85394002</div>';
+      +'<div style="font-size:12px;font-weight:700;color:var(--t1)">'+esc(CO.nm)+'</div>'
+      +'<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.7">联系人：'+esc(CO.preparer)+'<br>传真：'+esc(CO.fax)+'</div>';
     partyRow.appendChild(supLeft);partyRow.appendChild(supRight);
     body.appendChild(partyRow);
 
@@ -11698,11 +11711,11 @@ function yarnPrintContract(id){
     +'.sign-line{border-bottom:1px solid #aaa;margin:14px 0 5px}'
     +'.sign-sub{font-size:9px;color:#aaa}'
     +'</style></head><body>'
-    +'<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><img src="'+LOGO+'" style="width:52px;height:52px;object-fit:contain;flex-shrink:0"><div><div class="co">东莞市巨人纺织有限公司</div><div class="co-sub">地址：广东省东莞市虎门镇宁馨南路17号1号楼<br>电话：(86)769-85390588　传真：(86)769-85394002　联系人：蒋劲松 · 13798269736</div></div></div>'
+    +'<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><img src="'+LOGO+'" style="width:52px;height:52px;object-fit:contain;flex-shrink:0"><div><div class="co">'+esc(CO.nm)+'</div><div class="co-sub">地址：'+esc(CO.addr)+'<br>电话：'+esc(CO.tel)+'　传真：'+esc(CO.fax)+'　联系人：'+esc(CO.preparer)+'</div></div></div>'
     +'<div><div class="doc-title">原　料　订　购　合　同</div><div class="doc-no">'+(r.ordNo||r.poNo||'')+'</div></div></div>'
     +'<div class="meta">'
     +'<div class="meta-box"><div class="meta-lbl">供方（甲方）</div><div class="meta-val">'+(r.supplier||'&nbsp;')+'</div><div class="meta-sub">联系人：________________　电话：________________</div></div>'
-    +'<div class="meta-box"><div class="meta-lbl">需方（乙方）</div><div class="meta-val">东莞市巨人纺织有限公司</div><div class="meta-sub">联系人：蒋劲松　电话：13798269736</div></div>'
+    +'<div class="meta-box"><div class="meta-lbl">需方（乙方）</div><div class="meta-val">'+esc(CO.nm)+'</div><div class="meta-sub">联系人：'+esc(CO.preparer)+'</div></div>'
     +'</div>'
     +'<div class="dates">'
     +'<span>下单日期：<strong>'+(r.ordDate||'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;')+'</strong></span>'
@@ -11730,7 +11743,7 @@ function yarnPrintContract(id){
     +'</div>'
     +'<div class="sign">'
     +'<div class="sign-box"><div class="sign-lbl">供方（甲方）确认盖章</div><div style="font-size:12px;font-weight:700;margin-bottom:8px">'+(r.supplier||'&nbsp;')+'</div><div class="sign-line"></div><div class="sign-sub">签字：________________　日期：________________</div></div>'
-    +'<div class="sign-box"><div class="sign-lbl">需方（乙方）确认</div><div style="font-size:11px;font-weight:600;margin-bottom:10px">东莞市巨人纺织有限公司</div><div class="sign-line"></div><div class="sign-sub">签字：蒋劲松　日期：________________</div></div>'
+    +'<div class="sign-box"><div class="sign-lbl">需方（乙方）确认</div><div style="font-size:11px;font-weight:600;margin-bottom:10px">'+esc(CO.nm)+'</div><div class="sign-line"></div><div class="sign-sub">签字：'+esc(CO.preparer)+'　日期：________________</div></div>'
     +'</div></body></html>';
   printHTML(html);
 }
@@ -15436,8 +15449,8 @@ function openGreyFabM(id,readonly){
     ctPhRow.appendChild(ctInp);ctPhRow.appendChild(phInp);supLeft.appendChild(ctPhRow);
     var buyRight=document.createElement('div');
     buyRight.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">需方（乙方）</div>'
-      +'<div style="font-size:13px;font-weight:700;color:var(--t1)">东莞市巨人纺织有限公司</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-top:4px">联系人：蒋劲松　电话：13798269736</div>';
+      +'<div style="font-size:13px;font-weight:700;color:var(--t1)">'+esc(CO.nm)+'</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:4px">联系人：'+esc(CO.preparer)+'</div>';
     partyRow.appendChild(supLeft);partyRow.appendChild(buyRight);
     body.appendChild(partyRow);
 
@@ -15620,8 +15633,8 @@ function prtGreyFab(id){
     '</div>'+
     '<div class="party-box">'+
       '<div class="party-lbl">需方（乙方）</div>'+
-      '<div class="party-name">东莞市巨人纺织有限公司</div>'+
-      '<div class="party-info">联系人：蒋劲松　电话：13798269736</div>'+
+      '<div class="party-name">'+esc(CO.nm)+'</div>'+
+      '<div class="party-info">联系人：'+esc(CO.preparer)+'</div>'+
     '</div>'+
   '</div>'+
   // 日期信息
@@ -15668,8 +15681,8 @@ function prtGreyFab(id){
     '</div>'+
     '<div style="border:1px solid #ccc;border-radius:3px;padding:10px 12px">'+
       '<div style="font-size:7pt;color:#888;font-weight:700;letter-spacing:1px;margin-bottom:5px">需方（乙方）确认</div>'+
-      '<div style="font-size:12pt;font-weight:700;margin-bottom:14mm">东莞市巨人纺织有限公司</div>'+
-      '<div style="border-top:1px solid #999;padding-top:4px;font-size:8pt;color:#555">签字：蒋劲松　日期：________________</div>'+
+      '<div style="font-size:12pt;font-weight:700;margin-bottom:14mm">'+esc(CO.nm)+'</div>'+
+      '<div style="border-top:1px solid #999;padding-top:4px;font-size:8pt;color:#555">签字：'+esc(CO.preparer)+'　日期：________________</div>'+
     '</div>'+
   '</div>';
   printDoc('胚布订购合同',body,r.contractNo||'');

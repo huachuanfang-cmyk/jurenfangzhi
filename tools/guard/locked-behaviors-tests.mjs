@@ -244,6 +244,39 @@ test('pgSettings 保存按钮必须调用 DB.save(company) + refreshCO()', () =>
 });
 
 // ═══════════════════════════════════════════════
+// 锁 15-16：公司档案迁移 (Phase C)
+// 原 bug：公司名硬编码在打印模板，同行复用要逐处替换
+// ═══════════════════════════════════════════════
+test('原料/胚布订购合同打印模板不能再硬编码公司名（必须用 CO.nm）', () => {
+  // 打印合同的乙方落款应该用 CO.nm 而非写死的公司名
+  // 允许 CO_DEFAULT 定义、设置面板 placeholder、收款账户 fallback 保留默认值
+  const lines = html.split('\n');
+  const offenders = [];
+  lines.forEach((line, i) => {
+    if (!line.includes('东莞市巨人纺织有限公司')) return;
+    // 白名单：这些位置保留硬编码默认值是合理的
+    if (/CO_DEFAULT|cfg-nm|receiptAccountName|defaultReceiptAccount|bankAccountHolder:|name:\(r&&r\.receiptAccountName\)/.test(line)) return;
+    // 静态品牌位置（title / 登录页 / 顶栏默认值）也允许 — 由 applyCompanyBranding 运行时覆盖
+    if (/<title>|class="sub"|id="ps"/.test(line)) return;
+    // 其余出现在 JS 打印模板字符串里的硬编码 = 违规
+    if (/innerHTML|class="(co|party-name|meta-val|sign-)|font-weight:700|font-size:1[012]p/.test(line)) {
+      offenders.push((i + 1) + ': ' + line.trim().slice(0, 80));
+    }
+  });
+  if (offenders.length) {
+    throw new Error('打印模板仍有硬编码公司名，同行无法一键替换：\n' + offenders.join('\n'));
+  }
+});
+
+test('applyCompanyBranding 函数必须存在并更新 document.title', () => {
+  const m = html.match(/function applyCompanyBranding\(\)\{[\s\S]{0,400}?\n\}/);
+  if (!m) throw new Error('applyCompanyBranding 函数被删除 — 公司名无法应用到标题/登录页');
+  if (!/document\.title=CO\.nm/.test(m[0])) {
+    throw new Error('applyCompanyBranding 不再更新 document.title');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

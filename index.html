@@ -2351,7 +2351,19 @@ async function onAuthSuccess(){
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
   var cpBtn=document.getElementById('chpwd-btn');if(cpBtn)cpBtn.style.display='inline-block';
 
-  // ── 立即用本地缓存解析角色 + 隐藏菜单（同设备刷新时秒生效，避免 10 秒"管理员闪现"）──
+  // ── 先单独快速拉「用户名单」这张小表（秒级），让角色立即正确 ──
+  // 解决：安全退出会清本地缓存，再登录时本地无 app_users → 早期解析默认 admin → 闪现
+  try{
+    if(_supabaseData&&isOnline()){
+      var _ures=await _supabaseData.from('app_users').select('*');
+      if(_ures&&!_ures.error&&Array.isArray(_ures.data)){
+        var _ulist=_ures.data.map(snakeToCamel);
+        localStorage.setItem(DB.k('users'),JSON.stringify(_ulist));
+        DB._c['users']=_ulist;
+      }
+    }
+  }catch(e){}
+  // 用刚拉到的用户名单解析角色 + 隐藏菜单（避免 10 秒"管理员闪现"）
   resolveCurrentUser();
   applyRoleMenu();
 
@@ -2829,6 +2841,12 @@ function canAccessPage(page){
   if(role==='admin'||role==='readonly')return true; // 管理员全开；只读可看全部（编辑限制留待 R4）
   var allowed=ROLE_PAGES[role]||['dash'];
   return allowed.indexOf(page)>=0;
+}
+// 是否能看财务数据（金额/应收催款）：仅管理员、财务、只读
+function canSeeFinance(){
+  if(!_currentUser)return true; // 未建用户体系 → 不限制
+  var role=_currentUser.role;
+  return role==='admin'||role==='finance'||role==='readonly';
 }
 // 按当前角色显示/隐藏左侧菜单项 + 空分组标题
 function applyRoleMenu(){
@@ -3498,11 +3516,12 @@ function pgDash(){
   var activeCount=active.length-fullyOutIds.length;
   var activeHint='共'+orders.length+'张'+(fullyOutIds.length?'·出货'+fullyOutIds.length+'张':'');
   var sr=document.createElement('div');sr.className='sr';
-  sr.style.gridTemplateColumns='repeat(3,1fr)';
-  [[activeCount,'进行中订单',activeHint,'sb',function(){go('orders');}],
-   [inProc.length,'加工中批次','在外发','so',function(){go('trk');}],
-   [anom.length,'有产无收款','需核查','sr2',function(){go('arec');}]
-  ].forEach(function(s){
+  var _kpis=[[activeCount,'进行中订单',activeHint,'sb',function(){go('orders');}],
+   [inProc.length,'加工中批次','在外发','so',function(){go('trk');}]];
+  // 「有产无收款」属财务预警，仅财务/管理员可见
+  if(canSeeFinance())_kpis.push([anom.length,'有产无收款','需核查','sr2',function(){go('arec');}]);
+  sr.style.gridTemplateColumns='repeat('+_kpis.length+',1fr)';
+  _kpis.forEach(function(s){
     var st=document.createElement('div');st.className='st '+s[3];st.style.cursor='pointer';st.onclick=s[4];
     st.innerHTML='<div class="sl">'+s[1]+'</div><div class="sv">'+s[0]+'</div><div class="ss">'+s[2]+'</div>';
     sr.appendChild(st);
@@ -3541,16 +3560,21 @@ function pgDash(){
       return '<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;background:'+(up?'#D1FAE5':'#FEE2E2')+';color:'+(up?'#065F46':'#991B1B')+'">'+(up?'↑':'↓')+Math.abs(p).toFixed(0)+'%</span>';
     }
     var mLbl=thisM.replace('-','年')+'月';
-    var row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px';
+    var _showAmt=canSeeFinance(); // 出货金额属财务数据
+    var row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:'+(_showAmt?'1fr 1fr':'1fr')+';gap:10px;margin-bottom:14px';
     var s1=document.createElement('div');s1.className='st sb';s1.style.cursor='pointer';s1.onclick=function(){go('fgstock');};
     s1.innerHTML='<div class="sl">本月出货 KG</div>'
       +'<div class="sv" style="font-size:18px">'+(cur.kg>0?cur.kg.toFixed(1)+' KG':'0 KG')+'</div>'
       +'<div class="ss" style="display:flex;align-items:center;gap:6px"><span>'+mLbl+'·'+cur.cnt+'笔</span>'+(cur.kg>0&&last.kg>0?trendBadge(cur.kg,last.kg):'')+'</div>';
-    var s2=document.createElement('div');s2.className='st sg';s2.style.cursor='pointer';s2.onclick=function(){go('fgstock');};
-    s2.innerHTML='<div class="sl">本月出货金额</div>'
-      +'<div class="sv" style="font-size:18px">'+(cur.amt>0?'¥'+Math.round(cur.amt).toLocaleString():'¥0')+'</div>'
-      +'<div class="ss" style="display:flex;align-items:center;gap:6px"><span>含税估算</span>'+(cur.amt>0&&last.amt>0?trendBadge(cur.amt,last.amt):'')+'</div>';
-    row.appendChild(s1);row.appendChild(s2);pg.appendChild(row);
+    row.appendChild(s1);
+    if(_showAmt){
+      var s2=document.createElement('div');s2.className='st sg';s2.style.cursor='pointer';s2.onclick=function(){go('fgstock');};
+      s2.innerHTML='<div class="sl">本月出货金额</div>'
+        +'<div class="sv" style="font-size:18px">'+(cur.amt>0?'¥'+Math.round(cur.amt).toLocaleString():'¥0')+'</div>'
+        +'<div class="ss" style="display:flex;align-items:center;gap:6px"><span>含税估算</span>'+(cur.amt>0&&last.amt>0?trendBadge(cur.amt,last.amt):'')+'</div>';
+      row.appendChild(s2);
+    }
+    pg.appendChild(row);
   })();
 
   // ── 今日要事（智能优先级清单）──
@@ -3600,7 +3624,7 @@ function pgDash(){
         fn:(function(id,no){return function(){goToOrd(id,no);};})(o.id,o.no)
       });
     });
-    overdueArecs.forEach(function(r){
+    if(canSeeFinance())overdueArecs.forEach(function(r){
       var s=getDaysStatus(r.dueDate);
       critical.push({icon:'💰',text:'<b>'+esc(r.custNm)+'</b> '+esc(r.month)+'月账款 — 逾期 <b style="color:#DC2626">'+s.days+'天</b>，余款 ¥'+parseFloat(r.balanceAmt||0).toFixed(0),label:'去收款',fn:function(){go('arec');}});
     });
@@ -3619,7 +3643,7 @@ function pgDash(){
         fn:(function(id,no){return function(){goToOrd(id,no);};})(o.id,o.no)
       });
     });
-    warnArecs.forEach(function(r){
+    if(canSeeFinance())warnArecs.forEach(function(r){
       var s=getDaysStatus(r.dueDate);
       warning2.push({icon:'🔔',text:'<b>'+esc(r.custNm)+'</b> '+esc(r.month)+'月账款 — 还剩 <b style="color:#D97706">'+s.days+'天</b> 到期，¥'+parseFloat(r.balanceAmt||0).toFixed(0),label:'去对账',fn:function(){go('arec');}});
     });

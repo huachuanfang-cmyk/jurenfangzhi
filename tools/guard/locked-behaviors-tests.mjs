@@ -414,6 +414,33 @@ test('R3 角色菜单权限核心必须存在（ROLE_PAGES + canAccessPage + app
 });
 
 // ═══════════════════════════════════════════════
+// 锁 27：工作台财务数据按角色隐藏 + 登录角色快速解析
+// ═══════════════════════════════════════════════
+test('canSeeFinance 必须存在且仅 admin/finance/readonly 可见财务', () => {
+  const fn = html.match(/function canSeeFinance\(\)\{[\s\S]*?\n\}/);
+  if (!fn) throw new Error('canSeeFinance 被删除 — 工作台财务数据无法按角色隐藏');
+  if (!/role==='admin'\|\|role==='finance'\|\|role==='readonly'/.test(fn[0])) {
+    throw new Error('canSeeFinance 角色判断被改 — 财务可见性边界错误');
+  }
+});
+
+test('工作台财务数据（金额/应收催款）必须用 canSeeFinance 门控', () => {
+  // 本月出货金额、有产无收款、应收催款 都应被 canSeeFinance 包裹
+  if (!/if\(canSeeFinance\(\)\)overdueArecs/.test(html)) {
+    throw new Error('今日要事的逾期应收催款没有用 canSeeFinance 门控 — 仓管能看到收款数据');
+  }
+  if (!/_showAmt=canSeeFinance\(\)/.test(html)) {
+    throw new Error('本月出货金额卡片没有用 canSeeFinance 门控');
+  }
+});
+
+test('登录后先快速拉 app_users 表，避免退出再登的管理员闪现', () => {
+  if (!/from\('app_users'\)\.select\('\*'\)[\s\S]{0,300}?resolveCurrentUser/.test(html)) {
+    throw new Error('登录流程不再先拉 app_users 解析角色 — 退出再登会出现管理员闪现');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

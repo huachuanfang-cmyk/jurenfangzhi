@@ -506,7 +506,7 @@ test('finished-goods shipment fallback can omit missing duplicate_of column', ()
     'fgo',
     "Could not find the 'duplicate_of' column of 'fg_outs' in the schema cache"
   );
-  for (const col of ['duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
+  for (const col of ['status', 'duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
     if (!cols.includes(col)) {
       throw new Error('fgo schema fallback should drop duplicate shipment audit columns, missing: ' + col);
     }
@@ -518,9 +518,21 @@ test('finished-goods shipment fallback covers no-restock void schema drift', () 
     'fgo',
     "Could not find the 'no_restock_on_void' column of 'fg_outs' in the schema cache"
   );
-  for (const col of ['duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
+  for (const col of ['status', 'duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
     if (!cols.includes(col)) {
       throw new Error('fgo no-restock schema fallback should drop all related audit columns, missing: ' + col);
+    }
+  }
+});
+
+test('finished-goods shipment fallback covers status schema drift', () => {
+  var cols = missingCloudColumnsForSchemaError(
+    'fgo',
+    "Could not find the 'status' column of 'fg_outs' in the schema cache"
+  );
+  for (const col of ['status', 'duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at']) {
+    if (!cols.includes(col)) {
+      throw new Error('fgo status schema fallback should drop all status/audit columns, missing: ' + col);
     }
   }
 });

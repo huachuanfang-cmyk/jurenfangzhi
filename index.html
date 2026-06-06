@@ -1543,7 +1543,7 @@ function withoutCloudColumns(payload,columns){
 function missingCloudColumnsForSchemaError(key,message){
   var msg=String(message||'').toLowerCase();
   if(key==='ret'&&msg.indexOf("'deduct_kg' column")>=0)return ['deduct_kg','deduct_kG'];
-  if(key==='fgo'&&(msg.indexOf("'duplicate_of' column")>=0||msg.indexOf("'no_restock_on_void' column")>=0||msg.indexOf("'void_reason' column")>=0||msg.indexOf("'voided_at' column")>=0))return ['duplicate_of','no_restock_on_void','void_reason','voided_at'];
+  if(key==='fgo'&&(msg.indexOf("'status' column")>=0||msg.indexOf("'duplicate_of' column")>=0||msg.indexOf("'no_restock_on_void' column")>=0||msg.indexOf("'void_reason' column")>=0||msg.indexOf("'voided_at' column")>=0))return ['status','duplicate_of','no_restock_on_void','void_reason','voided_at'];
   if(key==='ar'&&msg.indexOf("'receipt_account_")>=0)return ['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note'];
   return [];
 }
@@ -1894,6 +1894,10 @@ var _origSave = DB.save.bind(DB);
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
 var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1};
 var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
+var REQUIRED_CLOUD_COLUMNS={
+  fgo:['status','duplicate_of','no_restock_on_void','void_reason','voided_at'],
+  ar:['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note']
+};
 
 function countDirtySyncKeys(){
   var n=0;
@@ -1901,6 +1905,19 @@ function countDirtySyncKeys(){
     if(localStorage.getItem('gjr5_dirty_'+k)==='1')n++;
   }
   return n;
+}
+
+async function checkRequiredCloudSchema(key,table){
+  var cols=REQUIRED_CLOUD_COLUMNS[key]||[];
+  if(!cols.length)return {ok:true,msg:''};
+  if(!_supabaseData||!isOnline())return {ok:true,msg:''};
+  try{
+    var res=await _supabaseData.from(table).select(cols.join(','),{count:'exact',head:true});
+    if(!res||!res.error)return {ok:true,msg:''};
+    return {ok:false,msg:'数据库未升级：'+(res.error.message||'云端缺少字段')+'。请先执行 supabase-sync-missing-columns-2026-06-05.sql'};
+  }catch(e){
+    return {ok:false,msg:'数据库结构检查失败：'+(e.message||String(e))+'。请先确认 Supabase 连接和表结构。'};
+  }
 }
 
 async function getSyncSafetyRows(){
@@ -1913,6 +1930,7 @@ async function getSyncSafetyRows(){
     var raw=localStorage.getItem('gjr5_snap_'+k);
     if(raw){try{snap=JSON.parse(raw)||[];}catch(e){snap=[];}}
     var cloud=null, cloudErr='';
+    var schemaErr='';
     var table=TABLE_MAP[k];
     if(table&&_supabaseData&&isOnline()){
       try{
@@ -1922,12 +1940,16 @@ async function getSyncSafetyRows(){
       }catch(e){
         cloudErr=e.message||String(e);
       }
+      if(!cloudErr){
+        var schemaCheck=await checkRequiredCloudSchema(k,table);
+        if(schemaCheck&&!schemaCheck.ok)schemaErr=schemaCheck.msg||'数据库未升级';
+      }
     }else if(table&&!_supabaseData){
       cloudErr='未连接云端';
     }else if(table&&!isOnline()){
       cloudErr='当前离线';
     }
-    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,cloud:cloud,cloudErr:cloudErr,snap:snap.length,dirty:dirty,err:err});
+    rows.push({key:k,label:SYNC_SAFETY_KEYS[k],local:local.length,cloud:cloud,cloudErr:cloudErr,schemaErr:schemaErr,snap:snap.length,dirty:dirty,err:err});
   }
   return rows;
 }
@@ -1935,7 +1957,7 @@ async function getSyncSafetyRows(){
 async function openSyncSafetyModal(){
   var rows=await getSyncSafetyRows();
   var problemRows=rows.filter(function(r){
-    if(r.dirty||r.err||r.cloudErr)return true;
+    if(r.dirty||r.err||r.cloudErr||r.schemaErr)return true;
     if(r.cloud!==null&&r.local!==r.cloud)return true;
     return false;
   });
@@ -1951,14 +1973,18 @@ async function openSyncSafetyModal(){
     +'<button type="button" id="_syncsafe_close" data-syncsafe-close="1" title="关闭" style="background:none;border:none;font-size:26px;color:#64748B;cursor:pointer;width:34px;height:34px;line-height:30px;border-radius:6px">×</button></div>'
     +'<div style="padding:16px 20px">'
     +'<div style="border:1px solid '+(danger?'#FCA5A5':'#86EFAC')+';background:'+(danger?'#FEF2F2':'#F0FDF4')+';color:'+(danger?'#991B1B':'#166534')+';border-radius:8px;padding:11px 13px;font-size:12px;margin-bottom:12px;line-height:1.6">'
-    +(danger?'发现 '+problemRows.length+' 个关键表本机、云端或同步状态未完全对齐。建议先不要换电脑操作，点“重试同步”后再检查。':'本机与云端条数一致，关键业务表暂无未上传修改；当前页面刷新风险较低。')
+    +(danger?'发现 '+problemRows.length+' 个关键表本机、云端、数据库结构或同步状态未完全对齐。建议先不要换电脑操作，点“重试同步”后再检查。':'本机与云端条数一致，数据库结构检查通过，关键业务表暂无未上传修改；当前页面刷新风险较低。')
     +'</div>'
     +'<div style="overflow:auto;border:1px solid #E5E7EB;border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">'
-    +'<thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left;color:#1e3a8a">业务表</th><th style="padding:8px;text-align:right;color:#1e3a8a">本机条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">云端条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">快照条数</th><th style="padding:8px;text-align:center;color:#1e3a8a">同步状态</th><th style="padding:8px;text-align:left;color:#1e3a8a">刷新建议</th></tr></thead><tbody>'
+    +'<thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left;color:#1e3a8a">业务表</th><th style="padding:8px;text-align:right;color:#1e3a8a">本机条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">云端条数</th><th style="padding:8px;text-align:right;color:#1e3a8a">快照条数</th><th style="padding:8px;text-align:center;color:#1e3a8a">数据库结构</th><th style="padding:8px;text-align:center;color:#1e3a8a">同步状态</th><th style="padding:8px;text-align:left;color:#1e3a8a">刷新建议</th></tr></thead><tbody>'
     +rows.map(function(r){
       var cloudText=r.cloud===null?'—':String(r.cloud);
       var st='', adv='';
-      if(r.dirty){
+      var schemaStatus=r.schemaErr?'<span style="color:#DC2626;font-weight:800">数据库未升级</span>':'<span style="color:#16A34A;font-weight:800">已升级</span>';
+      if(r.schemaErr){
+        st='<span style="color:#DC2626;font-weight:800">未同步</span>';
+        adv='先执行数据库升级 SQL，再重试同步';
+      }else if(r.dirty){
         st='<span style="color:#DC2626;font-weight:800">未同步</span>';
         adv='先等同步或重试后再刷新';
       }else if(r.err){
@@ -1982,11 +2008,13 @@ async function openSyncSafetyModal(){
       }
       if(r.err) adv += '；失败原因：'+r.err;
       if(r.cloudErr) adv += '；云端原因：'+r.cloudErr;
+      if(r.schemaErr) adv += '；'+r.schemaErr;
       return '<tr style="border-top:1px solid #EEF2F7">'
         +'<td style="padding:8px;font-weight:700">'+esc(r.label)+'</td>'
         +'<td style="padding:8px;text-align:right">'+r.local+'</td>'
         +'<td style="padding:8px;text-align:right">'+esc(cloudText)+'</td>'
         +'<td style="padding:8px;text-align:right">'+r.snap+'</td>'
+        +'<td style="padding:8px;text-align:center">'+schemaStatus+'</td>'
         +'<td style="padding:8px;text-align:center">'+st+'</td>'
         +'<td style="padding:8px;color:#64748B">'+esc(adv)+'</td>'
         +'</tr>';

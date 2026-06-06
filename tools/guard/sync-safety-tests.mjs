@@ -69,6 +69,19 @@ test('refresh safety modal has reliable close interactions', () => {
   assert.match(html, /removeEventListener\('keydown',syncSafeEscHandler\)/);
 });
 
+test('refresh safety check verifies required cloud schema columns before switching computers', () => {
+  assert.match(html, /var\s+REQUIRED_CLOUD_COLUMNS\s*=/);
+  assert.match(html, /async\s+function\s+checkRequiredCloudSchema\s*\(/);
+  assert.match(html, /schemaErr/);
+  assert.match(html, /数据库结构/);
+  assert.match(html, /数据库未升级/);
+  assert.match(html, /supabase-sync-missing-columns-2026-06-05\.sql/);
+  assert.match(html, /duplicate_of/);
+  assert.match(html, /status/);
+  assert.match(html, /no_restock_on_void/);
+  assert.match(html, /receipt_account_bank/);
+});
+
 let passed = 0;
 for (const { name, fn } of tests) {
   try {

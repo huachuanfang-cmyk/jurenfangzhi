@@ -101,12 +101,13 @@ export function missingCloudColumnsForSchemaError(key, message) {
     return ['deduct_kg', 'deduct_kG'];
   }
   if (key === 'fgo' && (
+    msg.indexOf("'status' column") >= 0 ||
     msg.indexOf("'duplicate_of' column") >= 0 ||
     msg.indexOf("'no_restock_on_void' column") >= 0 ||
     msg.indexOf("'void_reason' column") >= 0 ||
     msg.indexOf("'voided_at' column") >= 0
   )) {
-    return ['duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at'];
+    return ['status', 'duplicate_of', 'no_restock_on_void', 'void_reason', 'voided_at'];
   }
   if (key === 'ar' && msg.indexOf("'receipt_account_") >= 0) {
     return [

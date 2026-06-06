@@ -4071,7 +4071,9 @@ function pgSettings(){
   hdr.style.cssText='background:linear-gradient(90deg,#EFF6FF,#F0FDF4);border:1px solid #BFDBFE;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
   hdr.innerHTML='<span style="font-size:24px">⚙️</span>'
     +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#1e3a8a">公司档案 — 系统级配置</div>'
-    +'<div style="font-size:11px;color:#475569;margin-top:3px">这里的所有信息会自动用到销售合同、送货单、对账单、加工单等打印模板。同行复用本系统只需修改这里。</div></div>';
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">这里的所有信息会自动用到销售合同、送货单、对账单、加工单等打印模板。同行复用本系统只需修改这里。</div></div>'
+    +'<button type="button" id="cfg-unlock-btn" style="display:inline-flex;align-items:center;gap:5px;padding:8px 16px;background:#1565C0;border:none;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700;white-space:nowrap">🔓 解锁编辑</button>'
+    +'<span id="cfg-lock-tag" style="display:none;align-items:center;gap:5px;padding:7px 14px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">✏️ 编辑中（改完记得保存）</span>';
   pg.appendChild(hdr);
 
   // 表单容器
@@ -4090,17 +4092,31 @@ function pgSettings(){
     s.appendChild(body);
     return {el:s,body:body};
   }
-  // 工具函数：字段
+  // 工具函数：字段（默认只读，解锁后可编辑 — 防误改）
   function field(parent,label,id,val,placeholder,fullWidth){
     var w=document.createElement('div');
     if(fullWidth)w.style.gridColumn='span 2';
     var l=document.createElement('label');l.style.cssText='display:block;font-size:10.5px;font-weight:600;color:#475569;margin-bottom:4px';
     l.textContent=label;
     var i=document.createElement('input');i.type='text';i.id=id;i.value=val||'';i.placeholder=placeholder||'';
-    i.style.cssText='padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12.5px;background:#fff;color:#0f172a;width:100%;box-sizing:border-box;outline:none;transition:border-color .12s';
-    i.onfocus=function(){this.style.borderColor='#3B82F6';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)';};
+    i.className='cfg-input';i.readOnly=true; // 初始锁定
+    i.style.cssText='padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12.5px;background:#F1F5F9;color:#64748B;width:100%;box-sizing:border-box;outline:none;transition:border-color .12s;cursor:not-allowed';
+    i.onfocus=function(){if(this.readOnly)return;this.style.borderColor='#3B82F6';this.style.boxShadow='0 0 0 3px rgba(59,130,246,.12)';};
     i.onblur=function(){this.style.borderColor='#E2E8F0';this.style.boxShadow='none';};
     w.appendChild(l);w.appendChild(i);parent.appendChild(w);
+  }
+  // 解锁/锁定全部字段
+  function setSettingsLocked(locked){
+    document.querySelectorAll('.cfg-input').forEach(function(inp){
+      inp.readOnly=locked;
+      inp.style.background=locked?'#F1F5F9':'#fff';
+      inp.style.color=locked?'#64748B':'#0f172a';
+      inp.style.cursor=locked?'not-allowed':'text';
+    });
+    var sb=document.getElementById('cfg-save-btn');if(sb){sb.disabled=locked;sb.style.opacity=locked?'.45':'1';sb.style.cursor=locked?'not-allowed':'pointer';}
+    var rb=document.getElementById('cfg-reset-btn');if(rb){rb.disabled=locked;rb.style.opacity=locked?'.45':'1';rb.style.cursor=locked?'not-allowed':'pointer';}
+    var ub=document.getElementById('cfg-unlock-btn');if(ub)ub.style.display=locked?'inline-flex':'none';
+    var lockTag=document.getElementById('cfg-lock-tag');if(lockTag)lockTag.style.display=locked?'none':'inline-flex';
   }
 
   // ━━ ① 基本信息 ━━
@@ -4144,7 +4160,7 @@ function pgSettings(){
   var btnRow=document.createElement('div');
   btnRow.style.cssText='display:flex;gap:10px;justify-content:flex-end;margin-top:6px';
   var resetBtn=document.createElement('button');
-  resetBtn.type='button';resetBtn.textContent='↺ 恢复默认（巨人纺织）';
+  resetBtn.type='button';resetBtn.textContent='↺ 恢复默认（巨人纺织）';resetBtn.id='cfg-reset-btn';
   resetBtn.style.cssText='padding:9px 18px;background:#F3F4F6;border:1px solid #D1D5DB;color:#374151;border-radius:6px;font-size:12px;cursor:pointer;font-weight:500';
   resetBtn.onclick=function(){
     if(!confirm('确认恢复为默认的"东莞市巨人纺织"配置？\n\n当前自定义内容将被清除。'))return;
@@ -4153,7 +4169,7 @@ function pgSettings(){
     showToast('已恢复默认配置 ✓','success');
   };
   var saveBtn=document.createElement('button');
-  saveBtn.type='button';saveBtn.textContent='💾 保存公司档案';
+  saveBtn.type='button';saveBtn.textContent='💾 保存公司档案';saveBtn.id='cfg-save-btn';
   saveBtn.style.cssText='padding:9px 22px;background:#1565C0;border:none;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700';
   saveBtn.onclick=function(){
     var data={
@@ -4177,12 +4193,25 @@ function pgSettings(){
     DB.save('company',data);
     refreshCO();
     applyCompanyBranding();
+    setSettingsLocked(true); // 保存后重新锁定，防止后续误改
     showToast('公司档案已保存 ✓ 所有打印模板和落款将立即使用新信息','success');
   };
   btnRow.appendChild(resetBtn);btnRow.appendChild(saveBtn);
   cb.appendChild(btnRow);
 
   card.appendChild(cb);pg.appendChild(card);
+
+  // ━━ 解锁按钮逻辑（需管理员密码）+ 初始锁定 ━━
+  var unlockBtn=document.getElementById('cfg-unlock-btn');
+  if(unlockBtn){
+    unlockBtn.onclick=function(){
+      verifyPwd(function(){
+        setSettingsLocked(false);
+        showToast('已解锁，可以编辑公司档案了','success');
+      });
+    };
+  }
+  setSettingsLocked(true); // 进入页面默认锁定
 }
 // ═══════════════════════════════════════════════════════════════
 

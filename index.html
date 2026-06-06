@@ -2216,9 +2216,34 @@ async function authLogin(email, pwd){
 }
 
 async function authRegister(email, pwd){
-  // 注册已关闭
+  // 自助注册仍关闭（员工账号由管理员在「用户管理」里创建）
   showToast('暂不开放自助注册，请联系管理员','error');
   return false;
+}
+
+// 管理员在用户管理里为员工创建登录账号（设初始密码）
+// 用独立的临时客户端 signUp，绝不影响当前管理员的登录会话
+async function createEmployeeLogin(email, pwd){
+  if(!window.supabase){return {ok:false,msg:'Supabase 库未加载，请联网刷新后再试'};}
+  if(!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){return {ok:false,msg:'邮箱格式不正确'};}
+  if(!pwd||pwd.length<6){return {ok:false,msg:'密码至少 6 位'};}
+  try{
+    // 临时客户端：persistSession:false → 不写本地、不动管理员会话
+    var tmp=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+    var {data,error}=await tmp.auth.signUp({email:email,password:pwd});
+    if(error){
+      var m=String(error.message||'');
+      if(/already\s*registered|already\s*exists|User already/i.test(m)){
+        return {ok:true,already:true,msg:'该邮箱已有登录账号（如需改密码请在 Supabase 后台重置）'};
+      }
+      return {ok:false,msg:m};
+    }
+    // data.session 有值 = 邮箱验证已关闭，可直接登录；为空 = 需确认邮箱
+    var needConfirm=!(data&&data.session)&&!!(data&&data.user);
+    return {ok:true,needConfirm:needConfirm,msg:needConfirm?'账号已创建，但项目开启了邮箱验证 — 请在 Supabase 关闭邮箱验证，或让员工查收确认邮件后才能登录':'账号已创建，员工现在就能用此邮箱+密码登录'};
+  }catch(e){
+    return {ok:false,msg:(e&&e.message)||String(e)};
+  }
 }
 
 async function authCheckSession(){
@@ -4123,8 +4148,9 @@ function openUserManager(){
     body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px';
     var tip=document.createElement('div');
     tip.style.cssText='font-size:11px;color:#475569;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:9px 11px;line-height:1.7';
-    tip.innerHTML='<b>怎么用：</b>给每位员工建一行，填<b>登录邮箱</b>+<b>姓名</b>+<b>角色</b>。该员工用此邮箱登录后，开的单据落款自动盖他的名字。<br>'
-      +'<span style="color:#92400E">⚠ 登录密码需在 Supabase 后台为该邮箱创建账号；本表只管姓名和角色映射。</span>';
+    tip.innerHTML='<b>怎么用：</b>① 填<b>姓名+登录邮箱+角色</b> → ② 点该行<b>「🔑 设登录密码」</b>给员工建登录账号 → ③ 点底部<b>「保存用户档案」</b>。<br>'
+      +'员工以后用<b>邮箱+密码</b>登录，开的单据落款自动盖他名字。<br>'
+      +'<span style="color:#92400E">⚠ 若点设密码后提示"需邮箱验证"，去 Supabase → Authentication → Providers → Email 把「Confirm email」关掉（一次性）。</span>';
     body.appendChild(tip);
     // 角色说明
     var roleHelp=document.createElement('div');
@@ -4151,9 +4177,31 @@ function openUserManager(){
       var actLbl=document.createElement('label');actLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:#475569;cursor:pointer;white-space:nowrap';
       var actCb=document.createElement('input');actCb.type='checkbox';actCb.className='u-active';actCb.checked=u.active!==false;
       actLbl.appendChild(actCb);actLbl.appendChild(document.createTextNode('启用'));
+      // 设登录密码（直接在系统里给员工创建可登录的账号）
+      var pwdBtn=document.createElement('button');pwdBtn.type='button';pwdBtn.textContent='🔑 设登录密码';pwdBtn.className='btn bsm bq';pwdBtn.style.fontSize='10.5px';pwdBtn.style.whiteSpace='nowrap';
+      pwdBtn.onclick=function(){
+        var em=(emailInp.value||'').trim().toLowerCase();
+        var nm=(nameInp.value||'').trim();
+        if(!em){alert('请先填写该员工的登录邮箱');return;}
+        var pw=window.prompt('为「'+(nm||em)+'」设置登录密码（至少 6 位）\n\n员工以后用：\n邮箱 '+em+'\n+ 这个密码 登录','');
+        if(pw===null)return;
+        pw=(pw||'').trim();
+        if(pw.length<6){alert('密码至少 6 位');return;}
+        pwdBtn.disabled=true;pwdBtn.textContent='创建中...';
+        createEmployeeLogin(em,pw).then(function(r){
+          pwdBtn.disabled=false;pwdBtn.textContent='🔑 设登录密码';
+          if(r.ok){
+            if(r.already){alert('ℹ '+r.msg);}
+            else if(r.needConfirm){alert('⚠ '+r.msg);}
+            else{alert('✅ '+r.msg+'\n\n别忘了点下方「保存用户档案」把姓名和角色一起存好。');}
+          }else{
+            alert('创建登录账号失败：'+r.msg);
+          }
+        });
+      };
       var del=document.createElement('button');del.type='button';del.textContent='删除';del.className='btn bsm br';del.style.fontSize='10.5px';
       del.onclick=function(){row.remove();};
-      row.appendChild(idHid);row.appendChild(nameInp);row.appendChild(emailInp);row.appendChild(roleSel);row.appendChild(actLbl);row.appendChild(del);
+      row.appendChild(idHid);row.appendChild(nameInp);row.appendChild(emailInp);row.appendChild(roleSel);row.appendChild(actLbl);row.appendChild(pwdBtn);row.appendChild(del);
       wrap.appendChild(row);
     }
     var existing=appUsers();

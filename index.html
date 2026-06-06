@@ -195,7 +195,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="topb">
     <div><h1 id="pt">工作台</h1><p id="ps">东莞市巨人纺织有限公司</p></div>
     <div id="clk" style="font-size:11px;color:var(--t3)"></div>
-    <div style="display:flex;gap:6px"><button id="lock-btn" class="btn bs bsm" style="display:none;font-size:14px;padding:4px 10px" title="一键锁屏" onclick="lockScreen()">🔒</button><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
+    <div style="display:flex;gap:6px"><button id="chpwd-btn" class="btn bs bsm" style="display:none;font-size:12px;padding:4px 10px" title="修改我的登录密码" onclick="openChangePassword()">🔑 修改密码</button><button id="lock-btn" class="btn bs bsm" style="display:none;font-size:14px;padding:4px 10px" title="一键锁屏" onclick="lockScreen()">🔒</button><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
   </div>
   <div class="pg" id="pg"></div>
 </div>
@@ -2246,6 +2246,22 @@ async function createEmployeeLogin(email, pwd){
   }
 }
 
+// 员工自助修改自己的登录密码
+function openChangePassword(){
+  if(!_supabase||!_authUser){alert('请先登录');return;}
+  var np=window.prompt('修改登录密码\n\n当前登录：'+(_authUser.email||'')+'\n\n请输入新密码（至少 6 位）：','');
+  if(np===null)return;
+  np=(np||'').trim();
+  if(np.length<6){alert('密码至少 6 位');return;}
+  var np2=window.prompt('请再次输入新密码确认：','');
+  if(np2===null)return;
+  if((np2||'').trim()!==np){alert('两次输入的密码不一致，已取消');return;}
+  _supabase.auth.updateUser({password:np}).then(function(r){
+    if(r&&r.error){alert('修改失败：'+r.error.message);}
+    else{alert('✅ 密码修改成功！下次登录请用新密码。');}
+  }).catch(function(e){alert('修改失败：'+((e&&e.message)||e));});
+}
+
 async function authCheckSession(){
   initSupabase();
   if(!_supabase) return null;
@@ -2333,6 +2349,7 @@ async function onAuthSuccess(){
   refreshCO();applyCompanyBranding();
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
+  var cpBtn=document.getElementById('chpwd-btn');if(cpBtn)cpBtn.style.display='inline-block';
 
   // 从Supabase拉取数据
   await pullFromSupabase();

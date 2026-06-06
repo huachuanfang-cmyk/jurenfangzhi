@@ -2351,11 +2351,15 @@ async function onAuthSuccess(){
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
   var cpBtn=document.getElementById('chpwd-btn');if(cpBtn)cpBtn.style.display='inline-block';
 
+  // ── 立即用本地缓存解析角色 + 隐藏菜单（同设备刷新时秒生效，避免 10 秒"管理员闪现"）──
+  resolveCurrentUser();
+  applyRoleMenu();
+
   // 从Supabase拉取数据
   await pullFromSupabase();
   // 云端可能带回最新公司档案，再刷一次品牌
   refreshCO();applyCompanyBranding();
-  // 解析当前登录用户的姓名+角色（R2：制单人随登录人变）
+  // 云端拉取后再算一次角色（首次新设备 / 云端改过角色时生效）
   resolveCurrentUser();
   // 安全边界：已建用户名单但登录邮箱不在内（陌生人）或已停用 → 拒绝进入并登出
   if(_currentUser&&_currentUser.blocked){

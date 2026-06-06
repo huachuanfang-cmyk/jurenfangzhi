@@ -454,6 +454,16 @@ CREATE TABLE tombstones (
   deleted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 用户/角色档案（R1）：姓名↔登录邮箱↔角色映射
+-- 登录密码由 Supabase Auth 管理，本表只管业务角色与制单人姓名
+CREATE TABLE app_users (
+  id TEXT PRIMARY KEY,
+  name TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  role TEXT DEFAULT 'sales',
+  active BOOLEAN DEFAULT TRUE
+);
+
 -- ============================================================
 -- 启用行级安全（RLS）
 -- ============================================================
@@ -476,6 +486,7 @@ ALTER TABLE ap_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weaving_docs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dyeing_docs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tombstones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 
 -- 允许已登录用户读写所有表
 CREATE POLICY "允许已登录用户所有操作" ON customers FOR ALL USING (auth.role() = 'authenticated');
@@ -497,6 +508,7 @@ CREATE POLICY "允许已登录用户所有操作" ON ap_records FOR ALL USING (a
 CREATE POLICY "允许已登录用户所有操作" ON weaving_docs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON dyeing_docs FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON tombstones FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON app_users FOR ALL USING (auth.role() = 'authenticated');
 
 -- Supabase Data API 表权限（RLS 控制行权限，GRANT 控制表是否可访问）
 GRANT USAGE ON SCHEMA public TO authenticated;

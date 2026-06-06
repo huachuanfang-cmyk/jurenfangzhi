@@ -155,6 +155,8 @@ function createSandbox(mockDB) {
 
   // Define mock fgRolls (uses DB.fgr from sandbox)
   vm.runInContext('function fgRolls(){ return (DB.fgr || []).filter(function(r){ return r.status !== "returned"; }); }', ctx);
+  // R2: 制单人 helper — mock 无登录用户时回退 CO.preparer
+  vm.runInContext('var _currentUser=null; function currentPreparer(){ return (_currentUser&&_currentUser.name)||CO.preparer||""; }', ctx);
 
   return { ctx: ctx, sandbox: sandbox, captured: captured };
 }

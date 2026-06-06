@@ -341,6 +341,37 @@ test('收款账户模板种子不能写死个人银行卡号', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 22-24：用户/角色系统 (R1+R2)
+// ═══════════════════════════════════════════════
+test('用户/角色系统核心函数必须存在（ROLES + resolveCurrentUser + currentPreparer）', () => {
+  if (!/var ROLES=\{/.test(html)) throw new Error('ROLES 角色定义被删除');
+  if (!/function resolveCurrentUser\(\)/.test(html)) throw new Error('resolveCurrentUser 被删除 — 无法识别登录用户角色');
+  if (!/function currentPreparer\(\)/.test(html)) throw new Error('currentPreparer 被删除 — 制单人无法随登录人变');
+});
+
+test('制单人必须用 currentPreparer() 而非写死 CO.preparer（R2 核心）', () => {
+  // 打印模板里"制单/报价员/Prepared by"应该用 currentPreparer()
+  // currentPreparer 内部回退 CO.preparer，保证未建用户体系时行为不变
+  const fn = html.match(/function currentPreparer\(\)\{[\s\S]{0,200}?\}/);
+  if (!fn) throw new Error('找不到 currentPreparer 函数');
+  if (!/_currentUser&&_currentUser\.name/.test(fn[0])) {
+    throw new Error('currentPreparer 不再优先用登录用户姓名');
+  }
+  if (!/CO\.preparer/.test(fn[0])) {
+    throw new Error('currentPreparer 丢失了 CO.preparer 回退 — 未建用户体系时制单人会空');
+  }
+});
+
+test('用户管理器必须有管理员密码门槛 + 至少保留一个管理员', () => {
+  if (!/function openUserManagerSecure\(\)\{verifyPwd/.test(html)) {
+    throw new Error('用户管理器不再有密码门槛 — 任何人都能改别人角色');
+  }
+  if (!/必须至少保留一个启用的「管理员」账号/.test(html)) {
+    throw new Error('用户管理器允许删光管理员 — 会导致没人能管理系统');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

@@ -986,7 +986,8 @@ var TABLE_MAP = {
   t:'trackings', wd:'weaving_docs', qt:'quotations',
   ar:'ar_records', rc:'ap_records', dd:'dyeing_docs', yn:'yarns',
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
-  fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns', tmb:'tombstones'
+  fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns', tmb:'tombstones',
+  users:'app_users'
 };
 
 function textVal(v){return v===null||v===undefined?'':String(v).trim();}
@@ -1943,7 +1944,7 @@ function restoreFromSnapshot(){
 var _origSave = DB.save.bind(DB);
 // ── 全表自动快照：每个业务表每次保存时都在独立 key 留副本，刷新/同步都不会覆盖 ──
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
-var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1};
+var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1,users:1};
 var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
 var REQUIRED_CLOUD_COLUMNS={
   fgo:['status','duplicate_of','no_restock_on_void','void_reason','voided_at'],
@@ -2312,6 +2313,8 @@ async function onAuthSuccess(){
   await pullFromSupabase();
   // 云端可能带回最新公司档案，再刷一次品牌
   refreshCO();applyCompanyBranding();
+  // 解析当前登录用户的姓名+角色（R2：制单人随登录人变）
+  resolveCurrentUser();
 
   // 自动迁移：如果本地有数据但Supabase没有，推上去
   if(isOnline() && _supabase){
@@ -2710,6 +2713,46 @@ function applyCompanyBranding(){
     // 顶栏副标题仅当前是公司名（工作台）时才更新，避免覆盖页面描述
     if(ps&&(ps.textContent===CO_DEFAULT.nm||ps.textContent===CO.nm))ps.textContent=CO.nm;
   }catch(e){}
+}
+
+// ══════════════════════════════════════════════════════════════
+// 用户 / 角色系统 (R1+R2) — 分层级账号
+// 角色是"叠加"的门禁，不改任何现有业务逻辑
+// ══════════════════════════════════════════════════════════════
+var ROLES={
+  admin:    {label:'管理员',    color:'#DC2626', desc:'全部权限（含公司档案、用户管理、财务）'},
+  finance:  {label:'财务',      color:'#7C3AED', desc:'应收/应付对账、收款账户'},
+  sales:    {label:'跟单/业务',  color:'#2563EB', desc:'销售订单、加工跟踪、报价单'},
+  purchase: {label:'采购',      color:'#16A34A', desc:'纱线采购、胚布采购、发料回仓'},
+  warehouse:{label:'仓管',      color:'#EA580C', desc:'成品库存、出货入库'},
+  readonly: {label:'只读',      color:'#64748B', desc:'只能查看，不能编辑'}
+};
+function roleLabel(r){return (ROLES[r]&&ROLES[r].label)||'未知';}
+function roleColor(r){return (ROLES[r]&&ROLES[r].color)||'#94A3B8';}
+
+// 当前登录用户（登录后由 resolveCurrentUser 填充）
+var _currentUser=null;
+function appUsers(){var l=DB.load('users');return Array.isArray(l)?l:[];}
+function saveAppUsers(v){DB.save('users',v);}
+// 根据登录邮箱解析当前用户档案（姓名+角色）
+function resolveCurrentUser(){
+  var email=(_authUser&&_authUser.email||'').trim().toLowerCase();
+  var users=appUsers();
+  var hit=users.find(function(u){return u&&(u.email||'').trim().toLowerCase()===email;});
+  if(hit){
+    _currentUser={email:email,name:hit.name||'',role:hit.role||'admin',active:hit.active!==false};
+  }else{
+    // 档案里没有该邮箱 → 默认按管理员处理（向后兼容：未建用户体系时谁登录都是管理员）
+    _currentUser={email:email,name:'',role:'admin',active:true};
+  }
+  return _currentUser;
+}
+// 当前角色是否管理员
+function isAdmin(){return !_currentUser||_currentUser.role==='admin';}
+// 制单人：优先用当前登录人姓名，没有则回退公司档案默认制单人
+function currentPreparer(){
+  if(_currentUser&&_currentUser.name)return _currentUser.name;
+  return CO.preparer||'';
 }
 function defaultReceiptAccount(){
   // 默认对公收款账户从公司档案读取，同行填一次设置即生效
@@ -4070,6 +4113,82 @@ function compSort(arr){
   return main.concat(last);
 }
 
+// ══════════════════════════════════════════════════════════════
+// 用户管理 (R1) — 管理员录入员工姓名+登录邮箱+角色
+// 注意：本表只管「姓名↔邮箱↔角色」映射，登录密码仍由 Supabase 账号体系管理
+// ══════════════════════════════════════════════════════════════
+function openUserManagerSecure(){verifyPwd(function(){openUserManager();});}
+function openUserManager(){
+  var modal=buildModal('👥 用户管理 — 员工账号与角色','ml',function(body){
+    body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px';
+    var tip=document.createElement('div');
+    tip.style.cssText='font-size:11px;color:#475569;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:9px 11px;line-height:1.7';
+    tip.innerHTML='<b>怎么用：</b>给每位员工建一行，填<b>登录邮箱</b>+<b>姓名</b>+<b>角色</b>。该员工用此邮箱登录后，开的单据落款自动盖他的名字。<br>'
+      +'<span style="color:#92400E">⚠ 登录密码需在 Supabase 后台为该邮箱创建账号；本表只管姓名和角色映射。</span>';
+    body.appendChild(tip);
+    // 角色说明
+    var roleHelp=document.createElement('div');
+    roleHelp.style.cssText='display:flex;flex-wrap:wrap;gap:6px;font-size:10px';
+    Object.keys(ROLES).forEach(function(rk){
+      var r=ROLES[rk];
+      roleHelp.innerHTML+='<span style="background:'+r.color+'18;color:'+r.color+';border:1px solid '+r.color+'40;border-radius:4px;padding:2px 7px">'+r.label+'：'+r.desc+'</span>';
+    });
+    body.appendChild(roleHelp);
+    var wrap=document.createElement('div');wrap.id='user-rows';wrap.style.cssText='display:flex;flex-direction:column;gap:7px;max-height:46vh;overflow:auto';body.appendChild(wrap);
+
+    function addRow(u){
+      u=u||{};
+      var row=document.createElement('div');row.className='user-row';
+      row.style.cssText='display:flex;gap:6px;align-items:center;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:7px 9px;flex-wrap:wrap';
+      var idHid=document.createElement('input');idHid.type='hidden';idHid.className='u-id';idHid.value=u.id||('user_'+Date.now()+'_'+Math.floor(Math.random()*1000));
+      var nameInp=document.createElement('input');nameInp.className='u-name';nameInp.placeholder='姓名*';nameInp.value=u.name||'';
+      nameInp.style.cssText='flex:1;min-width:90px;padding:6px 9px;border:1.5px solid #E2E8F0;border-radius:5px;font-size:12px;outline:none';
+      var emailInp=document.createElement('input');emailInp.className='u-email';emailInp.placeholder='登录邮箱*';emailInp.value=u.email||'';
+      emailInp.style.cssText='flex:1.4;min-width:150px;padding:6px 9px;border:1.5px solid #E2E8F0;border-radius:5px;font-size:12px;outline:none';
+      var roleSel=document.createElement('select');roleSel.className='u-role';
+      roleSel.style.cssText='flex:0 0 110px;padding:6px 8px;border:1.5px solid #E2E8F0;border-radius:5px;font-size:12px;background:#fff;cursor:pointer';
+      Object.keys(ROLES).forEach(function(rk){var op=new Option(ROLES[rk].label,rk);if((u.role||'sales')===rk)op.selected=true;roleSel.appendChild(op);});
+      var actLbl=document.createElement('label');actLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:#475569;cursor:pointer;white-space:nowrap';
+      var actCb=document.createElement('input');actCb.type='checkbox';actCb.className='u-active';actCb.checked=u.active!==false;
+      actLbl.appendChild(actCb);actLbl.appendChild(document.createTextNode('启用'));
+      var del=document.createElement('button');del.type='button';del.textContent='删除';del.className='btn bsm br';del.style.fontSize='10.5px';
+      del.onclick=function(){row.remove();};
+      row.appendChild(idHid);row.appendChild(nameInp);row.appendChild(emailInp);row.appendChild(roleSel);row.appendChild(actLbl);row.appendChild(del);
+      wrap.appendChild(row);
+    }
+    var existing=appUsers();
+    if(!existing.length){
+      // 首次：把当前登录邮箱建成管理员
+      addRow({name:CO.preparer||'管理员',email:(_authUser&&_authUser.email)||'',role:'admin',active:true});
+    }else{
+      existing.forEach(addRow);
+    }
+    body.appendChild(mkBtn('＋ 新增员工','btn bsm bs',function(){addRow({role:'sales'});}));
+  },function(){
+    var rows=document.querySelectorAll('.user-row');
+    var list=[],emails={};
+    for(var i=0;i<rows.length;i++){
+      var row=rows[i];
+      var name=(row.querySelector('.u-name')||{value:''}).value.trim();
+      var email=(row.querySelector('.u-email')||{value:''}).value.trim().toLowerCase();
+      var role=(row.querySelector('.u-role')||{value:'sales'}).value;
+      if(!name||!email)return alert('第 '+(i+1)+' 行：姓名和登录邮箱都必填');
+      if(emails[email])return alert('邮箱重复：'+email);
+      emails[email]=true;
+      list.push({
+        id:(row.querySelector('.u-id')||{value:''}).value||('user_'+Date.now()+'_'+i),
+        name:name,email:email,role:role,
+        active:!!(row.querySelector('.u-active')||{}).checked
+      });
+    }
+    if(!list.some(function(u){return u.role==='admin'&&u.active;}))return alert('必须至少保留一个启用的「管理员」账号，否则没人能管理系统');
+    saveAppUsers(list);
+    resolveCurrentUser(); // 立即重算当前用户（角色可能变）
+    cm();showToast('用户档案已保存 ✓ 共 '+list.length+' 位员工','success');
+  },'保存用户档案');
+  om(modal);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ═══ 公司档案 / 系统设置 (Phase B) ═══
 // 提供 UI 让用户编辑 CO 对象，保存到 DB('company')
@@ -4086,9 +4205,11 @@ function pgSettings(){
   hdr.innerHTML='<span style="font-size:24px">⚙️</span>'
     +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#1e3a8a">公司档案 — 系统级配置</div>'
     +'<div style="font-size:11px;color:#475569;margin-top:3px">这里的所有信息会自动用到销售合同、送货单、对账单、加工单等打印模板。同行复用本系统只需修改这里。</div></div>'
+    +'<button type="button" id="cfg-users-btn" style="display:inline-flex;align-items:center;gap:5px;padding:8px 16px;background:#7C3AED;border:none;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700;white-space:nowrap">👥 用户管理</button>'
     +'<button type="button" id="cfg-unlock-btn" style="display:inline-flex;align-items:center;gap:5px;padding:8px 16px;background:#1565C0;border:none;color:#fff;border-radius:6px;font-size:12px;cursor:pointer;font-weight:700;white-space:nowrap">🔓 解锁编辑</button>'
     +'<span id="cfg-lock-tag" style="display:none;align-items:center;gap:5px;padding:7px 14px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">✏️ 编辑中（改完记得保存）</span>';
   pg.appendChild(hdr);
+  var usersBtn=document.getElementById('cfg-users-btn');if(usersBtn)usersBtn.onclick=function(){openUserManagerSecure();};
 
   // 表单容器
   var card=document.createElement('div');card.className='card';
@@ -4370,7 +4491,7 @@ function openColorNoticeModal(id){
     body.appendChild(r1);
     // 行2：FROM REF 数量
     var r2=row('1fr 1fr 1fr');
-    r2.appendChild(fv('FROM',inp('cn-from',rec?rec.from:(CO.preparer+(CO.preparerTel?' · '+CO.preparerTel:'')),'')));
+    r2.appendChild(fv('FROM',inp('cn-from',rec?rec.from:(currentPreparer()+(CO.preparerTel?' · '+CO.preparerTel:'')),'')));
     r2.appendChild(fv('REF NO.',inp('cn-ref',rec?rec.refNo:genRefNo(),'')));
     r2.appendChild(fv('数量说明',inp('cn-qty',rec?rec.qty:'每色打 A、B、C 一式三份','')));
     body.appendChild(r2);
@@ -4521,7 +4642,7 @@ function prtColorNotice(id){
     +'<div class="ri"><span class="rn">3.</span><span>如有撞色或特殊工艺要求，已在备注栏注明，请染厂特别留意处理。</span></div>'
     +'</div>'
     +'<div class="footer">收到原办后，烦请尽快安排打色，<strong>3天</strong>交色办。如有疑问请来电，谢谢合作！</div>'
-    +'<div class="sgn"><div class="sgc">主管：</div><div class="sgc">制单：'+esc(CO.preparer)+'</div><div class="sgc">染厂跟单：</div></div>'
+    +'<div class="sgn"><div class="sgc">主管：</div><div class="sgc">制单：'+esc(currentPreparer())+'</div><div class="sgc">染厂跟单：</div></div>'
     +'</body></html>';
   printHTML(html);
 }
@@ -7458,7 +7579,7 @@ function buildWH(d){
       '<div style="margin-top:20px;border-bottom:1px solid #bbb;margin-bottom:4px"></div>'+
       '<div style="font-size:8px;color:#aaa">签字：________________　日期：________</div></div>'+
     '<div class="sgc"><div style="font-size:8px;color:#999;font-weight:700;letter-spacing:1px;margin-bottom:4px">制　单</div>'+
-      '<div style="font-size:11px;font-weight:700;margin-bottom:4px">'+esc(CO.preparer)+'</div>'+
+      '<div style="font-size:11px;font-weight:700;margin-bottom:4px">'+esc(currentPreparer())+'</div>'+
       '<div style="border-bottom:1px solid #bbb;margin-bottom:4px"></div>'+
       '<div style="font-size:8px;color:#aaa">签字：________________　日期：________</div></div>'+
     '<div class="sgc"><div style="font-size:8px;color:#999;font-weight:700;letter-spacing:1px;margin-bottom:4px">织厂确认</div>'+
@@ -8186,7 +8307,7 @@ function buildDH(d){
   // ── 签名栏加高 ──
   '<div class="sgn" style="grid-template-columns:1fr 1fr 2fr;min-height:60px">'+
     '<div class="sgc" style="padding:28px 14px 8px">主管：</div>'+
-    '<div class="sgc" style="padding:28px 14px 8px">制单：'+esc(CO.preparer)+'</div>'+
+    '<div class="sgc" style="padding:28px 14px 8px">制单：'+esc(currentPreparer())+'</div>'+
     '<div class="sgc" style="padding:28px 14px 8px">染厂跟单：</div>'+
   '</div>'+
   '</div>';
@@ -9168,7 +9289,7 @@ function printQuot(id){
         +'<div class="info-cap">QUOTATION DETAILS</div>'
         +'<div class="info-f"><span class="info-lbl">报价日期</span><span class="info-val">'+esc((r.date||'').replace(/-/g,'/'))+'</span></div>'
         +'<div class="info-f"><span class="info-lbl">有效期至</span><span class="info-val">'+esc((r.validTo||r.validDate||'').replace(/-/g,'/')||'—')+'</span></div>'
-        +'<div class="info-f"><span class="info-lbl">报价员</span><span class="info-val">'+esc(CO.preparer)+'</span></div>'
+        +'<div class="info-f"><span class="info-lbl">报价员</span><span class="info-val">'+esc(currentPreparer())+'</span></div>'
       +'</div>'
     +'</div>'
 
@@ -9204,7 +9325,7 @@ function printQuot(id){
         +'<div class="sign-hint">Confirmed by &nbsp;/&nbsp; Date</div>'
       +'</div>'
       +'<div class="maker-b">'
-        +'<div>制单：<span class="maker-name">'+esc(CO.preparer)+'</span></div>'
+        +'<div>制单：<span class="maker-name">'+esc(currentPreparer())+'</span></div>'
         +'<div style="color:#aaa;font-size:9.5px">联系电话：13798269736</div>'
       +'</div>'
     +'</div>'
@@ -9392,7 +9513,7 @@ function openMultiColorSheet(){
         +'</div>'
         // 签字栏
         +'<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:30px;padding:8px;margin-top:6px">'
-        +'<div><p style="font-size:12px;margin:4px 0"><strong>制单人：</strong>'+esc(CO.preparer)+'</p>'
+        +'<div><p style="font-size:12px;margin:4px 0"><strong>制单人：</strong>'+esc(currentPreparer())+'</p>'
         +'<p style="font-size:12px;margin:4px 0"><strong>发货仓库：</strong>东莞仓</p></div>'
         +'<div><p style="font-size:12px;margin:4px 0"><strong>客户收货签章：</strong>________________</p>'
         +'<p style="font-size:10px;color:#666;margin-top:8px">注：请于七天内核对数量质量，逾期或经裁剪本公司恕不负责。</p></div>'
@@ -10219,7 +10340,7 @@ function printARec(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #ccc">'
     +'<div style="padding:8px 12px;border-right:1px solid #ccc">'
     +'<div style="font-size:9px;color:#999;letter-spacing:.5px;margin-bottom:5px">制单人</div>'
-    +'<div style="font-size:11px;font-weight:600">'+esc(CO.preparer)+'</div>'
+    +'<div style="font-size:11px;font-weight:600">'+esc(currentPreparer())+'</div>'
     +'<div style="font-size:9.5px;color:#555;margin-top:3px">联系电话：'+esc(CO.tel||'')+'</div>'
     +'</div>'
     +'<div style="padding:8px 12px;border-right:1px solid #ccc">'
@@ -14776,7 +14897,7 @@ function printQuickOut(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #ddd;border-radius:4px;margin-top:6px;overflow:hidden">'
     +'<div style="padding:10px 14px;border-right:1px solid #eee;background:#fafafa">'
     +'<div style="font-size:8px;color:#999;letter-spacing:.5px;margin-bottom:4px">制单</div>'
-    +'<div style="font-size:11px;font-weight:700;color:#1e3a8a">'+esc(CO.preparer)+'</div>'
+    +'<div style="font-size:11px;font-weight:700;color:#1e3a8a">'+esc(currentPreparer())+'</div>'
     +'<div style="font-size:9px;color:#888;margin-top:2px">13798269736</div>'
     +'</div>'
     +'<div style="padding:10px 14px;border-right:1px solid #eee">'
@@ -15066,7 +15187,7 @@ function printFGOut(outId){
     '<div class="disc">如有问题，请于七天内通知或退回，逾期或经裁剪，本公司恕不负责。</div>'+
 
     '<div class="sign">'+
-      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(CO.preparer)+'</div></div>'+
+      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(currentPreparer())+'</div></div>'+
       '<div class="sc"><div class="sc-lbl">客户收货确认 / Received by</div><div class="sc-line"></div></div>'+
       '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(out.rm||'')+'</div></div>'+
     '</div>'+
@@ -15244,7 +15365,7 @@ function printFGReturn(retId){
     '<div class="disc">退货回仓布匹标注为 B 级（二等品），如有品质争议请于七日内提出。</div>'+
 
     '<div class="sign">'+
-      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(CO.preparer)+'</div></div>'+
+      '<div class="sc"><div class="sc-lbl">制单 / Prepared by</div><div class="sc-val">'+esc(currentPreparer())+'</div></div>'+
       '<div class="sc"><div class="sc-lbl">备注 / Remarks</div><div class="sc-val">'+esc(ret.rm||'')+'</div></div>'+
     '</div>'+
     '</body></html>';

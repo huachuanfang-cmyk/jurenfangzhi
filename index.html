@@ -2762,6 +2762,10 @@ function receiptAccounts(){
 function receiptAccountLabel(a){
   return (a&&a.label)||((a&&a.type)==='personal'?'个人代收账户':'公司对公账户');
 }
+// 带密码门槛的入口：财务收款账户涉及钱，必须管理员密码才能打开编辑
+function openReceiptAccountManagerSecure(){
+  verifyPwd(function(){openReceiptAccountManager();});
+}
 function openReceiptAccountManager(){
   var modal=buildModal('收款账户设置','ml',function(body){
     body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px';
@@ -4197,7 +4201,7 @@ function pgSettings(){
     txt.innerHTML='<b>多个收款账户？</b> 上面是<b>默认对公账户</b>。若还有其它对公账户或个人代收账户，点右侧管理 —— 打印对账单时可逐张选用哪个账户。';
     var mgrBtn=document.createElement('button');mgrBtn.type='button';mgrBtn.textContent='🏦 管理多个收款账户';
     mgrBtn.style.cssText='padding:8px 16px;background:#DC2626;border:none;color:#fff;border-radius:6px;font-size:11.5px;cursor:pointer;font-weight:700;white-space:nowrap';
-    mgrBtn.onclick=function(){openReceiptAccountManager();};
+    mgrBtn.onclick=function(){openReceiptAccountManagerSecure();};
     w.appendChild(txt);w.appendChild(mgrBtn);
     sec4.body.appendChild(w);
   })();
@@ -9427,7 +9431,7 @@ function pgARec(){
   hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
   var ht=document.createElement('div');ht.style.cssText='font-size:14px;font-weight:700;color:var(--t1)';ht.textContent='对账单';
   var hb=document.createElement('div');hb.style.cssText='display:flex;gap:8px;align-items:center';
-  var ab=mkBtn('收款账户设置','btn bs',openReceiptAccountManager);
+  var ab=mkBtn('🔒 收款账户设置','btn bs',openReceiptAccountManagerSecure);
   var nb=mkBtn('＋ 新建对账单','btn bp',function(){openARecModal(null);});
   hb.appendChild(ab);hb.appendChild(nb);
   hdr.appendChild(ht);hdr.appendChild(hb);pg.appendChild(hdr);

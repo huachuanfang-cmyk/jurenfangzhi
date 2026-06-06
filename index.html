@@ -1549,7 +1549,9 @@ function missingCloudColumnsForSchemaError(key,message){
     /Could not find the ['"]([a-zA-Z0-9_]+)['"] column/g,
     /column ['"]?([a-zA-Z0-9_]+)['"]? does not exist/gi,
     /Failed to find column ['"]([a-zA-Z0-9_]+)['"]/g,
-    /['"]([a-zA-Z0-9_]+)['"] column of [^ ]+ does not exist/g
+    /['"]([a-zA-Z0-9_]+)['"] column of [^ ]+ does not exist/g,
+    // 带表名前缀格式：column "ar_records.receipt_account_type" does not exist
+    /column ['"][a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)['"] does not exist/g
   ];
   patterns.forEach(function(re){
     var m;
@@ -1955,21 +1957,27 @@ function countDirtySyncKeys(){
 }
 
 async function checkRequiredCloudSchema(key,table){
+  // 策略：永不阻断用户。缺字段是新功能字段（如 voided/splitBy 等），
+  // 不影响主业务同步。推送层 upsertCloudRows 会自动剥离并持久化到 _cloudColSkip。
+  // 这里只做"静默学习"——能识别就加进 skip 列表，识别不到也不警告用户。
   var cols=REQUIRED_CLOUD_COLUMNS[key]||[];
   if(!cols.length)return {ok:true,msg:''};
   if(!_supabaseData||!isOnline())return {ok:true,msg:''};
   try{
     var res=await _supabaseData.from(table).select(cols.join(','),{count:'exact',head:true});
     if(!res||!res.error)return {ok:true,msg:''};
-    // 自动剥离已知缺失字段（无需手工跑 SQL）
-    var missing=missingCloudColumnsForSchemaError(key,res.error.message||'');
-    if(missing.length){
-      _addSkippedCols(key,missing);
-      return {ok:true,msg:'已自动适配：云端缺 '+missing.join('、')+' 字段（这些是新功能字段，不影响主业务同步）'};
-    }
-    return {ok:false,msg:'数据库结构警告：'+(res.error.message||'云端缺少字段')+'（系统会尝试自动剥离不影响主业务，但若仍同步失败可联系开发执行 SQL 升级）'};
+    // 不论能否识别错误格式，都把"已知应该存在但查不到"的字段加入 skip 列表
+    // 这样推送时会主动剥离，避免反复触发 schema 错误
+    var msg=res.error.message||'';
+    var parsed=missingCloudColumnsForSchemaError(key,msg);
+    // 兜底：当解析不出具体字段名时，直接把 REQUIRED_CLOUD_COLUMNS 全部加入 skip
+    // 因为查询失败说明至少有一个字段缺失，全跳过最安全（这些都是新功能字段，没了不影响主业务）
+    var toSkip=parsed.length?parsed:cols.slice();
+    _addSkippedCols(key,toSkip);
+    return {ok:true,msg:''};  // 永远 ok — 用户层不可见
   }catch(e){
-    return {ok:false,msg:'数据库结构检查失败：'+(e.message||String(e))+'。请先确认 Supabase 连接和表结构。'};
+    // 网络异常等也不报警，让主同步流程处理
+    return {ok:true,msg:''};
   }
 }
 

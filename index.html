@@ -2656,7 +2656,36 @@ function clrStatusBadge(v){
   return '<span class="bx" style="background:'+s.color+'18;color:'+s.color+';border:1px solid '+s.color+'40;font-size:10px;padding:2px 7px">'+s.l+'</span>';
 }
 
-var CO={nm:'东莞市巨人纺织有限公司',addr:'广东省东莞市虎门镇宁馨南路17号1号楼',tel:'(86)769-85390688',fax:'(86)769-85394002',email:'13798269736@163.com'};
+// ══════════════════════════════════════════════════════════════
+// 公司档案 (Phase A) — 抽象层，让同行可以一键替换公司信息无需改代码
+// CO_DEFAULT 是本系统的"巨人纺织"基线值，CO 是运行时实际生效的对象
+// 用户不动设置面板 → CO === CO_DEFAULT，行为与之前完全一致
+// 用户保存自定义 → DB.load('company') 提供覆盖，refreshCO() 同步生效
+// ══════════════════════════════════════════════════════════════
+var CO_DEFAULT={
+  // ① 基本信息
+  nm:'东莞市巨人纺织有限公司',
+  shortNm:'巨人纺织',
+  // ② 联络信息
+  addr:'广东省东莞市虎门镇宁馨南路17号1号楼',
+  tel:'(86)769-85390688',
+  fax:'(86)769-85394002',
+  email:'13798269736@163.com',
+  // ③ 单据制单（打印落款）
+  preparer:'蒋劲松',
+  preparerTel:'(86)769-85390688',
+  // ④ 默认收款账户（与 defaultReceiptAccount 保持兼容）
+  bankName:'东莞银行股份有限公司长安支行',
+  bankAccount:'539000015553633',
+  bankAccountHolder:'东莞市巨人纺织有限公司'
+};
+var CO=Object.assign({},CO_DEFAULT,DB.load('company')||{});
+function refreshCO(){
+  // 让设置面板保存后立即生效，不用刷新页面
+  var saved=DB.load('company')||{};
+  for(var k in CO)delete CO[k];
+  Object.assign(CO,CO_DEFAULT,saved);
+}
 function defaultReceiptAccount(){
   return {type:'company',name:'东莞市巨人纺织有限公司',bank:'东莞银行股份有限公司长安支行',no:'539000015553633',note:''};
 }

@@ -180,6 +180,41 @@ test('登记出货弹窗必须有显眼合计栏（蓝底大字 📦）', () => 
 });
 
 // ═══════════════════════════════════════════════
+// 锁 11-14：公司档案抽象层 (Phase A)
+// 原 bug：公司信息硬编码在 70+ 处打印模板里，同行复用要逐处替换
+// ═══════════════════════════════════════════════
+test('CO_DEFAULT 必须存在且包含原公司名（保证向后兼容）', () => {
+  const m = html.match(/var CO_DEFAULT=\{[\s\S]{0,800}?\};/);
+  if (!m) throw new Error('CO_DEFAULT 对象消失了 — 公司档案抽象层被破坏');
+  if (!/nm:'东莞市巨人纺织有限公司'/.test(m[0])) {
+    throw new Error('CO_DEFAULT.nm 默认值改了 — 不设置任何东西时行为应与历史完全一致');
+  }
+});
+
+test('CO 必须用 Object.assign 与 DB.load(company) 合并', () => {
+  const pat = /var CO=Object\.assign\(\{\},CO_DEFAULT,DB\.load\('company'\)\|\|\{\}\)/;
+  if (!pat.test(html)) {
+    throw new Error('CO 的合并机制被破坏 — 用户保存的设置不会生效');
+  }
+});
+
+test('CO 必须保留原有的 nm/addr/tel/fax/email 字段', () => {
+  const m = html.match(/var CO_DEFAULT=\{[\s\S]{0,800}?\};/);
+  if (!m) throw new Error('找不到 CO_DEFAULT');
+  ['nm', 'addr', 'tel', 'fax', 'email'].forEach(field => {
+    if (!new RegExp(field + ':').test(m[0])) {
+      throw new Error('CO_DEFAULT 缺少必备字段：' + field + '（原打印模板会引用空值）');
+    }
+  });
+});
+
+test('refreshCO 函数必须存在，让设置面板保存后无需刷新即可生效', () => {
+  if (!/function refreshCO\(\)/.test(html)) {
+    throw new Error('refreshCO 函数被删除 — 设置面板将无法实时生效');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

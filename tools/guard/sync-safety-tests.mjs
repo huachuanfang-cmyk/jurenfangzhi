@@ -70,14 +70,14 @@ test('refresh safety modal has reliable close interactions', () => {
 });
 
 test('refresh safety check verifies required cloud schema columns before switching computers', () => {
+  // 新约定（用户要求）：schema 缺字段时静默自动适配，不再弹窗逼用户跑 SQL
+  // 旧测试要求"数据库未升级"警告字样和 SQL 文件路径，已废弃 — 替换为新行为约定：
   assert.match(html, /var\s+REQUIRED_CLOUD_COLUMNS\s*=/);
   assert.match(html, /async\s+function\s+checkRequiredCloudSchema\s*\(/);
-  assert.match(html, /schemaErr/);
-  assert.match(html, /数据库结构/);
-  assert.match(html, /数据库未升级/);
-  assert.match(html, /supabase-sync-missing-columns-2026-06-05\.sql/);
-  assert.match(html, /duplicate_of/);
-  assert.match(html, /status/);
+  assert.match(html, /missingCloudColumnsForSchemaError/); // 通用错误解析必须存在
+  assert.match(html, /_addSkippedCols/); // 自动学习并跳过缺失字段
+  assert.match(html, /upsertCloudRows/); // 推送层有自适应重试
+  assert.match(html, /duplicate_of/); // 关键字段仍记录在 REQUIRED_CLOUD_COLUMNS 里
   assert.match(html, /no_restock_on_void/);
   assert.match(html, /receipt_account_bank/);
 });

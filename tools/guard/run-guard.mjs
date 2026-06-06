@@ -18,6 +18,7 @@ const commands = [
   [process.execPath, ['tools/guard/print-content-tests.mjs'], 'print content guard'],
   [process.execPath, ['tools/guard/data-audit.mjs'], 'data audit'],
   [process.execPath, ['tools/guard/print-snapshot-tests.mjs'], 'print snapshot guard'],
+  [process.execPath, ['tools/guard/locked-behaviors-tests.mjs'], 'locked behaviors guard'],
 ];
 
 let failed = false;

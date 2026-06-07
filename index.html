@@ -7438,16 +7438,33 @@ function openTM(id){
     var _tunit=t.unit||((so&&so.prUnit==='元/M')?'米':'kg');
     var unSel=mkSelect('t-un',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],_tunit);
     g3.appendChild(fv('计量单位',unSel));
-    var sqi=mkInput('t-sq',t.sentQ,'','number');
-    sqi.oninput=function(){var s=parseFloat(this.value)||0;var u=parseFloat((document.getElementById('t-up')||{value:0}).value)||0;var f=document.getElementById('t-fe');if(s&&u&&f&&!f.value)f.value=(s*u).toFixed(2);};
+    // 计费基准：织布厂按「收回胚布」计费（含氨纶会加重，厂家按胚布收费）；染整/印花按「发出」
+    var _fbDef=t.feeBase||((t.proc||PROCS[0])==='织布厂'?'ret':'sent');
+    var fbSel=mkSelect('t-fb',[{v:'sent',l:'按发出数量'},{v:'ret',l:'按收回(胚布)'},{v:'act',l:'按实际入库'}],_fbDef);
+    g3.appendChild(fv('计费基准',fbSel));
+    // 统一加工费计算：基准数量 × 单价（force=true 时覆盖已有值）
+    var _tFee=function(force){
+      var fb=(document.getElementById('t-fb')||{value:'sent'}).value;
+      var qid=fb==='ret'?'t-rq':(fb==='act'?'t-aw':'t-sq');
+      var q=parseFloat((document.getElementById(qid)||{value:0}).value)||0;
+      var u=parseFloat((document.getElementById('t-up')||{value:0}).value)||0;
+      var f=document.getElementById('t-fe');if(!f)return;
+      if(q&&u&&(force||!f.value))f.value=(q*u).toFixed(2);
+    };
+    var sqi=mkInput('t-sq',t.sentQ,'','number');sqi.oninput=function(){_tFee(false);};
     var fvSq=fv('发出数量(kg)',sqi);g3.appendChild(fvSq);
-    var fvRq=fv('收回数量(kg)',mkInput('t-rq',t.retQ,'','number'));g3.appendChild(fvRq);
-    var fvAw=fv('实际入库(kg)',mkInput('t-aw',t.actW,'复称重量','number'));g3.appendChild(fvAw);
-    var upi=mkInput('t-up',t.unitPr,'','number');
-    upi.oninput=function(){var s=parseFloat((document.getElementById('t-sq')||{value:0}).value)||0;var u=parseFloat(this.value)||0;var f=document.getElementById('t-fe');if(s&&u&&f&&!f.value)f.value=(s*u).toFixed(2);};
+    var rqi=mkInput('t-rq',t.retQ,'','number');rqi.oninput=function(){_tFee(false);};
+    var fvRq=fv('收回数量(kg)',rqi);g3.appendChild(fvRq);
+    var awi=mkInput('t-aw',t.actW,'复称重量','number');awi.oninput=function(){_tFee(false);};
+    var fvAw=fv('实际入库(kg)',awi);g3.appendChild(fvAw);
+    var upi=mkInput('t-up',t.unitPr,'','number');upi.oninput=function(){_tFee(false);};
     var fvUp=fv('加工单价(元/kg)',upi);g3.appendChild(fvUp);
     g3.appendChild(fv('应付加工费(元)',mkInput('t-fe',t.fee,'自动计算','number')));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
+    fbSel.onchange=function(){_tFee(true);};
+    // 工序切换时按业界惯例切换默认计费基准并重算
+    var _pcEl=document.getElementById('t-pc');
+    if(_pcEl)_pcEl.addEventListener('change',function(){var fb=document.getElementById('t-fb');if(fb)fb.value=this.value==='织布厂'?'ret':'sent';_tFee(true);});
     var _tRelabel=function(){var u=document.getElementById('t-un').value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
@@ -7470,10 +7487,14 @@ function saveT(id){
     var opt=sel&&sel.options[sel.selectedIndex];
     var sq=parseFloat(document.getElementById('t-sq').value)||0;
     var up=parseFloat(document.getElementById('t-up').value)||0;
-    var fee=document.getElementById('t-fe').value||(sq&&up?(sq*up).toFixed(2):'');
+    var fb=(document.getElementById('t-fb')||{value:'sent'}).value;
+    var rqv=parseFloat((document.getElementById('t-rq')||{value:0}).value)||0;
+    var awv=parseFloat((document.getElementById('t-aw')||{value:0}).value)||0;
+    var baseQ=fb==='ret'?rqv:(fb==='act'?awv:sq);
+    var fee=document.getElementById('t-fe').value||(baseQ&&up?(baseQ*up).toFixed(2):'');
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
-    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
+    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
     DB.trks=l;cm();pgTrk();

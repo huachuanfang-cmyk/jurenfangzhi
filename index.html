@@ -4955,7 +4955,7 @@ function pgGrossProfit(){
 
   // ── 统一数据：按订单聚合收入/成本，再派生 客户/月份 ──
   var OS={}; // ordId -> {ord,rev,feeCost,matCost}
-  function getOS(ord){var k=ord.id||('no_'+ord.no);if(!OS[k])OS[k]={ord:ord,rev:0,feeCost:0,matCost:0,procCost:{}};return OS[k];}
+  function getOS(ord){var k=ord.id||('no_'+ord.no);if(!OS[k])OS[k]={ord:ord,rev:0,feeCost:0,matCost:0,miscCost:0,procCost:{}};return OS[k];}
   var orphan={rev:0}; // 无关联订单的出货（快速出货等）
   // 收入：出货 × 单价（与对账计费一致，1位小数），扣退货
   (DB.fgouts||[]).forEach(function(o){
@@ -4986,8 +4986,10 @@ function pgGrossProfit(){
     if(!y||y.voided)return;var amt=parseFloat(y.amt)||0;if(!amt)return;
     var ord=ordOf(y);if(!ord)return;getOS(ord).matCost+=amt;
   });
+  // 其它成本（运费/杂费，订单级手填）
+  orders.forEach(function(o){var mc=parseFloat(o.miscCost)||0;if(mc>0)getOS(o).miscCost+=mc;});
   var osList=Object.keys(OS).map(function(k){
-    var s=OS[k];s.cost=s.feeCost+s.matCost;s.profit=s.rev-s.cost;
+    var s=OS[k];s.cost=s.feeCost+s.matCost+(s.miscCost||0);s.profit=s.rev-s.cost;
     s.margin=s.rev>0?(s.profit/s.rev*100):0;return s;
   }).filter(function(s){return s.rev>0||s.cost>0;});
 
@@ -5001,7 +5003,7 @@ function pgGrossProfit(){
   hdr.innerHTML='<span style="font-size:24px">💰</span>'
     +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#166534">利润分析</div>'
     +'<div style="font-size:11px;color:#475569;margin-top:3px">毛利 = 出货收入 − 成本（加工费+纱线采购，按订单自动汇总）。'
-    +'<b style="color:#C2410C">运费/杂费等暂未纳入；成本不全会标⚠️，去「加工跟踪」补录加工费即自动更准。</b></div></div>';
+    +'<b style="color:#C2410C">运费/杂费在销售订单「其它成本」栏录入即计入；成本不全会标⚠️，去「加工跟踪」补录加工费即自动更准。</b></div></div>';
   pg.appendChild(hdr);
 
   // 汇总卡
@@ -5076,6 +5078,7 @@ function pgGrossProfit(){
       var parts=[];
       Object.keys(s.procCost).forEach(function(pk){if(s.procCost[pk]>0)parts.push(esc(pk)+'：'+money(s.procCost[pk]));});
       if(s.matCost>0)parts.push('纱线采购：'+money(s.matCost));
+      if(s.miscCost>0)parts.push('其它成本：'+money(s.miscCost));
       var detail=parts.length?parts.join('　·　'):'该订单暂无成本明细（加工费/纱线均未录入）';
       rows+='<tr class="prof-d prof-d-'+i+'" style="display:none;background:#FCFCFE;border-bottom:1px solid #F1F5F9">'
         +'<td colspan="8" style="padding:6px 10px 6px 28px;font-size:10.5px;color:#475569">💴 成本构成：'+detail+'</td></tr>';
@@ -6845,6 +6848,9 @@ function openOM(id){
     stRow.appendChild(stSel);stRow.appendChild(divider);stRow.appendChild(paidSel);
     stContainer.appendChild(stLbl);stContainer.appendChild(stRow);
     g3.appendChild(stContainer);
+    // 其它成本（运费/杂费等隐形成本，计入毛利）
+    var miscI=dInp('o-misc',o.miscCost||'','如：运费/杂费 800');miscI.style.borderColor='#FDE68A';
+    g3.appendChild(dFld('其它成本（运费/杂费·元）',miscI,1,'#D97706'));
     mf.appendChild(dSec('💰','销售信息','#F0FDF4','#BBF7D0','#16A34A',g3));
 
     body.appendChild(mf);
@@ -7014,7 +7020,7 @@ function saveO(id){
     var d={id:id||uid(),no:no,prodNo:document.getElementById('o-pno').value,custNo:document.getElementById('o-cno').value,sty:document.getElementById('o-sty').value,follower:(document.getElementById('o-cky')||{value:''}).value,ordDate:document.getElementById('o-date').value,custNm:cust,fab:fab,fabB:document.getElementById('o-fabB').value||'',comps:comps,gaugeN:gn,gaugeS:gs,width:wd,widthUnit:wu,weight:wt,shrink:document.getElementById('o-sh').value,delDate:document.getElementById('o-del').value,unitPr:document.getElementById('o-pr').value,prUnit:(function(){var b=document.getElementById('o-pu-btn');return b?b.dataset.unit:'元/KG';})(),
       taxType:(function(){var b=document.querySelector('button[data-tax]');return b?b.dataset.tax:'incl';})(),
       payTm:(function(){var sel=document.getElementById('o-pt-sel');var inp=document.getElementById('o-pt');if(!sel)return inp?inp.value:'';return sel.value==='其它'?(inp?inp.value:''):sel.value;})(),
-      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),colors:colors};
+      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),colors:colors};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     var oldOrder=id?(l[i]||{}):{};
     var oldColors=oldOrder.colors||[];

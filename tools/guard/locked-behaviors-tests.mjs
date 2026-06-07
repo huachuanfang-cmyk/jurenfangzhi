@@ -597,6 +597,19 @@ test('应付账龄必须排除已付/作废，按账单日期分档', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 36：隐形成本（运费/杂费）录入并计入毛利
+// ═══════════════════════════════════════════════
+test('销售订单有其它成本字段且保存', () => {
+  if (!/o-misc/.test(html)) throw new Error('订单其它成本字段 o-misc 缺失');
+  if (!/miscCost:\(document\.getElementById\('o-misc'\)/.test(html)) throw new Error('订单保存未写入 miscCost');
+});
+
+test('毛利成本必须计入订单其它成本(miscCost)', () => {
+  if (!/getOS\(o\)\.miscCost\+=mc/.test(html)) throw new Error('毛利未汇总订单其它成本');
+  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.miscCost\|\|0\)/.test(html)) throw new Error('毛利成本未把 miscCost 计入合计');
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

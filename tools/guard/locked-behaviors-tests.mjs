@@ -610,6 +610,21 @@ test('毛利成本必须计入订单其它成本(miscCost)', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 37：染整加工单工厂下拉包含印花厂/后整理厂
+// ═══════════════════════════════════════════════
+test('染整加工单/打办的工厂筛选必须含印花厂/后整理厂', () => {
+  if (!/function isDyeFinishFactory\(f\)/.test(html)) throw new Error('isDyeFinishFactory 助手缺失');
+  var m = html.match(/function isDyeFinishFactory[\s\S]{0,200}?\}/);
+  if (!m || !/印花厂/.test(m[0]) || !/后整理厂/.test(m[0])) {
+    throw new Error('isDyeFinishFactory 未包含印花厂/后整理厂');
+  }
+  // 染整加工单下拉用该助手
+  if (!/mkSelect\('dd-f'[\s\S]{0,120}?filter\(isDyeFinishFactory\)/.test(html)) {
+    throw new Error('染整加工单工厂下拉未用 isDyeFinishFactory，印花厂会选不到');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

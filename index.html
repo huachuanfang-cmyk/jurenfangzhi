@@ -3172,6 +3172,8 @@ function markDuplicateShipmentVoidNoRestock(rid){
   });
 }
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
+// 染整加工单/打办可选的工厂：染厂 + 印花厂 + 后整理厂（这些都属于染整阶段加工）
+function isDyeFinishFactory(f){var ps=(f&&f.prcs)||[];return ps.indexOf('染厂')>=0||ps.indexOf('印花厂')>=0||ps.indexOf('后整理厂')>=0||ps.indexOf('后整理')>=0||ps.indexOf('定型厂')>=0;}
 var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级']};
 
 // ═══ NAV ═══
@@ -5218,7 +5220,7 @@ function openColorNoticeModal(id){
     function sel(id,opts,val){var s=document.createElement('select');s.id=id;s.style.cssText='width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;font-size:12px';opts.forEach(function(o){var op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===val)op.selected=true;s.appendChild(op);});return s;}
     // 行1：TO ATTN DATE
     var r1=row('1fr 1fr 1fr');
-    var facOpts=[{v:'',l:'— 选择染厂 —'}].concat((DB.facts||[]).filter(function(f){return (f.prcs||[]).indexOf('染厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm};}));
+    var facOpts=[{v:'',l:'— 选择染厂/印花厂/后整理厂 —'}].concat((DB.facts||[]).filter(isDyeFinishFactory).map(function(f){return{v:f.nm,l:f.nm};}));
     var toSel=sel('cn-to',facOpts,rec?rec.to:'');
     toSel.onchange=function(){
       var fac=(DB.facts||[]).find(function(f){return f.nm===this.value;}.bind(this));
@@ -8402,7 +8404,7 @@ function pgDD(){
   var al=document.createElement('div');al.className='al alb';
   al.textContent='选择订单后自动带入规格数据，填写染厂信息后保存配置。';
   var ordSel=mkSearchableSelect('dd-o',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
-  var facSel=mkSelect('dd-f',[{v:'',l:'请选择染厂'}].concat(DB.facts.filter(function(f){var ps=f.prcs||[];return ps.indexOf('染厂')>=0;}).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
+  var facSel=mkSelect('dd-f',[{v:'',l:'请选择染厂/印花厂/后整理厂'}].concat(DB.facts.filter(isDyeFinishFactory).map(function(f){return{v:f.nm,l:f.nm+(f.contact?' · '+f.contact:'')};})),'');
   facSel.onchange=function(){
     var fnm=this.value;var fac=DB.facts.find(function(f){return f.nm===fnm;});
     if(fac){

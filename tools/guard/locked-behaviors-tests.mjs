@@ -124,7 +124,7 @@ test('应收对账列表必须按 月份 desc → 客户 → 单号 desc 排序'
 // 原 bug：A 删除后 B 仍能看到（本地优先锁完全跳过 pull）
 // ═══════════════════════════════════════════════
 test('pullFromSupabase 必须独立应用墓碑（不受本地优先锁限制）', () => {
-  const pat = /跨设备删除传播|Sync 墓碑清理/;
+  const pat = /墓碑清理|syncTombstonesAndPurge/;
   if (!pat.test(html)) {
     throw new Error('pull 时不再独立应用墓碑，A 电脑删除的记录会在 B 电脑「复活」');
   }
@@ -548,6 +548,19 @@ test('作废单据打印必须带统一水印（出货/退货/快速出货）', 
   if (!/voidPrintStamp\(out\.voided\)/.test(html)) throw new Error('送货单打印未注入作废水印');
   if (!/voidPrintStamp\(ret\.status==='cancelled'\|\|ret\.voided\)/.test(html)) throw new Error('退货单打印未注入作废水印');
   if (!/voidPrintStamp\(r\.voided\)/.test(html)) throw new Error('快速出货单打印未注入作废水印');
+});
+
+// ═══════════════════════════════════════════════
+// 锁 33：删除复活根治 — 推送前先应用墓碑
+// ═══════════════════════════════════════════════
+test('推送脏数据前必须先同步墓碑清本地（防删除复活）', () => {
+  if (!/async function syncTombstonesAndPurge\(\)/.test(html)) {
+    throw new Error('syncTombstonesAndPurge 被删除 — 删除的数据会复活');
+  }
+  // 必须在 Step 1 推送之前调用
+  if (!/await syncTombstonesAndPurge\(\);\s*\n\s*\/\/ Step 1/.test(html)) {
+    throw new Error('syncTombstonesAndPurge 不在推送之前调用 — 脏表会把已删数据重新插回云端');
+  }
 });
 
 // ═══════════════════════════════════════════════

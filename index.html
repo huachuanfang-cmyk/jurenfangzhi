@@ -1742,10 +1742,50 @@ async function forceFullSync(){
   });
 }
 
+// 同步墓碑（删除标记）并清掉本地已删除记录。
+// 必须在"推送脏数据之前"调用，否则脏表会把已删数据重新插回云端 → 复活。
+async function syncTombstonesAndPurge(){
+  if(_testMode||!_supabaseData)return;
+  // 1) 拉云端墓碑合并到本地
+  try{
+    var res=await _supabaseData.from('tombstones').select('biz_key,record_id,table_name,deleted_at');
+    var tmbData=res&&res.data;
+    if(tmbData&&tmbData.length){
+      var localT=readTombstones();var localMap={};
+      localT.forEach(function(x){if(x&&x.bizKey&&x.recordId)localMap[x.bizKey+'::'+x.recordId]=true;});
+      tmbData.forEach(function(r){
+        var k=r.biz_key||r.bizKey||'';var rid=r.record_id||r.recordId||'';
+        if(k&&rid&&!localMap[k+'::'+rid]){
+          localT.push({bizKey:k,recordId:rid,tableName:r.table_name||r.tableName||'',deletedAt:r.deleted_at||r.deletedAt||''});
+        }
+      });
+      writeTombstones(localT);
+    }
+  }catch(e){console.warn('墓碑拉取失败:',e);}
+  // 2) 把所有墓碑应用到本地业务表，清掉已删除记录（防复活）
+  try{
+    var allTombs=readTombstones();
+    if(allTombs.length){
+      var byKey={};
+      allTombs.forEach(function(t){if(!t||!t.recordId||!t.bizKey)return;if(!byKey[t.bizKey])byKey[t.bizKey]={};byKey[t.bizKey][t.recordId]=true;});
+      Object.keys(byKey).forEach(function(bk){
+        var arr=DB.load(bk);if(!arr||!arr.length)return;
+        var filtered=arr.filter(function(x){return !x.id||!byKey[bk][x.id];});
+        if(filtered.length<arr.length){
+          DB.save(bk,filtered);
+          console.log('[墓碑清理] '+bk+': 移除 '+(arr.length-filtered.length)+' 条已删除记录');
+        }
+      });
+    }
+  }catch(e){console.warn('墓碑应用失败:',e);}
+}
+
 async function pullFromSupabase(_quiet){
   if(_testMode) return;
   initSupabase();
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
+  // ★ 关键：推送前先同步墓碑并清掉本地已删除记录，否则脏表推送会把已删数据重新插回云端（复活根因）
+  await syncTombstonesAndPurge();
   // Step 1 — 推送脏数据：只记录成功推送的表，不清除 dirty flag（防止 Step 2 拉回旧数据覆盖本地）
   var pushedKeys = [];
   var prePushVers = {};
@@ -1766,49 +1806,8 @@ async function pullFromSupabase(_quiet){
   }
   // 先处理待删队列，再拉云端，避免已删除记录从 Supabase 回弹。
   await processDeleteQueue();
-  // ── 拉取云端墓碑并合并到本地，确保所有设备共享删除标记 ──
-  if(!_testMode&&_supabaseData){
-    try{
-      var{data:tmbData}=await _supabaseData.from('tombstones').select('biz_key,record_id,table_name,deleted_at');
-      if(tmbData&&tmbData.length){
-        var localT=readTombstones();var localMap={};
-        localT.forEach(function(x){if(x&&x.bizKey&&x.recordId)localMap[x.bizKey+'::'+x.recordId]=true;});
-        tmbData.forEach(function(r){
-          var k=r.biz_key||r.bizKey||'';var rid=r.record_id||r.recordId||'';
-          if(k&&rid&&!localMap[k+'::'+rid]){
-            localT.push({bizKey:k,recordId:rid,tableName:r.table_name||r.tableName||'',deletedAt:r.deleted_at||r.deletedAt||''});
-          }
-        });
-        writeTombstones(localT);
-      }
-    }catch(e){console.warn('墓碑拉取失败:',e);}
-  }
-  // ── 跨设备删除传播：把所有墓碑应用到本地所有业务表 ──
-  // A 电脑删除一条 → 写入 tombstones → B 电脑刷新时拉到墓碑 →
-  // 在这里把对应 ID 从 B 本地清除，防止已删除记录"复活"
-  try{
-    var _allTombs=readTombstones();
-    if(_allTombs.length){
-      var _byKey={};
-      _allTombs.forEach(function(t){
-        if(!t||!t.recordId)return;
-        var bk=t.bizKey||'';
-        if(!bk)return;
-        if(!_byKey[bk])_byKey[bk]={};
-        _byKey[bk][t.recordId]=true;
-      });
-      Object.keys(_byKey).forEach(function(bk){
-        var localArr=DB.load(bk);
-        if(!localArr||!localArr.length)return;
-        var filtered=localArr.filter(function(x){return !x.id||!_byKey[bk][x.id];});
-        if(filtered.length<localArr.length){
-          var removed=localArr.length-filtered.length;
-          DB.save(bk,filtered);
-          console.log('[Sync 墓碑清理] '+bk+': 移除 '+removed+' 条其他设备已删除记录');
-        }
-      });
-    }
-  }catch(e){console.warn('墓碑应用失败:',e);}
+  // 推送后再同步一次墓碑（捕获本轮自己产生的删除 + 其它设备最新删除）
+  await syncTombstonesAndPurge();
   // Step 2 — 拉取云端数据（跳过脏表 以及 刚推送成功的表——后者本地已是最新，拉取可能带回旧数据）
   var loaded = 0;
   var fails = [];

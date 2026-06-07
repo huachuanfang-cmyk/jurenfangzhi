@@ -579,6 +579,24 @@ test('数据巡检的布卷/引用检查必须跳过作废单据', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 35：应付账龄分析
+// ═══════════════════════════════════════════════
+test('应付账龄分析页存在且接入路由/菜单', () => {
+  if (!/function pgApAging\(/.test(html)) throw new Error('pgApAging 被删除');
+  if (!/apaging:pgApAging/.test(html)) throw new Error('应付账龄未接入 go() 路由');
+  if (!/data-page="apaging"/.test(html)) throw new Error('应付账龄菜单项缺失');
+});
+
+test('应付账龄必须排除已付/作废，按账单日期分档', () => {
+  if (!/recs=\(DB\.recons\|\|\[\]\)\.filter\(function\(r\)\{[\s\S]{0,120}?status!=='paid'&&r\.status!=='voided'/.test(html)) {
+    throw new Error('应付账龄未排除已付款/作废对账单');
+  }
+  if (!/function baseDate\(r\)\{return r\.billDate/.test(html)) {
+    throw new Error('应付账龄账龄基准未用账单日期');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

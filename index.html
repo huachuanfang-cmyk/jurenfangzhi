@@ -183,6 +183,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="nl">财务</div>
   <div class="ni" data-page="quot"><span class="nic">&#128196;</span>报价单</div>
   <div class="ni" data-page="recon"><span class="nic">&#128203;</span>应付对账</div>
+  <div class="ni" data-page="apaging"><span class="nic">&#128201;</span>应付账龄</div>
   <div class="ni" data-page="arec"><span class="nic">&#128203;</span>应收对账</div>
   <div class="ni" data-page="araging"><span class="nic">&#128202;</span>应收账龄</div>
   <div class="ni" data-page="profit"><span class="nic">&#128176;</span>客户毛利</div>
@@ -2909,7 +2910,7 @@ function logAction(action,entity,entityId,detail){
 // ── R3：页面级权限 — 每个角色能进哪些菜单 ──
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
-  finance:  ['dash','recon','arec','araging','profit','quot','custs','settings'],
+  finance:  ['dash','recon','apaging','arec','araging','profit','quot','custs','settings'],
   sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice'],
   purchase: ['dash','yarn','greyfab','yarnout','ystock','dw','dd','facts','mat'],
   warehouse:['dash','fgstock','ystock']
@@ -3171,7 +3172,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
   });
 }
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3186,7 +3187,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit,apaging:pgApAging};
   if(fn[p])fn[p]();
 }
 
@@ -4846,6 +4847,94 @@ function pgArAging(){
     });
     var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px';
     note.textContent='共 '+custList.length+' 个客户有未结清应收 · 金额精确到分，与对账单一致 · 点客户行展开看每张单据落在哪个账龄档';
+    cb.appendChild(note);
+  }
+  card.appendChild(cb);pg.appendChild(card);
+}
+// ═══════════════════════════════════════════════════════════════
+
+// ═══ 应付账龄分析 ═══
+// 按"欠加工厂多久"分档：未到30天 / 31-60 / 61-90 / 90天以上
+// 应付对账用状态制：待核对+待付款=未付，已付款=0，作废跳过
+function pgApAging(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  var recs=(DB.recons||[]).filter(function(r){
+    return r&&r.status!=='paid'&&r.status!=='voided'&&(parseFloat(r.actualAmt)||0)>0;
+  });
+  function money(x){return '¥'+(parseFloat(x)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function baseDate(r){return r.billDate||((r.month||'')?(r.month+'-15'):'');} // 账单日期，无则取对账月中
+  function daysOut(r){var d=baseDate(r);if(!d)return 0;var t=new Date();t.setHours(0,0,0,0);var b=new Date(d);if(isNaN(b))return 0;return Math.max(0,Math.round((t-b)/86400000));}
+  function bucketOf(r){var d=daysOut(r);if(d<=30)return 0;if(d<=60)return 1;if(d<=90)return 2;return 3;}
+  var BK=['30天内','31-60天','61-90天','90天以上'];
+  var BKC=['#16A34A','#D97706','#EA580C','#991B1B'];
+
+  var byFac={};var totals=[0,0,0,0];
+  recs.forEach(function(r){
+    var f=r.factNm||'（未填加工厂）';
+    if(!byFac[f])byFac[f]={fac:f,b:[0,0,0,0],total:0,items:[]};
+    var amt=parseFloat(r.actualAmt)||0;var bi=bucketOf(r);
+    byFac[f].b[bi]+=amt;byFac[f].total+=amt;byFac[f].items.push({r:r,bi:bi,amt:amt,days:daysOut(r)});
+    totals[bi]+=amt;
+  });
+  var list=Object.keys(byFac).map(function(k){return byFac[k];}).sort(function(a,b){return (b.b[3]+b.b[2])-(a.b[3]+a.b[2])||b.total-a.total;});
+  var grand=totals.reduce(function(s,x){return s+x;},0);
+  var over60=totals[2]+totals[3];
+
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:linear-gradient(90deg,#FEF2F2,#FFFBEB);border:1px solid #FECACA;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
+  hdr.innerHTML='<span style="font-size:24px">📉</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#991B1B">应付账龄分析</div>'
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">你欠各加工厂多少钱、欠了多久。按账单日期分档，<b style="color:#991B1B">超 60/90 天</b>建议优先安排付款，维护工厂关系。</div></div>';
+  pg.appendChild(hdr);
+
+  var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(3,1fr)';
+  [['应付总额',money(grand),'未付合计','sb'],
+   ['超60天',money(over60),'建议优先付','so'],
+   ['超90天',money(totals[3]),'拖欠风险','sr2']
+  ].forEach(function(s){
+    var st=document.createElement('div');st.className='st '+s[3];
+    st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv" style="font-size:17px">'+s[1]+'</div><div class="ss">'+s[2]+'</div>';
+    sr.appendChild(st);
+  });
+  pg.appendChild(sr);
+
+  var card=document.createElement('div');card.className='card';
+  var ch=document.createElement('div');ch.className='ch';ch.innerHTML='<span class="ct">📋 应付账龄明细（加工厂 × 时长）· 点行展开单据</span>';
+  card.appendChild(ch);
+  var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
+  if(!list.length){
+    cb.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">🎉 暂无未付加工费，账目很健康！</div>';
+  }else{
+    var wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+    var t='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:760px"><thead><tr style="background:#F3F4F6;position:sticky;top:0">'
+      +'<th style="padding:8px 10px;text-align:left;color:#374151">加工厂</th>';
+    BK.forEach(function(b,i){t+='<th style="padding:8px 10px;text-align:right;color:'+BKC[i]+'">'+b+'</th>';});
+    t+='<th style="padding:8px 10px;text-align:right;color:#111;border-left:2px solid #E5E7EB">合计</th></tr></thead><tbody>';
+    list.forEach(function(fc,ri){
+      var bg=ri%2===0?'#fff':'#F8FAFC';
+      t+='<tr class="apag-fac" data-idx="'+ri+'" style="background:'+bg+';border-bottom:1px solid #F1F5F9;cursor:pointer">'
+        +'<td style="padding:7px 10px;font-weight:600"><span style="color:#9CA3AF;font-size:10px;margin-right:4px">▶</span>'+esc(fc.fac)+'</td>';
+      fc.b.forEach(function(v,i){t+='<td style="padding:7px 10px;text-align:right;color:'+(v>0?BKC[i]:'#CBD5E1')+';font-weight:'+(v>0?'700':'400')+'">'+(v>0?money(v):'—')+'</td>';});
+      t+='<td style="padding:7px 10px;text-align:right;font-weight:800;border-left:2px solid #E5E7EB">'+money(fc.total)+'</td></tr>';
+      fc.items.sort(function(a,b){return b.bi-a.bi;}).forEach(function(it){
+        t+='<tr class="apag-d apag-d-'+ri+'" style="display:none;background:#FCFCFE;border-bottom:1px solid #F1F5F9">'
+          +'<td style="padding:5px 10px 5px 28px;color:#6B7280;font-size:10.5px">'
+          +'<span style="font-family:monospace;color:#4338CA">'+esc(it.r.no||'')+'</span> · '+esc(it.r.month||'')
+          +' · 账单 '+esc(it.r.billDate||'—')+' · <span style="color:'+BKC[it.bi]+';font-weight:700">已'+it.days+'天</span>'
+          +' · '+(it.r.status==='pending'?'待核对':'待付款')+'</td>'
+          +'<td colspan="3" style="padding:5px 10px;text-align:right;color:#94A3B8;font-size:10px">'+esc(BK[it.bi])+'</td>'
+          +'<td style="padding:5px 10px;text-align:right;font-weight:600;color:'+BKC[it.bi]+';border-left:2px solid #E5E7EB">'+money(it.amt)+'</td></tr>';
+      });
+    });
+    t+='<tr style="background:#EAECF4;font-weight:800;border-top:2px solid #CBD5E1"><td style="padding:8px 10px">合计</td>';
+    totals.forEach(function(v,i){t+='<td style="padding:8px 10px;text-align:right;color:'+BKC[i]+'">'+(v>0?money(v):'—')+'</td>';});
+    t+='<td style="padding:8px 10px;text-align:right;border-left:2px solid #CBD5E1">'+money(grand)+'</td></tr></tbody></table>';
+    wrap.innerHTML=t;cb.appendChild(wrap);
+    wrap.querySelectorAll('.apag-fac').forEach(function(row){
+      row.onclick=function(){var idx=this.dataset.idx;var a=this.querySelector('span');var open=a.textContent==='▼';a.textContent=open?'▶':'▼';wrap.querySelectorAll('.apag-d-'+idx).forEach(function(d){d.style.display=open?'none':'';});};
+    });
+    var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px';
+    note.textContent='共 '+list.length+' 个加工厂有未付款 · 账龄按账单日期计算 · 点加工厂行展开看每张对账单 · 去「应付对账」确认付款';
     cb.appendChild(note);
   }
   card.appendChild(cb);pg.appendChild(card);

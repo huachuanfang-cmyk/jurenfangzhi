@@ -476,6 +476,23 @@ test('关键操作必须留痕（订单/出货/对账/收款/作废）', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 29：备份页可达 + 切回标签自动同步
+// ═══════════════════════════════════════════════
+test('备份/恢复页必须接入菜单和路由（不能是孤儿页）', () => {
+  if (!/backup:pgBackup/.test(html)) throw new Error('pgBackup 未接入 go() 路由 — 备份页无法访问');
+  if (!/data-page="backup"/.test(html)) throw new Error('备份页菜单项缺失');
+});
+
+test('切回标签页自动静默同步（含编辑保护+节流）', () => {
+  if (!/visibilitychange/.test(html)) throw new Error('缺少 visibilitychange 自动同步监听');
+  if (!/pullFromSupabase\(true\)/.test(html)) throw new Error('自动同步未用静默模式 pullFromSupabase(true)');
+  // 必须有"有弹窗不打断"保护
+  if (!/querySelector\('\.mo'\)\)return/.test(html)) throw new Error('自动同步缺少"编辑中不打断"保护');
+  // pullFromSupabase 必须支持静默参数
+  if (!/async function pullFromSupabase\(_quiet\)/.test(html)) throw new Error('pullFromSupabase 不再支持静默参数');
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

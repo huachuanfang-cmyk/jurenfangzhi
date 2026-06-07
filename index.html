@@ -194,6 +194,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="nl">系统</div>
   <div class="ni" data-page="settings"><span class="nic">&#9881;&#65039;</span>公司档案</div>
   <div class="ni" data-page="auditlog"><span class="nic">&#128220;</span>操作日志</div>
+  <div class="ni" data-page="backup"><span class="nic">&#128190;</span>备份 / 恢复</div>
 </div>
 <div id="mn">
   <div class="topb">
@@ -1739,7 +1740,7 @@ async function forceFullSync(){
   });
 }
 
-async function pullFromSupabase(){
+async function pullFromSupabase(_quiet){
   if(_testMode) return;
   initSupabase();
   if(!_supabaseData){ showToast('Supabase 未初始化','error'); return; }
@@ -1892,7 +1893,8 @@ async function pullFromSupabase(){
     }
   }
   await processDeleteQueue();
-  if(fails.length) showToast('加载失败: '+fails.join(', '), 'error');
+  if(_quiet){ if(fails.length)console.warn('[静默同步] 部分失败:',fails.join(',')); }
+  else if(fails.length) showToast('加载失败: '+fails.join(', '), 'error');
   else if(loaded > 0) showToast('已加载 '+loaded+' 条数据','success');
   else showToast('未加载到数据','warning');
 }
@@ -2201,6 +2203,22 @@ window.addEventListener('online', function(){
   if(readDeleteQueue().length){
     setTimeout(function(){ processDeleteQueue(); }, 2000);
   }
+});
+
+// ── 自动同步：切回本标签页时静默拉取云端最新（B/C 电脑无需手动刷新）──
+// 写入早已实时上云（DB.save 内联 upsert）；这里补「其它设备的改动自动拉下来」
+var _lastAutoSync=Date.now();
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState!=='visible')return;
+  if(!_authReady||!_authUser)return;          // 未登录不同步
+  if(!isOnline())return;                       // 离线不同步
+  if(document.querySelector('.mo'))return;      // 有弹窗（正在编辑）不打断
+  if(Date.now()-_lastAutoSync<30000)return;     // 30 秒内不重复
+  _lastAutoSync=Date.now();
+  pullFromSupabase(true).then(function(){       // 静默拉取
+    // 刷新当前页面视图，让新数据立即显示
+    try{var on=document.querySelector('.ni.on');var p=on&&on.dataset.page;if(p&&typeof go==='function')go(p);}catch(e){}
+  }).catch(function(){});
 });
 
 async function authLogin(email, pwd){
@@ -3160,7 +3178,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup};
   if(fn[p])fn[p]();
 }
 

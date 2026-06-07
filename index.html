@@ -1126,15 +1126,18 @@ function findDataIntegrityIssues(){
     ['fgi','成品入库批次'],['fgr','成品配料/库存'],['fgo','成品出货单'],['ret','退货单']
   ].forEach(function(pair){
     (DB.load(pair[0])||[]).forEach(function(row){
+      if(arOutIsVoided(row))return; // 作废单据引用已删订单是正常的
       if(!orderExistsForRow(row,pair[0]))issues.push({type:'orphan_order_ref',message:pair[1]+' '+(row.no||row.id||'')+' 引用了不存在的销售订单'});
     });
   });
   var outIds={};
   (DB.fgouts||[]).forEach(function(x){if(x.id)outIds[x.id]=true;});
   (DB.fgreturns||[]).forEach(function(ret){
+    if(arOutIsVoided(ret))return; // 作废退货单跳过
     if(ret.outId&&!outIds[ret.outId])issues.push({type:'orphan_shipment_ref',message:'退货单 '+(ret.no||ret.id||'')+' 引用了不存在的送货单 '+ret.outId});
   });
   (DB.arecs||[]).forEach(function(ar){
+    if(arOutIsVoided(ar))return; // 作废对账单跳过
     (ar.outIds||[]).forEach(function(id){if(!outIds[id])issues.push({type:'orphan_shipment_ref',message:'应收对账单 '+(ar.no||ar.id||'')+' 引用了不存在的送货单 '+id});});
   });
   var rolls=DB.load('fgr')||[];
@@ -1146,6 +1149,7 @@ function findDataIntegrityIssues(){
     });
   });
   (DB.fgouts||[]).forEach(function(out){
+    if(arOutIsVoided(out))return; // 作废出货单保留历史布卷记录是正常的，不参与布卷归属检查（否则误报）
     (out.rollIds||[]).forEach(function(rollId){
       var roll=rollById[rollId];
       if(!roll){
@@ -1161,6 +1165,7 @@ function findDataIntegrityIssues(){
     issues.push({type:'duplicate_shipment_rolls',message:'重复送货单占用同一批布卷：'+nos+'。请保留较早有效单，较后重复单使用「重复作废」处理，不要普通作废回仓。'});
   });
   (DB.fgreturns||[]).forEach(function(ret){
+    if(arOutIsVoided(ret))return; // 作废退货单跳过
     (ret.rollIds||[]).forEach(function(rollId){
       var roll=rollById[rollId];
       if(!roll){

@@ -564,6 +564,21 @@ test('推送脏数据前必须先同步墓碑清本地（防删除复活）', ()
 });
 
 // ═══════════════════════════════════════════════
+// 锁 34：数据巡检跳过作废单据（杜绝作废单误报）
+// ═══════════════════════════════════════════════
+test('数据巡检的布卷/引用检查必须跳过作废单据', () => {
+  // 取 findDataIntegrityIssues 函数体
+  var m = html.match(/function findDataIntegrityIssues\(\)\{[\s\S]*?\n\}\n/);
+  if (!m) throw new Error('找不到 findDataIntegrityIssues');
+  var body = m[0];
+  // 出货单布卷检查、退货单布卷检查、孤儿订单引用 都要有 arOutIsVoided 跳过
+  var skips = (body.match(/if\(arOutIsVoided\([a-z]+\)\)return;/g) || []).length;
+  if (skips < 4) {
+    throw new Error('数据巡检跳过作废单据的守卫不足（应≥4处），作废单会误报。当前=' + skips);
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

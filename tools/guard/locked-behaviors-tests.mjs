@@ -522,8 +522,9 @@ test('客户毛利分析页存在且接入路由/菜单', () => {
 
 test('毛利成本必须从加工跟踪费用+纱线采购按订单联动汇总', () => {
   // 成本来自 trks.fee 和 yarns.amt（按订单聚合到 OS），且有成本完整度提醒
-  if (!/getOS\(ord\)\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
+  if (!/os\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
   if (!/getOS\(ord\)\.matCost\+=amt/.test(html)) throw new Error('毛利未汇总纱线采购成本');
+  if (!/os\.procCost\[pk\]/.test(html)) throw new Error('未按工序拆分加工成本（成本构成展开失效）');
   if (!/成本未录/.test(html)) throw new Error('毛利缺少成本漏录提醒');
 });
 

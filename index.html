@@ -4752,50 +4752,73 @@ function pgArAging(){
     +'<div style="font-size:11px;color:#475569;margin-top:3px">按欠款时长分档统计未结清应收。越往右越紧急，<b style="color:#991B1B">90天以上</b>有坏账风险，优先催收。</div></div>';
   pg.appendChild(hdr);
 
+  // 金额精确到分（与对账单分文不差）
+  function money(x){return '¥'+(parseFloat(x)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
   // 汇总卡
   var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(3,1fr)';
-  [['应收总额','¥'+Math.round(grandTotal).toLocaleString(),'未结清合计','sb'],
-   ['逾期总额','¥'+Math.round(overdueTotal).toLocaleString(),'已过到期日','so'],
-   ['高风险(90天+)','¥'+Math.round(highRisk).toLocaleString(),'坏账预警','sr2']
+  [['应收总额',money(grandTotal),'未结清合计','sb'],
+   ['逾期总额',money(overdueTotal),'已过到期日','so'],
+   ['高风险(90天+)',money(highRisk),'坏账预警','sr2']
   ].forEach(function(s){
     var st=document.createElement('div');st.className='st '+s[3];
-    st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv" style="font-size:18px">'+s[1]+'</div><div class="ss">'+s[2]+'</div>';
+    st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv" style="font-size:17px">'+s[1]+'</div><div class="ss">'+s[2]+'</div>';
     sr.appendChild(st);
   });
   pg.appendChild(sr);
 
-  // 账龄矩阵表
+  // 账龄矩阵表（点客户行可展开看每张对账单明细）
   var card=document.createElement('div');card.className='card';
-  var ch=document.createElement('div');ch.className='ch';ch.innerHTML='<span class="ct">📋 账龄明细（客户 × 时长）</span>';
+  var ch=document.createElement('div');ch.className='ch';ch.innerHTML='<span class="ct">📋 账龄明细（客户 × 时长）· 点客户行展开单据</span>';
   card.appendChild(ch);
   var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
   if(!custList.length){
     cb.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">🎉 暂无未结清应收，账目很健康！</div>';
   }else{
     var wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
-    var t='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:760px">';
+    var t='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:820px">';
     t+='<thead><tr style="background:#F3F4F6;position:sticky;top:0">'
       +'<th style="padding:8px 10px;text-align:left;color:#374151;white-space:nowrap">客户</th>';
     BK.forEach(function(b,i){t+='<th style="padding:8px 10px;text-align:right;color:'+BKC[i]+';white-space:nowrap">'+b+'</th>';});
     t+='<th style="padding:8px 10px;text-align:right;color:#111;white-space:nowrap;border-left:2px solid #E5E7EB">合计</th></tr></thead><tbody>';
     custList.forEach(function(cu,ri){
       var bg=ri%2===0?'#fff':'#F8FAFC';
-      t+='<tr style="background:'+bg+';border-bottom:1px solid #F1F5F9">'
-        +'<td style="padding:7px 10px;font-weight:600;color:#1F2937">'+esc(cu.cust)+'</td>';
+      t+='<tr class="arag-cust" data-idx="'+ri+'" style="background:'+bg+';border-bottom:1px solid #F1F5F9;cursor:pointer">'
+        +'<td style="padding:7px 10px;font-weight:600;color:#1F2937"><span style="color:#9CA3AF;font-size:10px;margin-right:4px">▶</span>'+esc(cu.cust)+'</td>';
       cu.b.forEach(function(v,i){
-        t+='<td style="padding:7px 10px;text-align:right;color:'+(v>0?BKC[i]:'#CBD5E1')+';font-weight:'+(v>0?'700':'400')+'">'+(v>0?'¥'+Math.round(v).toLocaleString():'—')+'</td>';
+        t+='<td style="padding:7px 10px;text-align:right;color:'+(v>0?BKC[i]:'#CBD5E1')+';font-weight:'+(v>0?'700':'400')+'">'+(v>0?money(v):'—')+'</td>';
       });
-      t+='<td style="padding:7px 10px;text-align:right;font-weight:800;color:#111;border-left:2px solid #E5E7EB">¥'+Math.round(cu.total).toLocaleString()+'</td></tr>';
+      t+='<td style="padding:7px 10px;text-align:right;font-weight:800;color:#111;border-left:2px solid #E5E7EB">'+money(cu.total)+'</td></tr>';
+      // 明细子行（默认隐藏）
+      cu.items.sort(function(a,b){return b.bi-a.bi;}).forEach(function(it){
+        var s=getDaysStatus(it.r.dueDate);
+        var od=s.type==='overdue'?('逾期'+s.days+'天'):'未到期';
+        t+='<tr class="arag-detail arag-d-'+ri+'" style="display:none;background:#FCFCFE;border-bottom:1px solid #F1F5F9">'
+          +'<td style="padding:5px 10px 5px 28px;color:#6B7280;font-size:10.5px">'
+          +'<span style="font-family:monospace;color:#4338CA">'+esc(it.r.no||'')+'</span> · '+esc(it.r.month||'')
+          +' · 到期 '+esc(it.r.dueDate||'')+' · <span style="color:'+BKC[it.bi]+';font-weight:700">'+od+'</span></td>'
+          +'<td colspan="5" style="padding:5px 10px;text-align:right;color:#94A3B8;font-size:10px">所在档：<span style="color:'+BKC[it.bi]+'">'+BK[it.bi]+'</span></td>'
+          +'<td style="padding:5px 10px;text-align:right;font-weight:600;color:'+BKC[it.bi]+';border-left:2px solid #E5E7EB">'+money(it.bal)+'</td></tr>';
+      });
     });
     // 合计行
     t+='<tr style="background:#EAECF4;font-weight:800;border-top:2px solid #CBD5E1">'
       +'<td style="padding:8px 10px;color:#111">合计</td>';
-    totals.forEach(function(v,i){t+='<td style="padding:8px 10px;text-align:right;color:'+BKC[i]+'">'+(v>0?'¥'+Math.round(v).toLocaleString():'—')+'</td>';});
-    t+='<td style="padding:8px 10px;text-align:right;color:#111;border-left:2px solid #CBD5E1">¥'+Math.round(grandTotal).toLocaleString()+'</td></tr>';
+    totals.forEach(function(v,i){t+='<td style="padding:8px 10px;text-align:right;color:'+BKC[i]+'">'+(v>0?money(v):'—')+'</td>';});
+    t+='<td style="padding:8px 10px;text-align:right;color:#111;border-left:2px solid #CBD5E1">'+money(grandTotal)+'</td></tr>';
     t+='</tbody></table>';
     wrap.innerHTML=t;cb.appendChild(wrap);
+    // 展开/收起
+    wrap.querySelectorAll('.arag-cust').forEach(function(row){
+      row.onclick=function(){
+        var idx=this.dataset.idx;var arrow=this.querySelector('span');
+        var open=arrow.textContent==='▼';
+        arrow.textContent=open?'▶':'▼';
+        wrap.querySelectorAll('.arag-d-'+idx).forEach(function(d){d.style.display=open?'none':'';});
+      };
+    });
     var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px';
-    note.textContent='共 '+custList.length+' 个客户有未结清应收 · 按高风险（90天+/61-90天）排序 · 点「应收对账」可查看具体单据并收款';
+    note.textContent='共 '+custList.length+' 个客户有未结清应收 · 金额精确到分，与对账单一致 · 点客户行展开看每张单据落在哪个账龄档';
     cb.appendChild(note);
   }
   card.appendChild(cb);pg.appendChild(card);

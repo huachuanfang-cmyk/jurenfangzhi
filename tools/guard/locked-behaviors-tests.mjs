@@ -606,7 +606,15 @@ test('销售订单有其它成本字段且保存', () => {
 
 test('毛利成本必须计入订单其它成本(miscCost)', () => {
   if (!/getOS\(o\)\.miscCost\+=mc/.test(html)) throw new Error('毛利未汇总订单其它成本');
-  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.miscCost\|\|0\)/.test(html)) throw new Error('毛利成本未把 miscCost 计入合计');
+  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\)/.test(html)) throw new Error('毛利成本未把 miscCost 计入合计');
+});
+
+test('毛利成本必须计入胚布采购（直接购胚模式材料成本）', () => {
+  // 胚布采购金额按订单汇总进 gfCost
+  if (!/getOS\(ord\)\.gfCost\+=amt/.test(html)) throw new Error('毛利未汇总胚布采购成本');
+  if (!/DB\.greyfabs\|\|\[\]\)\.forEach/.test(html)) throw new Error('毛利未遍历胚布采购记录');
+  // 成本合计必须含 gfCost
+  if (!/\+\(s\.gfCost\|\|0\)/.test(html)) throw new Error('毛利成本合计未计入 gfCost（胚布采购）');
 });
 
 // ═══════════════════════════════════════════════

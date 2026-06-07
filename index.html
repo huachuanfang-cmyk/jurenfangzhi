@@ -1132,8 +1132,10 @@ function findDataIntegrityIssues(){
   });
   var outIds={};
   (DB.fgouts||[]).forEach(function(x){if(x.id)outIds[x.id]=true;});
+  var _retDone={restored:1,repaired:1,deducted:1,completed:1};
   (DB.fgreturns||[]).forEach(function(ret){
     if(arOutIsVoided(ret))return; // 作废退货单跳过
+    if(ret&&_retDone[ret.status])return; // 已处理完的退货（已恢复/已回修/已扣损）悬挂引用无害，跳过
     if(ret.outId&&!outIds[ret.outId])issues.push({type:'orphan_shipment_ref',message:'退货单 '+(ret.no||ret.id||'')+' 引用了不存在的送货单 '+ret.outId});
   });
   (DB.arecs||[]).forEach(function(ar){

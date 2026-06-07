@@ -193,6 +193,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="ni" data-page="cnotice"><span class="nic">&#127881;</span>打办通知单</div>
   <div class="nl">系统</div>
   <div class="ni" data-page="settings"><span class="nic">&#9881;&#65039;</span>公司档案</div>
+  <div class="ni" data-page="auditlog"><span class="nic">&#128220;</span>操作日志</div>
 </div>
 <div id="mn">
   <div class="topb">
@@ -2854,6 +2855,31 @@ function applyCachedRoleEarly(){
 // 当前角色是否管理员（blocked 用户不是管理员）
 function isAdmin(){return !_currentUser||(_currentUser.role==='admin'&&!_currentUser.blocked);}
 
+// ══════════════════════════════════════════════════════════════
+// 操作日志 / 审计 — 记录"谁、何时、改了什么单据"
+// 每条直接插入云端（append-only），本地留最近 500 条供离线查看
+// ══════════════════════════════════════════════════════════════
+function logAction(action,entity,entityId,detail){
+  try{
+    var entry={
+      id:'log_'+Date.now()+'_'+Math.floor(Math.random()*100000),
+      ts:new Date().toISOString(),
+      userEmail:(_currentUser&&_currentUser.email)||(_authUser&&_authUser.email)||'',
+      userName:(_currentUser&&_currentUser.name)||'',
+      role:(_currentUser&&_currentUser.role)||'',
+      action:action||'',entity:entity||'',entityId:entityId||'',detail:(detail||'').toString().slice(0,500)
+    };
+    // 本地留最近 500 条
+    var arr=DB.load('logs');if(!Array.isArray(arr))arr=[];
+    arr.push(entry);if(arr.length>500)arr=arr.slice(arr.length-500);
+    localStorage.setItem(DB.k('logs'),JSON.stringify(arr));DB._c['logs']=arr;
+    // 云端直插（append-only，不重推整表）
+    if(_supabaseData&&isOnline()&&!_testMode){
+      _supabaseData.from('audit_logs').insert(camelToSnake(entry)).then(function(){},function(){});
+    }
+  }catch(e){}
+}
+
 // ── R3：页面级权限 — 每个角色能进哪些菜单 ──
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
@@ -3119,7 +3145,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
   });
 }
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3134,7 +3160,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog};
   if(fn[p])fn[p]();
 }
 
@@ -4360,6 +4386,7 @@ function openUserManager(){
     if(!list.some(function(u){return u.role==='admin'&&u.active;}))return alert('必须至少保留一个启用的「管理员」账号，否则没人能管理系统');
     saveAppUsers(list);
     resolveCurrentUser(); // 立即重算当前用户（角色可能变）
+    logAction('修改用户档案','用户管理','','共 '+list.length+' 位员工');
     cm();showToast('用户档案已保存 ✓ 共 '+list.length+' 位员工','success');
   },'保存用户档案');
   om(modal);
@@ -4552,6 +4579,7 @@ function pgSettings(){
     refreshCO();
     applyCompanyBranding();
     setSettingsLocked(true); // 保存后重新锁定，防止后续误改
+    logAction('修改公司档案','系统设置',data.nm||'','');
     showToast('公司档案已保存 ✓ 所有打印模板和落款将立即使用新信息','success');
   };
   btnRow.appendChild(resetBtn);btnRow.appendChild(saveBtn);
@@ -4570,6 +4598,95 @@ function pgSettings(){
     };
   }
   setSettingsLocked(true); // 进入页面默认锁定
+}
+// ═══════════════════════════════════════════════════════════════
+
+// ═══ 操作日志 / 审计查看页 ═══
+function pgAuditLog(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:linear-gradient(90deg,#EEF2FF,#F0FDF4);border:1px solid #C7D2FE;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
+  hdr.innerHTML='<span style="font-size:24px">📜</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#3730A3">操作日志 — 全程留痕</div>'
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">记录谁、何时、对哪张单据做了什么。可按操作人 / 类型 / 关键字筛选。仅管理员可见。</div></div>';
+  pg.appendChild(hdr);
+
+  var card=document.createElement('div');card.className='card';
+  var cb=document.createElement('div');cb.className='cb';cb.style.cssText='padding:14px 16px';
+  // 筛选栏
+  var bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px';
+  var userSel=document.createElement('select');userSel.style.cssText='padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12px;background:#fff';
+  userSel.innerHTML='<option value="">全部操作人</option>';
+  var kw=document.createElement('input');kw.placeholder='搜索单号 / 客户 / 内容...';kw.style.cssText='flex:1;min-width:180px;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12px;outline:none';
+  var refreshBtn=document.createElement('button');refreshBtn.type='button';refreshBtn.textContent='🔄 刷新';refreshBtn.className='btn bsm bs';
+  var info=document.createElement('span');info.style.cssText='font-size:11px;color:var(--t3);margin-left:auto';
+  bar.appendChild(userSel);bar.appendChild(kw);bar.appendChild(refreshBtn);bar.appendChild(info);
+  cb.appendChild(bar);
+
+  var listWrap=document.createElement('div');listWrap.style.cssText='max-height:calc(100vh - 280px);overflow:auto;border:1px solid #E5E7EB;border-radius:6px';
+  cb.appendChild(listWrap);
+  card.appendChild(cb);pg.appendChild(card);
+
+  var _allLogs=[];
+  function fmtTs(ts){try{return new Date(ts).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return ts||'';}}
+  function actionColor(a){
+    if(/作废|删除|撤销|扣损|报废/.test(a))return '#DC2626';
+    if(/新增|创建|登记|录入/.test(a))return '#16A34A';
+    if(/编辑|修改|更新/.test(a))return '#D97706';
+    if(/收款|付款/.test(a))return '#7C3AED';
+    return '#475569';
+  }
+  function render(){
+    var u=userSel.value,q=(kw.value||'').trim().toLowerCase();
+    var rows=_allLogs.filter(function(r){
+      if(u&&(r.userName||r.userEmail)!==u)return false;
+      if(q){var hay=((r.action||'')+(r.entity||'')+(r.entityId||'')+(r.detail||'')+(r.userName||'')).toLowerCase();if(hay.indexOf(q)<0)return false;}
+      return true;
+    });
+    info.textContent='共 '+rows.length+' 条';
+    if(!rows.length){listWrap.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">暂无操作记录</div>';return;}
+    var tbl='<table style="width:100%;border-collapse:collapse;font-size:11.5px">'
+      +'<thead><tr style="background:#EEF2FF;position:sticky;top:0">'
+      +'<th style="padding:7px 10px;text-align:left;color:#3730A3;white-space:nowrap">时间</th>'
+      +'<th style="padding:7px 10px;text-align:left;color:#3730A3;white-space:nowrap">操作人</th>'
+      +'<th style="padding:7px 10px;text-align:left;color:#3730A3">操作</th>'
+      +'<th style="padding:7px 10px;text-align:left;color:#3730A3">单据</th>'
+      +'<th style="padding:7px 10px;text-align:left;color:#3730A3">内容</th>'
+      +'</tr></thead><tbody>';
+    rows.forEach(function(r,i){
+      var bg=i%2===0?'#fff':'#F8FAFC';
+      tbl+='<tr style="background:'+bg+';border-bottom:1px solid #F1F5F9">'
+        +'<td style="padding:6px 10px;color:#64748B;white-space:nowrap">'+esc(fmtTs(r.ts))+'</td>'
+        +'<td style="padding:6px 10px;white-space:nowrap"><b>'+esc(r.userName||'—')+'</b>'+(r.role?'<span style="font-size:9px;color:'+roleColor(r.role)+';margin-left:4px">'+roleLabel(r.role)+'</span>':'')+'</td>'
+        +'<td style="padding:6px 10px;white-space:nowrap"><span style="color:'+actionColor(r.action)+';font-weight:700">'+esc(r.action||'')+'</span></td>'
+        +'<td style="padding:6px 10px;font-family:monospace;color:#4338CA;white-space:nowrap">'+esc(r.entityId||'')+(r.entity?'<span style="color:#94A3B8;font-family:inherit"> '+esc(r.entity)+'</span>':'')+'</td>'
+        +'<td style="padding:6px 10px;color:#374151">'+esc(r.detail||'')+'</td>'
+        +'</tr>';
+    });
+    tbl+='</tbody></table>';
+    listWrap.innerHTML=tbl;
+  }
+  function loadLogs(){
+    info.textContent='加载中...';
+    function useLocal(){
+      _allLogs=(DB.load('logs')||[]).slice().reverse();
+      fillUsers();render();
+    }
+    if(_supabaseData&&isOnline()&&!_testMode){
+      _supabaseData.from('audit_logs').select('*').order('ts',{ascending:false}).limit(1000).then(function(res){
+        if(res&&!res.error&&Array.isArray(res.data)){_allLogs=res.data.map(snakeToCamel);fillUsers();render();}
+        else useLocal();
+      },useLocal);
+    }else useLocal();
+  }
+  function fillUsers(){
+    var names={};_allLogs.forEach(function(r){var n=r.userName||r.userEmail;if(n)names[n]=true;});
+    var cur=userSel.value;
+    userSel.innerHTML='<option value="">全部操作人</option>';
+    Object.keys(names).sort().forEach(function(n){var o=new Option(n,n);if(n===cur)o.selected=true;userSel.appendChild(o);});
+  }
+  userSel.onchange=render;kw.oninput=render;refreshBtn.onclick=loadLogs;
+  loadLogs();
 }
 // ═══════════════════════════════════════════════════════════════
 
@@ -6507,6 +6624,7 @@ function saveO(id){
 
     pgOrders();
     cm(); // 关闭弹窗，防止再次点保存导致同内容订单被反复 push 出现重复
+    logAction(id?'编辑订单':'新增订单','销售订单',no,(cust||'')+' '+(fab||''));
     showToast('销售订单保存成功 ✓','success');
   } catch(err){ alert("保存失败: " + err.message); }
 }
@@ -6578,6 +6696,7 @@ function cancelOrder(id){
   o.cancelledAt=new Date().toISOString();
   DB.orders=list;
   pgOrders();
+  logAction('作废订单','销售订单',no,(o.custNm||'')+' '+(o.fab||''));
   showToast('订单已作废/取消，历史记录已保留','success');
 }
 
@@ -9925,6 +10044,7 @@ function pgARec(){
           DB.fgouts=fgoutsDB;
         }
         delRec.status='voided';DB.save('ar',DB.arecs);
+        logAction('作废对账单','应收对账',delRec.no||id,(delRec.custNm||'')+' ¥'+(delRec.totalAmt||0));
         pgARec();showToast('已作废，出货记录已恢复为未对账状态','success');
       };}(r.id)));
       arTbody.appendChild(tr);
@@ -10566,6 +10686,7 @@ function openPaymentModal(arecId){
     rec.balanceAmt=String(Math.max(0,netAmt-totalPaid));
     if(parseFloat(rec.balanceAmt)<=0)rec.status='settled';
     DB.arecs=DB.arecs;
+    logAction('录入收款','应收对账',rec.no||rec.id,(rec.custNm||'')+' ¥'+amt+(method?' '+method:''));
     cm();pgARec();showToast('收款已录入','success');
   },'确认录入');
   om(modal);
@@ -11331,6 +11452,7 @@ function openARecModal(id){
     if(idx>=0)list[idx]=data;else list.push(data);
     DB.arecs=list;
 
+    logAction(isNew?'新增对账单':'编辑对账单','应收对账',data.no,(custNm||'')+' '+(month||'')+' ¥'+(total||0));
     cm();pgARec();showToast('对账单已保存 '+data.no,'success');
   },'保存');
   om(modal);
@@ -13856,6 +13978,7 @@ function openFGOutFromGroup(k,grp){
     rollIds.forEach(function(rid){var r=allR.find(function(x){return x.id===rid;});if(r){r.status='out';r.outId=outRec.id;}});
     saveFgRolls(allR);
     window._fgLastAction={type:'out',ordId:grp.ordId,ordNo:grp.ordNo,custNm:grp.custNm||'',ts:Date.now()};window._fgTab='out';
+    logAction('登记出货','送货单',outNo,(grp.custNm||'')+' '+(grp.colorNm||'')+' '+rollIds.length+'疋');
     cm();pgFGStock();showToast('出货登记完成！'+outNo,'success');
     if(confirm('出货登记完成！是否立即打印送货单？'))printFGOut(outRec.id);
   });

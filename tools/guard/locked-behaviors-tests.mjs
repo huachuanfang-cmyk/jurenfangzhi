@@ -451,6 +451,31 @@ test('全新设备防闪现三层防线（角色缓存 + 最小权限默认 + CS
 });
 
 // ═══════════════════════════════════════════════
+// 锁 28：操作日志/审计
+// ═══════════════════════════════════════════════
+test('操作日志核心必须存在（logAction + pgAuditLog + 云端插入）', () => {
+  if (!/function logAction\(/.test(html)) throw new Error('logAction 被删除 — 操作无法留痕');
+  if (!/function pgAuditLog\(/.test(html)) throw new Error('pgAuditLog 查看页被删除');
+  if (!/from\('audit_logs'\)\.insert/.test(html)) throw new Error('logAction 不再写云端 audit_logs — 跨设备审计失效');
+  if (!/auditlog:pgAuditLog/.test(html)) throw new Error('操作日志页未注册到 go()');
+});
+
+test('关键操作必须留痕（订单/出货/对账/收款/作废）', () => {
+  const hooks = [
+    { name: '订单保存', pat: /logAction\(id\?'编辑订单':'新增订单'/ },
+    { name: '订单作废', pat: /logAction\('作废订单'/ },
+    { name: '登记出货', pat: /logAction\('登记出货'/ },
+    { name: '对账单保存', pat: /logAction\(isNew\?'新增对账单':'编辑对账单'/ },
+    { name: '对账单作废', pat: /logAction\('作废对账单'/ },
+    { name: '录入收款', pat: /logAction\('录入收款'/ },
+    { name: '公司档案', pat: /logAction\('修改公司档案'/ },
+    { name: '用户管理', pat: /logAction\('修改用户档案'/ },
+  ];
+  const missing = hooks.filter(h => !h.pat.test(html)).map(h => h.name);
+  if (missing.length) throw new Error('以下关键操作未接入审计日志：' + missing.join('、'));
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

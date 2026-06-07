@@ -624,6 +624,15 @@ test('染整加工单/打办的工厂筛选必须含印花厂/后整理厂', () 
   }
 });
 
+test('加工跟踪/颜色明细必须支持 KG/米 单位切换（印花按米计价）', () => {
+  // 加工跟踪：单位选择器 + 保存 unit 字段
+  if (!/mkSelect\('t-un'/.test(html)) throw new Error('加工跟踪缺少计量单位选择器 t-un');
+  if (!/unit:\(document\.getElementById\('t-un'\)/.test(html)) throw new Error('加工跟踪保存未写入 unit 字段');
+  // 颜色明细：投产/落缸/成品 表头可切换并保存 procUnit
+  if (!/cwp\.dataset\.procUnit/.test(html)) throw new Error('颜色明细缺少 procUnit 单位切换');
+  if (!/procUnit:\(document\.getElementById\('cwp'\)/.test(html)) throw new Error('订单保存未写入 procUnit');
+});
+
 // ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════

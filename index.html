@@ -6371,11 +6371,12 @@ function renderOrds(list){
         dtr.appendChild(mkdtd('色号','<span style="color:#6B7280;font-size:11px">'+esc(c.code||'—')+'</span>'));
         var qH=c.qty?'<span style="color:#E65100;font-weight:600">'+esc(c.qty)+'</span><span style="color:#9CA3AF;font-size:9.5px;margin-left:2px">'+esc(c.unit||'公斤')+'</span>':'—';
         dtr.appendChild(mkdtd('客下单',qH));
-        dtr.appendChild(mkdtd('投产KG',c.prodQty?'<span style="color:#374151;font-weight:600">'+esc(c.prodQty)+'</span>':'—'));
-        dtr.appendChild(mkdtd('落缸KG',c.vatQty?'<span style="color:#374151;font-weight:600">'+esc(c.vatQty)+'</span>':'—'));
+        var _pU=o.procUnit||(((o.prUnit||'元/KG')==='元/M')?'米':'KG');
+        dtr.appendChild(mkdtd('投产'+_pU,c.prodQty?'<span style="color:#374151;font-weight:600">'+esc(c.prodQty)+'</span>':'—'));
+        dtr.appendChild(mkdtd('落缸'+_pU,c.vatQty?'<span style="color:#374151;font-weight:600">'+esc(c.vatQty)+'</span>':'—'));
         var fkc=ordFinKgByColor(o.id,c.nm);
         var fkcH=fkc>0?'<span style="color:#16A34A;font-weight:700">'+fkc.toFixed(1)+'</span>':(c.finQty?'<span style="color:#16A34A;font-weight:700">'+esc(c.finQty)+'</span>':'—');
-        dtr.appendChild(mkdtd('成品KG',fkcH));
+        dtr.appendChild(mkdtd('成品'+_pU,fkcH));
         var prodN=parseFloat(c.prodQty)||0;
         var finN=fkc>0?fkc:(parseFloat(c.finQty)||0);
         var lossH='—';
@@ -6921,17 +6922,31 @@ function openOM(id){
       {t:'颜色名称',w:118,align:'left'},
       {t:'色号/花号↕',w:85,align:'left',toggle:true},
       {t:'客下单数量',w:112,align:'center'},
-      {t:'投产KG',w:58,align:'center'},
-      {t:'落缸KG',w:58,align:'center'},
-      {t:'成品KG',w:58,align:'center'},
+      {t:'投产KG',w:58,align:'center',pk:1,base:'投产'},
+      {t:'落缸KG',w:58,align:'center',pk:1,base:'落缸'},
+      {t:'成品KG',w:58,align:'center',pk:1,base:'成品'},
       {t:'加价',w:52,align:'center'},
       {t:'纱批号',w:80,align:'left'},
       {t:'颜色备注',w:82,align:'left'},
       {t:'',w:26,align:'center'}
     ];
+    // 投产/落缸/成品 计量单位（印花等按米的订单可切换 KG/米；纯标签，不影响计算）
+    var _procU=o.procUnit||(((o.prUnit||'元/KG')==='元/M')?'米':'KG');
+    cwp.dataset.procUnit=_procU;
     colDefs.forEach(function(col){
       var th=document.createElement('th');th.textContent=col.t;
       th.style.cssText='padding:5px 3px;text-align:'+col.align+';font-size:10px;font-weight:700;color:#92400E;white-space:nowrap;width:'+col.w+'px';
+      if(col.pk){
+        th.dataset.base=col.base;th.textContent=col.base+_procU;
+        th.style.cursor='pointer';th.style.userSelect='none';th.title='点击切换 KG / 米';
+        th.onmouseover=function(){this.style.color='#7C3AED';};
+        th.onmouseout=function(){this.style.color='#92400E';};
+        th.onclick=function(){
+          var nu=cwp.dataset.procUnit==='KG'?'米':'KG';
+          cwp.dataset.procUnit=nu;
+          cThr.querySelectorAll('th[data-base]').forEach(function(h){h.textContent=h.dataset.base+nu;});
+        };
+      }
       if(col.toggle){
         th.style.cursor='pointer';th.style.userSelect='none';th.title='点击切换色号/花号';
         th.onmouseover=function(){this.style.color='#7C3AED';};
@@ -7019,7 +7034,7 @@ function saveO(id){
     var l=DB.orders;
     if(!Array.isArray(l)) l=[];
     var no=id?(l.find(function(x){return x.id===id;})||{no:genNo()}).no:genNo();
-    var d={id:id||uid(),no:no,prodNo:document.getElementById('o-pno').value,custNo:document.getElementById('o-cno').value,sty:document.getElementById('o-sty').value,follower:(document.getElementById('o-cky')||{value:''}).value,ordDate:document.getElementById('o-date').value,custNm:cust,fab:fab,fabB:document.getElementById('o-fabB').value||'',comps:comps,gaugeN:gn,gaugeS:gs,width:wd,widthUnit:wu,weight:wt,shrink:document.getElementById('o-sh').value,delDate:document.getElementById('o-del').value,unitPr:document.getElementById('o-pr').value,prUnit:(function(){var b=document.getElementById('o-pu-btn');return b?b.dataset.unit:'元/KG';})(),
+    var d={id:id||uid(),no:no,prodNo:document.getElementById('o-pno').value,custNo:document.getElementById('o-cno').value,sty:document.getElementById('o-sty').value,follower:(document.getElementById('o-cky')||{value:''}).value,ordDate:document.getElementById('o-date').value,custNm:cust,fab:fab,fabB:document.getElementById('o-fabB').value||'',comps:comps,gaugeN:gn,gaugeS:gs,width:wd,widthUnit:wu,weight:wt,shrink:document.getElementById('o-sh').value,delDate:document.getElementById('o-del').value,unitPr:document.getElementById('o-pr').value,prUnit:(function(){var b=document.getElementById('o-pu-btn');return b?b.dataset.unit:'元/KG';})(),procUnit:(document.getElementById('cwp')||{dataset:{}}).dataset.procUnit||'KG',
       taxType:(function(){var b=document.querySelector('button[data-tax]');return b?b.dataset.tax:'incl';})(),
       payTm:(function(){var sel=document.getElementById('o-pt-sel');var inp=document.getElementById('o-pt');if(!sel)return inp?inp.value:'';return sel.value==='其它'?(inp?inp.value:''):sel.value;})(),
       status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),colors:colors};
@@ -7363,7 +7378,8 @@ function renderTrks(list){
     var tr=document.createElement('tr');
     var ls=t.sentQ&&t.retQ?((t.sentQ-t.retQ)/t.sentQ*100).toFixed(1):null;
     var lc=ls>5?'cr':ls>0?'co':'';
-    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ||'—')+'</td><td>'+(t.retQ||'—')+'</td><td class="'+lc+'">'+(ls!==null?ls+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
+    var us=t.unit==='米'?'<span style="font-size:9px;color:#9CA3AF;margin-left:1px">米</span>':'';
+    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'">'+(ls!==null?ls+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
     // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
     // 修复：复用 openTM（编辑弹窗即详情，本系统其他模块的通用做法）
@@ -7418,16 +7434,22 @@ function openTM(id){
     body.appendChild(g2);
     body.appendChild(secHdr('数量与费用'));
     var g3=document.createElement('div');g3.className='fg';
+    // 计量单位：印花/部分订单按米发料、按米收加工费，可切换 kg/米
+    var _tunit=t.unit||((so&&so.prUnit==='元/M')?'米':'kg');
+    var unSel=mkSelect('t-un',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],_tunit);
+    g3.appendChild(fv('计量单位',unSel));
     var sqi=mkInput('t-sq',t.sentQ,'','number');
     sqi.oninput=function(){var s=parseFloat(this.value)||0;var u=parseFloat((document.getElementById('t-up')||{value:0}).value)||0;var f=document.getElementById('t-fe');if(s&&u&&f&&!f.value)f.value=(s*u).toFixed(2);};
-    g3.appendChild(fv('发出数量(kg)',sqi));
-    g3.appendChild(fv('收回数量(kg)',mkInput('t-rq',t.retQ,'','number')));
-    g3.appendChild(fv('实际入库(kg)',mkInput('t-aw',t.actW,'复称重量','number')));
+    var fvSq=fv('发出数量(kg)',sqi);g3.appendChild(fvSq);
+    var fvRq=fv('收回数量(kg)',mkInput('t-rq',t.retQ,'','number'));g3.appendChild(fvRq);
+    var fvAw=fv('实际入库(kg)',mkInput('t-aw',t.actW,'复称重量','number'));g3.appendChild(fvAw);
     var upi=mkInput('t-up',t.unitPr,'','number');
     upi.oninput=function(){var s=parseFloat((document.getElementById('t-sq')||{value:0}).value)||0;var u=parseFloat(this.value)||0;var f=document.getElementById('t-fe');if(s&&u&&f&&!f.value)f.value=(s*u).toFixed(2);};
-    g3.appendChild(fv('加工单价(元/kg)',upi));
+    var fvUp=fv('加工单价(元/kg)',upi);g3.appendChild(fvUp);
     g3.appendChild(fv('应付加工费(元)',mkInput('t-fe',t.fee,'自动计算','number')));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
+    var _tRelabel=function(){var u=document.getElementById('t-un').value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
+    unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
     body.appendChild(secHdr('日期'));
     var g4=document.createElement('div');g4.className='fg2';
@@ -7451,7 +7473,7 @@ function saveT(id){
     var fee=document.getElementById('t-fe').value||(sq&&up?(sq*up).toFixed(2):'');
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
-    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
+    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
     DB.trks=l;cm();pgTrk();

@@ -7376,10 +7376,12 @@ function renderTrks(list){
   if(!list.length){var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3)';e.textContent='暂无加工记录';cb.appendChild(e);return;}
   var rows=list.map(function(t){
     var tr=document.createElement('tr');
-    var ls=t.sentQ&&t.retQ?((t.sentQ-t.retQ)/t.sentQ*100).toFixed(1):null;
-    var lc=ls>5?'cr':ls>0?'co':'';
+    // 得率 = 收回/发出 ×100%（>100%=加重，<100%=损耗），避免「损耗」正负号歧义
+    var yr=(t.sentQ&&t.retQ)?(t.retQ/t.sentQ*100):null;
+    var lc=yr===null?'':(yr>=100?'cg':yr>=95?'':yr>=90?'co':'cr');
+    var yt=yr===null?'':' title="得率=收回'+t.retQ+'÷发出'+t.sentQ+'×100%（'+(yr>=100?'加重'+(yr-100).toFixed(1)+'%':'损耗'+(100-yr).toFixed(1)+'%')+'）"';
     var us=t.unit==='米'?'<span style="font-size:9px;color:#9CA3AF;margin-left:1px">米</span>':'';
-    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'">'+(ls!==null?ls+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
+    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+(yr!==null?yr.toFixed(1)+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
     // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
     // 修复：复用 openTM（编辑弹窗即详情，本系统其他模块的通用做法）
@@ -7390,7 +7392,7 @@ function renderTrks(list){
     if(t.voided){tr.style.background='#f2f2f2';tr.style.opacity='.6';tr.style.cursor='default';}
     return tr;
   });
-  cb.appendChild(buildTable(['订单号','工序','工厂','颜色','色号','纱批','机台','缸号','缸kg','发出kg','收回kg','损耗%','加工费','付款','预计','实际','状态','操作'],rows));
+  cb.appendChild(buildTable(['订单号','工序','工厂','颜色','色号','纱批','机台','缸号','缸kg','发出kg','收回kg','得率%','加工费','付款','预计','实际','状态','操作'],rows));
 }
 function fTrk(){
   var q=(document.getElementById('tq').value||'').toLowerCase();

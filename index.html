@@ -185,6 +185,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="ni" data-page="recon"><span class="nic">&#128203;</span>应付对账</div>
   <div class="ni" data-page="arec"><span class="nic">&#128203;</span>应收对账</div>
   <div class="ni" data-page="araging"><span class="nic">&#128202;</span>应收账龄</div>
+  <div class="ni" data-page="profit"><span class="nic">&#128176;</span>客户毛利</div>
   <div class="ni" data-page="recv" style="display:none"><span class="nic">&#128176;</span>应收账款</div>
   <div class="ni" data-page="payb" style="display:none"><span class="nic">&#128184;</span>应付账款</div>
   <div class="nl">基础档案</div>
@@ -2902,7 +2903,7 @@ function logAction(action,entity,entityId,detail){
 // ── R3：页面级权限 — 每个角色能进哪些菜单 ──
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
-  finance:  ['dash','recon','arec','araging','quot','custs','settings'],
+  finance:  ['dash','recon','arec','araging','profit','quot','custs','settings'],
   sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice'],
   purchase: ['dash','yarn','greyfab','yarnout','ystock','dw','dd','facts','mat'],
   warehouse:['dash','fgstock','ystock']
@@ -3164,7 +3165,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
   });
 }
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3179,7 +3180,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit};
   if(fn[p])fn[p]();
 }
 
@@ -4819,6 +4820,140 @@ function pgArAging(){
     });
     var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px';
     note.textContent='共 '+custList.length+' 个客户有未结清应收 · 金额精确到分，与对账单一致 · 点客户行展开看每张单据落在哪个账龄档';
+    cb.appendChild(note);
+  }
+  card.appendChild(cb);pg.appendChild(card);
+}
+// ═══════════════════════════════════════════════════════════════
+
+// ═══ 客户毛利分析 ═══
+// 毛利 = 出货收入 − 成本（加工费+纱线采购，均按订单联动汇总）
+// 成本不全的客户会标警，反过来提醒补录 → 一举两得
+function pgGrossProfit(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  var orders=DB.orders||[];
+  var ordById={},ordByNo={};
+  orders.forEach(function(o){if(o.id)ordById[o.id]=o;if(o.no)ordByNo[o.no]=o;});
+  function ordOf(rec){return (rec.ordNo&&ordByNo[rec.ordNo])||(rec.ordId&&ordById[rec.ordId])||null;}
+  var rolls=fgRolls();
+  var cust={};
+  function C(nm){if(!cust[nm])cust[nm]={nm:nm,rev:0,feeCost:0,matCost:0,revOrders:{},costOrders:{}};return cust[nm];}
+
+  // 收入：出货 × 单价（与对账计费一致，1 位小数）；扣退货
+  (DB.fgouts||[]).forEach(function(o){
+    if(o.voided)return;
+    var ord=ordOf(o)||{};
+    var nm=o.custNm||ord.custNm||'（未知客户）';
+    var oRolls=rolls.filter(function(r){return (o.rollIds||[]).indexOf(r.id)>=0;});
+    var kg=oRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
+    var m=oRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0);
+    var unitPr=parseFloat(ord.unitPr)||0;
+    var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+    var qty=byM?Number(m.toFixed(1)):Number(kg.toFixed(1));
+    var c=C(nm);c.rev+=qty*unitPr;if(ord.id)c.revOrders[ord.id]=true;
+  });
+  // 退货扣损：从收入里减掉
+  (DB.fgreturns||[]).forEach(function(ret){
+    if(!ret||ret.status==='cancelled')return;
+    var ord=ordOf(ret)||{};
+    var nm=ret.custNm||ord.custNm||'';if(!nm)return;
+    var unitPr=parseFloat(ord.unitPr)||0;
+    var dq=parseFloat(ret.deductKG)||parseFloat(ret.totalKG)||0;
+    if(dq>0&&unitPr>0)C(nm).rev-=dq*unitPr;
+  });
+  // 成本1：加工费（加工跟踪 fee，挂订单）
+  (DB.trks||[]).forEach(function(t){
+    if(!t||t.voided)return;var fee=parseFloat(t.fee)||0;if(!fee)return;
+    var ord=ordOf(t);if(!ord)return;var nm=ord.custNm||'';if(!nm)return;
+    var c=C(nm);c.feeCost+=fee;if(ord.id)c.costOrders[ord.id]=true;
+  });
+  // 成本2：纱线采购（amt，挂订单的才算）
+  (DB.yarns||[]).forEach(function(y){
+    if(!y||y.voided)return;var amt=parseFloat(y.amt)||0;if(!amt)return;
+    var ord=ordOf(y);if(!ord)return;var nm=ord.custNm||'';if(!nm)return;
+    var c=C(nm);c.matCost+=amt;if(ord.id)c.costOrders[ord.id]=true;
+  });
+
+  var list=Object.keys(cust).map(function(k){
+    var c=cust[k];c.cost=c.feeCost+c.matCost;c.profit=c.rev-c.cost;
+    c.margin=c.rev>0?(c.profit/c.rev*100):0;
+    c.revN=Object.keys(c.revOrders).length;c.costN=Object.keys(c.costOrders).length;
+    return c;
+  }).filter(function(c){return c.rev>0||c.cost>0;})
+    .sort(function(a,b){return b.profit-a.profit;});
+
+  var totRev=list.reduce(function(s,c){return s+c.rev;},0);
+  var totCost=list.reduce(function(s,c){return s+c.cost;},0);
+  var totProfit=totRev-totCost;
+  function money(x){return '¥'+Math.round(x).toLocaleString();}
+
+  // 页头
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:linear-gradient(90deg,#F0FDF4,#EFF6FF);border:1px solid #BBF7D0;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
+  hdr.innerHTML='<span style="font-size:24px">💰</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#166534">客户毛利分析</div>'
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">毛利 = 出货收入 − 成本（加工费+纱线采购，按订单自动汇总）。'
+    +'<b style="color:#C2410C">成本不全的客户会标⚠️，提醒你去「加工跟踪」补录加工费。</b></div></div>';
+  pg.appendChild(hdr);
+
+  // 汇总卡
+  var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(4,1fr)';
+  [['总收入',money(totRev),'已出货','sb'],
+   ['总成本',money(totCost),'加工费+纱线','so'],
+   ['总毛利',money(totProfit),(totRev>0?(totProfit/totRev*100).toFixed(1)+'% 毛利率':''),'sg'],
+   ['客户数',list.length+'个','有业务往来','sr2']
+  ].forEach(function(s){
+    var st=document.createElement('div');st.className='st '+s[3];
+    st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv" style="font-size:17px">'+s[1]+'</div><div class="ss">'+s[2]+'</div>';
+    sr.appendChild(st);
+  });
+  pg.appendChild(sr);
+
+  var card=document.createElement('div');card.className='card';
+  var ch=document.createElement('div');ch.className='ch';ch.innerHTML='<span class="ct">📈 客户毛利排行（按毛利从高到低）</span>';
+  card.appendChild(ch);
+  var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
+  if(!list.length){
+    cb.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">暂无出货/成本数据</div>';
+  }else{
+    var wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+    var t='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:820px">'
+      +'<thead><tr style="background:#F3F4F6;position:sticky;top:0">'
+      +'<th style="padding:8px 10px;text-align:left;color:#374151">客户</th>'
+      +'<th style="padding:8px 10px;text-align:right;color:#1e3a8a">收入</th>'
+      +'<th style="padding:8px 10px;text-align:right;color:#EA580C">成本</th>'
+      +'<th style="padding:8px 10px;text-align:right;color:#94A3B8;font-size:10px">└加工费</th>'
+      +'<th style="padding:8px 10px;text-align:right;color:#94A3B8;font-size:10px">└纱线</th>'
+      +'<th style="padding:8px 10px;text-align:right;color:#166534">毛利</th>'
+      +'<th style="padding:8px 10px;text-align:center;color:#166534">毛利率</th>'
+      +'<th style="padding:8px 10px;text-align:center;color:#374151">成本完整度</th>'
+      +'</tr></thead><tbody>';
+    list.forEach(function(c,ri){
+      var bg=ri%2===0?'#fff':'#F8FAFC';
+      var marginColor=c.margin>=25?'#16A34A':c.margin>=10?'#D97706':'#DC2626';
+      // 成本完整度
+      var cmpl,cmplColor;
+      if(c.revN===0){cmpl='—';cmplColor='#94A3B8';}
+      else if(c.cost<=0){cmpl='⚠ 成本未录';cmplColor='#DC2626';}
+      else if(c.costN<c.revN){cmpl='⚠ '+c.costN+'/'+c.revN+' 订单有成本';cmplColor='#EA580C';}
+      else{cmpl='✓ '+c.costN+'/'+c.revN;cmplColor='#16A34A';}
+      var profitColor=c.profit<0?'#DC2626':'#166534';
+      t+='<tr style="background:'+bg+';border-bottom:1px solid #F1F5F9">'
+        +'<td style="padding:7px 10px;font-weight:600;color:#1F2937">'+esc(c.nm)+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;font-weight:600">'+money(c.rev)+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;color:#EA580C">'+(c.cost>0?money(c.cost):'—')+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;color:#94A3B8;font-size:10.5px">'+(c.feeCost>0?money(c.feeCost):'—')+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;color:#94A3B8;font-size:10.5px">'+(c.matCost>0?money(c.matCost):'—')+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;font-weight:800;color:'+profitColor+'">'+money(c.profit)+'</td>'
+        +'<td style="padding:7px 10px;text-align:center;font-weight:700;color:'+marginColor+'">'+(c.rev>0?c.margin.toFixed(1)+'%':'—')+'</td>'
+        +'<td style="padding:7px 10px;text-align:center;font-size:10.5px;color:'+cmplColor+'">'+cmpl+'</td>'
+        +'</tr>';
+    });
+    t+='</tbody></table>';
+    wrap.innerHTML=t;cb.appendChild(wrap);
+    var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px;line-height:1.7';
+    note.innerHTML='毛利率：<span style="color:#16A34A">≥25%绿</span> / <span style="color:#D97706">10-25%橙</span> / <span style="color:#DC2626">&lt;10%红</span>。'
+      +'<br>⚠️ 标记「成本未录/X订单有成本」说明该客户部分订单的加工费没录入，毛利偏高失真 —— 去「加工跟踪」补录加工费后会自动更准。';
     cb.appendChild(note);
   }
   card.appendChild(cb);pg.appendChild(card);

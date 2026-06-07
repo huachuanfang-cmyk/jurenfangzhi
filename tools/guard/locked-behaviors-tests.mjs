@@ -512,6 +512,22 @@ test('账龄分析必须排除已结清/作废，按到期日分档', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 31：客户毛利分析
+// ═══════════════════════════════════════════════
+test('客户毛利分析页存在且接入路由/菜单', () => {
+  if (!/function pgGrossProfit\(/.test(html)) throw new Error('pgGrossProfit 被删除');
+  if (!/profit:pgGrossProfit/.test(html)) throw new Error('毛利分析未接入 go() 路由');
+  if (!/data-page="profit"/.test(html)) throw new Error('毛利分析菜单项缺失');
+});
+
+test('毛利成本必须从加工跟踪费用+纱线采购按订单联动汇总', () => {
+  // 成本来自 trks.fee 和 yarns.amt，且有成本完整度提醒
+  if (!/c\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
+  if (!/c\.matCost\+=amt/.test(html)) throw new Error('毛利未汇总纱线采购成本');
+  if (!/成本未录|成本完整度/.test(html)) throw new Error('毛利缺少成本漏录提醒');
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

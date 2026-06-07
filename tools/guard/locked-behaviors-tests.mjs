@@ -535,6 +535,22 @@ test('利润分析必须有 按客户/按订单/按月份 三视图', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 32：质量加固 — ESC 关弹窗 + 作废水印统一
+// ═══════════════════════════════════════════════
+test('全局 ESC 关闭标准弹窗', () => {
+  if (!/e\.key!=='Escape'\)return;[\s\S]{0,200}?getElementById\('ov'\)/.test(html)) {
+    throw new Error('全局 ESC 关弹窗逻辑缺失');
+  }
+});
+
+test('作废单据打印必须带统一水印（出货/退货/快速出货）', () => {
+  if (!/function voidPrintStamp\(/.test(html)) throw new Error('voidPrintStamp 水印助手被删除');
+  if (!/voidPrintStamp\(out\.voided\)/.test(html)) throw new Error('送货单打印未注入作废水印');
+  if (!/voidPrintStamp\(ret\.status==='cancelled'\|\|ret\.voided\)/.test(html)) throw new Error('退货单打印未注入作废水印');
+  if (!/voidPrintStamp\(r\.voided\)/.test(html)) throw new Error('快速出货单打印未注入作废水印');
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

@@ -157,6 +157,8 @@ function createSandbox(mockDB) {
   vm.runInContext('function fgRolls(){ return (DB.fgr || []).filter(function(r){ return r.status !== "returned"; }); }', ctx);
   // R2: 制单人 helper — mock 无登录用户时回退 CO.preparer
   vm.runInContext('var _currentUser=null; function currentPreparer(){ return (_currentUser&&_currentUser.name)||CO.preparer||""; }', ctx);
+  // 作废水印 helper（mock 数据非作废 → 返回空，输出不变）
+  vm.runInContext('function voidPrintStamp(v){ return v?"<div class=\\"gjs-void-stamp\\">作 废</div>":""; }', ctx);
 
   return { ctx: ctx, sandbox: sandbox, captured: captured };
 }

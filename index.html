@@ -3193,6 +3193,26 @@ function om(el){
   o.onmousedown=function(e){if(e.target===o)cm();};
 }
 function cm(){var o=document.getElementById('ov');o.classList.add('hidden');o.innerHTML='';}
+// 作废单据打印水印（统一）：返回注入到 <body> 开头的 HTML 片段
+function voidPrintStamp(isVoided){
+  if(!isVoided)return '';
+  return '<style>.gjs-void-stamp{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);'
+    +'font-size:130px;font-weight:900;color:rgba(220,38,38,.16);border:7px solid rgba(220,38,38,.2);'
+    +'padding:8px 50px;letter-spacing:26px;z-index:9998;pointer-events:none;font-family:"Microsoft YaHei",sans-serif;white-space:nowrap}'
+    +'.gjs-void-banner{background:#FEE2E2;border:2px solid #DC2626;color:#991B1B;padding:5px 10px;font-weight:700;'
+    +'margin-bottom:6px;border-radius:4px;text-align:center;font-size:12px;letter-spacing:2px}</style>'
+    +'<div class="gjs-void-stamp">作 废</div>'
+    +'<div class="gjs-void-banner">⚠ 本单据已作废，仅供存档参考，不作为有效凭证</div>';
+}
+// 全局 ESC 关闭标准弹窗（#ov）— 统一交互，输入框内按 ESC 先失焦不关窗
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape')return;
+  var ov=document.getElementById('ov');
+  if(!ov||ov.classList.contains('hidden'))return;     // 没有打开的弹窗
+  var ae=document.activeElement;
+  if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&ov.contains(ae)){ae.blur();return;} // 编辑中先失焦
+  cm();
+});
 
 function mkEl(tag,props,children){
   var el=document.createElement(tag);
@@ -15470,6 +15490,7 @@ function printQuickOut(id){
     +'.info-val{color:#111;font-weight:500}'
     +'@media print{@page{size:A4 portrait;margin:6mm 8mm}}</style>'
     +'</head><body>'
+    +voidPrintStamp(r.voided)
     // 页头
     +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">'
     +'<div style="display:flex;gap:10px;align-items:flex-start">'
@@ -15755,6 +15776,7 @@ function printFGOut(outId){
     '.wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:.04;pointer-events:none;z-index:0;filter:grayscale(100%)}'+
     '@media print{.tb{display:none!important}body{padding:4mm 7mm}@page{size:A4 portrait;margin:4mm 7mm}}'+
     '</style></head><body>'+
+    voidPrintStamp(out.voided)+
 
     '<img src="'+LOGO+'" class="wm" style="width:200px;height:200px;object-fit:contain">'+
     '<div class="tb">'+
@@ -15937,6 +15959,7 @@ function printFGReturn(retId){
     '.sc-line{height:22px;border-bottom:1px solid #aaa;margin-top:4px}'+
     '@media print{.tb{display:none!important}body{padding:4mm 7mm}@page{size:A4 portrait;margin:4mm 7mm}}'+
     '</style></head><body>'+
+    voidPrintStamp(ret.status==='cancelled'||ret.voided)+
 
     '<img src="'+LOGO+'" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:.04;pointer-events:none;z-index:0;filter:grayscale(100%);width:200px;height:200px;object-fit:contain">'+
     '<div class="tb">'+

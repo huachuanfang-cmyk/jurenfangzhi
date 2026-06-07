@@ -7424,7 +7424,8 @@ function openTM(id){
     body.appendChild(g);
     body.appendChild(secHdr('加工信息'));
     var g2=document.createElement('div');g2.className='fg';
-    g2.appendChild(fv('工序',mkSelect('t-pc',PROCS,t.proc||PROCS[0]),true));
+    var pcSel=mkSelect('t-pc',PROCS,t.proc||PROCS[0]);
+    g2.appendChild(fv('工序',pcSel,true));
     var facSel=mkSelect('t-fc',[{v:'',l:'请选择'}].concat(DB.facts.map(function(f){return{v:f.nm,l:f.nm};})),t.factNm||'');
     g2.appendChild(fv('加工厂',facSel,true));
     g2.appendChild(fv('机台号',mkInput('t-mn',t.machNo,'织布厂机台号')));
@@ -7462,10 +7463,10 @@ function openTM(id){
     g3.appendChild(fv('应付加工费(元)',mkInput('t-fe',t.fee,'自动计算','number')));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
     fbSel.onchange=function(){_tFee(true);};
-    // 工序切换时按业界惯例切换默认计费基准并重算
-    var _pcEl=document.getElementById('t-pc');
-    if(_pcEl)_pcEl.addEventListener('change',function(){var fb=document.getElementById('t-fb');if(fb)fb.value=this.value==='织布厂'?'ret':'sent';_tFee(true);});
-    var _tRelabel=function(){var u=document.getElementById('t-un').value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
+    // 工序切换时按业界惯例切换默认计费基准并重算（用本地引用 pcSel，避免 build 时 DOM 未挂载）
+    if(pcSel)pcSel.addEventListener('change',function(){fbSel.value=this.value==='织布厂'?'ret':'sent';_tFee(true);});
+    // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
+    var _tRelabel=function(){var u=unSel.value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
     body.appendChild(secHdr('日期'));

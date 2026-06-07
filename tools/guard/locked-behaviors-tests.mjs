@@ -493,6 +493,25 @@ test('切回标签页自动静默同步（含编辑保护+节流）', () => {
 });
 
 // ═══════════════════════════════════════════════
+// 锁 30：应收账龄分析
+// ═══════════════════════════════════════════════
+test('应收账龄分析页存在且接入路由/菜单', () => {
+  if (!/function pgArAging\(/.test(html)) throw new Error('pgArAging 被删除');
+  if (!/araging:pgArAging/.test(html)) throw new Error('账龄分析未接入 go() 路由');
+  if (!/data-page="araging"/.test(html)) throw new Error('账龄分析菜单项缺失');
+});
+
+test('账龄分析必须排除已结清/作废，按到期日分档', () => {
+  // 账龄页过滤未结清非作废 + 用 getDaysStatus 分档
+  if (!/recs=\(DB\.arecs\|\|\[\]\)\.filter\(function\(r\)\{return r&&r\.status!=='settled'&&r\.status!=='voided'/.test(html)) {
+    throw new Error('账龄分析未排除已结清/作废对账单');
+  }
+  if (!/function bucketOf\(r\)\{[\s\S]{0,120}?getDaysStatus/.test(html)) {
+    throw new Error('账龄分档未使用到期日（getDaysStatus）');
+  }
+});
+
+// ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════
 let passed = 0;

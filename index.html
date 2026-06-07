@@ -184,6 +184,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="ni" data-page="quot"><span class="nic">&#128196;</span>报价单</div>
   <div class="ni" data-page="recon"><span class="nic">&#128203;</span>应付对账</div>
   <div class="ni" data-page="arec"><span class="nic">&#128203;</span>应收对账</div>
+  <div class="ni" data-page="araging"><span class="nic">&#128202;</span>应收账龄</div>
   <div class="ni" data-page="recv" style="display:none"><span class="nic">&#128176;</span>应收账款</div>
   <div class="ni" data-page="payb" style="display:none"><span class="nic">&#128184;</span>应付账款</div>
   <div class="nl">基础档案</div>
@@ -2901,7 +2902,7 @@ function logAction(action,entity,entityId,detail){
 // ── R3：页面级权限 — 每个角色能进哪些菜单 ──
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
-  finance:  ['dash','recon','arec','quot','custs','settings'],
+  finance:  ['dash','recon','arec','araging','quot','custs','settings'],
   sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice'],
   purchase: ['dash','yarn','greyfab','yarnout','ystock','dw','dd','facts','mat'],
   warehouse:['dash','fgstock','ystock']
@@ -3163,7 +3164,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
   });
 }
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3178,7 +3179,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging};
   if(fn[p])fn[p]();
 }
 
@@ -4705,6 +4706,99 @@ function pgAuditLog(){
   }
   userSel.onchange=render;kw.oninput=render;refreshBtn.onclick=loadLogs;
   loadLogs();
+}
+// ═══════════════════════════════════════════════════════════════
+
+// ═══ 应收账龄分析 ═══
+// 按"欠款时长"把未结清应收分档：未到期 / 逾期1-30 / 31-60 / 61-90 / 90天以上
+// 用途：催款优先级、坏账预警、现金流预测
+function pgArAging(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  var recs=(DB.arecs||[]).filter(function(r){return r&&r.status!=='settled'&&r.status!=='voided'&&(parseFloat(r.balanceAmt)||0)>0;});
+
+  // 分档：返回 0=未到期 1=1-30 2=31-60 3=61-90 4=90+
+  function bucketOf(r){
+    var s=getDaysStatus(r.dueDate);
+    if(s.type!=='overdue')return 0;       // 未到期 / 还剩N天
+    var d=s.days;
+    if(d<=30)return 1;
+    if(d<=60)return 2;
+    if(d<=90)return 3;
+    return 4;
+  }
+  var BK=['未到期','逾期1-30天','逾期31-60天','逾期61-90天','逾期90天以上'];
+  var BKC=['#16A34A','#D97706','#EA580C','#DC2626','#991B1B'];
+
+  // 按客户汇总
+  var byCust={};var totals=[0,0,0,0,0];
+  recs.forEach(function(r){
+    var c=r.custNm||'（未填客户）';
+    if(!byCust[c])byCust[c]={cust:c,b:[0,0,0,0,0],total:0,items:[]};
+    var bal=parseFloat(r.balanceAmt)||0;var bi=bucketOf(r);
+    byCust[c].b[bi]+=bal;byCust[c].total+=bal;byCust[c].items.push({r:r,bi:bi,bal:bal});
+    totals[bi]+=bal;
+  });
+  var custList=Object.keys(byCust).map(function(c){return byCust[c];})
+    .sort(function(a,b){return (b.b[4]+b.b[3])-(a.b[4]+a.b[3])||b.total-a.total;}); // 高风险优先
+  var grandTotal=totals.reduce(function(s,x){return s+x;},0);
+  var overdueTotal=totals[1]+totals[2]+totals[3]+totals[4];
+  var highRisk=totals[4];
+
+  // 页头
+  var hdr=document.createElement('div');
+  hdr.style.cssText='background:linear-gradient(90deg,#FEF2F2,#FFFBEB);border:1px solid #FECACA;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
+  hdr.innerHTML='<span style="font-size:24px">📊</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#991B1B">应收账龄分析</div>'
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">按欠款时长分档统计未结清应收。越往右越紧急，<b style="color:#991B1B">90天以上</b>有坏账风险，优先催收。</div></div>';
+  pg.appendChild(hdr);
+
+  // 汇总卡
+  var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(3,1fr)';
+  [['应收总额','¥'+Math.round(grandTotal).toLocaleString(),'未结清合计','sb'],
+   ['逾期总额','¥'+Math.round(overdueTotal).toLocaleString(),'已过到期日','so'],
+   ['高风险(90天+)','¥'+Math.round(highRisk).toLocaleString(),'坏账预警','sr2']
+  ].forEach(function(s){
+    var st=document.createElement('div');st.className='st '+s[3];
+    st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv" style="font-size:18px">'+s[1]+'</div><div class="ss">'+s[2]+'</div>';
+    sr.appendChild(st);
+  });
+  pg.appendChild(sr);
+
+  // 账龄矩阵表
+  var card=document.createElement('div');card.className='card';
+  var ch=document.createElement('div');ch.className='ch';ch.innerHTML='<span class="ct">📋 账龄明细（客户 × 时长）</span>';
+  card.appendChild(ch);
+  var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
+  if(!custList.length){
+    cb.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">🎉 暂无未结清应收，账目很健康！</div>';
+  }else{
+    var wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:calc(100vh - 320px)';
+    var t='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:760px">';
+    t+='<thead><tr style="background:#F3F4F6;position:sticky;top:0">'
+      +'<th style="padding:8px 10px;text-align:left;color:#374151;white-space:nowrap">客户</th>';
+    BK.forEach(function(b,i){t+='<th style="padding:8px 10px;text-align:right;color:'+BKC[i]+';white-space:nowrap">'+b+'</th>';});
+    t+='<th style="padding:8px 10px;text-align:right;color:#111;white-space:nowrap;border-left:2px solid #E5E7EB">合计</th></tr></thead><tbody>';
+    custList.forEach(function(cu,ri){
+      var bg=ri%2===0?'#fff':'#F8FAFC';
+      t+='<tr style="background:'+bg+';border-bottom:1px solid #F1F5F9">'
+        +'<td style="padding:7px 10px;font-weight:600;color:#1F2937">'+esc(cu.cust)+'</td>';
+      cu.b.forEach(function(v,i){
+        t+='<td style="padding:7px 10px;text-align:right;color:'+(v>0?BKC[i]:'#CBD5E1')+';font-weight:'+(v>0?'700':'400')+'">'+(v>0?'¥'+Math.round(v).toLocaleString():'—')+'</td>';
+      });
+      t+='<td style="padding:7px 10px;text-align:right;font-weight:800;color:#111;border-left:2px solid #E5E7EB">¥'+Math.round(cu.total).toLocaleString()+'</td></tr>';
+    });
+    // 合计行
+    t+='<tr style="background:#EAECF4;font-weight:800;border-top:2px solid #CBD5E1">'
+      +'<td style="padding:8px 10px;color:#111">合计</td>';
+    totals.forEach(function(v,i){t+='<td style="padding:8px 10px;text-align:right;color:'+BKC[i]+'">'+(v>0?'¥'+Math.round(v).toLocaleString():'—')+'</td>';});
+    t+='<td style="padding:8px 10px;text-align:right;color:#111;border-left:2px solid #CBD5E1">¥'+Math.round(grandTotal).toLocaleString()+'</td></tr>';
+    t+='</tbody></table>';
+    wrap.innerHTML=t;cb.appendChild(wrap);
+    var note=document.createElement('div');note.style.cssText='font-size:10.5px;color:var(--t3);padding:8px 12px';
+    note.textContent='共 '+custList.length+' 个客户有未结清应收 · 按高风险（90天+/61-90天）排序 · 点「应收对账」可查看具体单据并收款';
+    cb.appendChild(note);
+  }
+  card.appendChild(cb);pg.appendChild(card);
 }
 // ═══════════════════════════════════════════════════════════════
 

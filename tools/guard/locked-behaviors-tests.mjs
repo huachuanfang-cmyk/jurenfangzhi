@@ -440,6 +440,16 @@ test('登录后先快速拉 app_users 表，避免退出再登的管理员闪现
   }
 });
 
+test('全新设备防闪现三层防线（角色缓存 + 最小权限默认 + CSS）', () => {
+  if (!/function applyCachedRoleEarly\(\)/.test(html)) throw new Error('applyCachedRoleEarly 被删除 — 缓存角色无法秒级应用');
+  if (!/role-pending-min/.test(html)) throw new Error('role-pending-min 最小权限默认丢失 — 全新设备会闪现管理员菜单');
+  if (!/gjr5_role_cache/.test(html)) throw new Error('角色缓存 gjr5_role_cache 丢失');
+  // role_cache 必须在退出时保留，否则退出再登仍闪现
+  if (!/_keep\s*=\s*\[[^\]]*gjr5_role_cache/.test(html)) throw new Error('退出时未保留 gjr5_role_cache — 退出再登会闪现');
+  // CSS 必须存在最小权限规则
+  if (!/body\.role-pending-min #sb \.ni/.test(html)) throw new Error('CSS 最小权限规则缺失');
+});
+
 // ═══════════════════════════════════════════════
 // 运行
 // ═══════════════════════════════════════════════

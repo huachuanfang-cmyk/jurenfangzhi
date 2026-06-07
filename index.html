@@ -19,6 +19,9 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:13px;di
 .ni{display:flex;align-items:center;gap:7px;padding:8px 14px;cursor:pointer;color:rgba(255,255,255,.72);font-size:12px;transition:all .15s;border-left:3px solid transparent}
 .ni:hover{background:rgba(255,255,255,.08);color:#fff}
 .ni.on{background:rgba(255,255,255,.13);color:#fff;border-left-color:#90CAF9}
+/* 角色未确认前（全新设备首次登录）只显示工作台，杜绝管理员菜单闪现 */
+body.role-pending-min #sb .ni[data-page]:not([data-page="dash"]){display:none !important}
+body.role-pending-min #sb .nl{display:none !important}
 .nic{font-size:14px;width:17px;text-align:center}
 #mn{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .topb{background:var(--w);border-bottom:1px solid var(--bd);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 4px rgba(0,0,0,.1)}
@@ -2308,8 +2311,8 @@ function bindAuthUI(){
         await _supabase.auth.signOut();
       }
       _authUser = null;
-      // 仅清除业务数据，保留登录偏好、锁屏密码和自动快照
-      var _keep = ['gjr5_remember','gjr5_lock_pin'];
+      // 仅清除业务数据，保留登录偏好、锁屏密码、角色缓存和自动快照
+      var _keep = ['gjr5_remember','gjr5_lock_pin','gjr5_role_cache'];
       for(var k in localStorage){
         if(k.indexOf('gjr5_')===0 && _keep.indexOf(k)<0 && k.indexOf('gjr5_snap_')!==0) localStorage.removeItem(k);
       }
@@ -2351,8 +2354,15 @@ async function onAuthSuccess(){
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
   var cpBtn=document.getElementById('chpwd-btn');if(cpBtn)cpBtn.style.display='inline-block';
 
-  // ── 先单独快速拉「用户名单」这张小表（秒级），让角色立即正确 ──
-  // 解决：安全退出会清本地缓存，再登录时本地无 app_users → 早期解析默认 admin → 闪现
+  // ── 杜绝"管理员闪现"三层防线 ──
+  // 防线1：上次缓存过该邮箱角色 → 立即应用（同邮箱在任意设备登录过即命中，覆盖日常）
+  if(applyCachedRoleEarly()){
+    applyRoleMenu();
+  }else{
+    // 防线2：全新设备首次登录、无任何缓存 → 先按最小权限（CSS 只显示工作台），绝不显示管理员菜单
+    document.body.classList.add('role-pending-min');
+  }
+  // 防线3：单独快速拉「用户名单」小表（秒级）→ 解析真实角色 → 应用
   try{
     if(_supabaseData&&isOnline()){
       var _ures=await _supabaseData.from('app_users').select('*');
@@ -2363,7 +2373,6 @@ async function onAuthSuccess(){
       }
     }
   }catch(e){}
-  // 用刚拉到的用户名单解析角色 + 隐藏菜单（避免 10 秒"管理员闪现"）
   resolveCurrentUser();
   applyRoleMenu();
 
@@ -2822,7 +2831,25 @@ function resolveCurrentUser(){
     // 这是关键安全边界：即使有人偷偷在 Supabase 注册，没进名单也进不来
     _currentUser={email:email,name:'',role:null,active:false,blocked:true};
   }
+  // 缓存角色（按邮箱），下次该邮箱在任意设备登录可秒级应用，杜绝闪现
+  try{
+    if(_currentUser&&_currentUser.email&&!_currentUser.blocked&&_currentUser.role){
+      var rc=JSON.parse(localStorage.getItem('gjr5_role_cache')||'{}');
+      rc[_currentUser.email]=_currentUser.role;
+      localStorage.setItem('gjr5_role_cache',JSON.stringify(rc));
+    }
+  }catch(e){}
   return _currentUser;
+}
+// 登录后立即用「上次缓存的角色」应用（不等网络）。返回 true 表示命中缓存
+function applyCachedRoleEarly(){
+  var email=(_authUser&&_authUser.email||'').trim().toLowerCase();
+  if(!email)return false;
+  try{
+    var rc=JSON.parse(localStorage.getItem('gjr5_role_cache')||'{}');
+    if(rc[email]){_currentUser={email:email,name:'',role:rc[email],active:true,blocked:false};return true;}
+  }catch(e){}
+  return false;
 }
 // 当前角色是否管理员（blocked 用户不是管理员）
 function isAdmin(){return !_currentUser||(_currentUser.role==='admin'&&!_currentUser.blocked);}
@@ -2850,7 +2877,8 @@ function canSeeFinance(){
 }
 // 按当前角色显示/隐藏左侧菜单项 + 空分组标题
 function applyRoleMenu(){
-  if(!_currentUser)return;
+  // 角色已确认 → 解除"最小权限待定"状态（CSS 不再强制只显示工作台）
+  document.body.classList.remove('role-pending-min');
   document.querySelectorAll('#sb .ni').forEach(function(el){
     var pg=el.dataset.page;if(!pg)return;
     if(pg==='recv'||pg==='payb')return; // 这两个默认隐藏，不动

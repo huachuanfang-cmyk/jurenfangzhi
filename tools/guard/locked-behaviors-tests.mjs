@@ -521,10 +521,16 @@ test('客户毛利分析页存在且接入路由/菜单', () => {
 });
 
 test('毛利成本必须从加工跟踪费用+纱线采购按订单联动汇总', () => {
-  // 成本来自 trks.fee 和 yarns.amt，且有成本完整度提醒
-  if (!/c\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
-  if (!/c\.matCost\+=amt/.test(html)) throw new Error('毛利未汇总纱线采购成本');
-  if (!/成本未录|成本完整度/.test(html)) throw new Error('毛利缺少成本漏录提醒');
+  // 成本来自 trks.fee 和 yarns.amt（按订单聚合到 OS），且有成本完整度提醒
+  if (!/getOS\(ord\)\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
+  if (!/getOS\(ord\)\.matCost\+=amt/.test(html)) throw new Error('毛利未汇总纱线采购成本');
+  if (!/成本未录/.test(html)) throw new Error('毛利缺少成本漏录提醒');
+});
+
+test('利润分析必须有 按客户/按订单/按月份 三视图', () => {
+  if (!/function renderCust\(\)/.test(html)) throw new Error('缺少按客户视图');
+  if (!/function renderOrd\(\)/.test(html)) throw new Error('缺少按订单视图');
+  if (!/function renderMonth\(\)/.test(html)) throw new Error('缺少按月份视图');
 });
 
 // ═══════════════════════════════════════════════

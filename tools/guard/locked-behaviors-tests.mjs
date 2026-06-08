@@ -609,6 +609,15 @@ test('毛利成本必须计入订单其它成本(miscCost)', () => {
   if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\)\+\(s\.stockCost\|\|0\);/.test(html)) throw new Error('毛利成本合计有误（增值税不应计入成本）');
 });
 
+test('侧边栏分组折叠用CSS类(.mcol)，不动角色隐藏的 inline display', () => {
+  if (!/initMenuCollapse/.test(html)) throw new Error('缺少菜单折叠初始化');
+  // 折叠必须用 class，不能用 inline style.display（否则会破坏 applyRoleMenu 的角色隐藏）
+  if (!/\.ni\.mcol\{display:none !important\}/.test(html)) throw new Error('折叠未用 .mcol 类');
+  if (!/classList\.toggle\('mcol'/.test(html)) throw new Error('折叠未用 classList 切换 mcol');
+  // applyRoleMenu 仍用 inline display 控制角色可见性，二者独立
+  if (!/el\.style\.display=canAccessPage\(pg\)\?''/.test(html)) throw new Error('角色隐藏逻辑被破坏');
+});
+
 test('现货倒卖：订单进货成本计入毛利（纯贸易单）', () => {
   if (!/o-stock/.test(html)) throw new Error('订单缺少现货进货成本字段 o-stock');
   if (!/stockCost:\(document\.getElementById\('o-stock'\)/.test(html)) throw new Error('订单未保存 stockCost');

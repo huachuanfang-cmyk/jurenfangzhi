@@ -6413,8 +6413,8 @@ function renderOrds(list){
         var prodN=parseFloat(c.prodQty)||0;
         var finN=fkc>0?fkc:(parseFloat(c.finQty)||0);
         var lossH='—';
-        if(prodN>0&&finN>0){var l=((prodN-finN)/prodN*100).toFixed(1);lossH='<span style="color:'+(+l>10?'#DC2626':+l>7?'#D97706':'#16a34a')+';font-weight:700">'+l+'%</span>';}
-        dtr.appendChild(mkdtd('损耗',lossH));
+        if(prodN>0&&finN>0){var d=(finN-prodN)/prodN*100;lossH='<span style="color:'+(d>0?'#16a34a':(d<0?'#DC2626':'#6B7280'))+';font-weight:700" title="成品'+finN.toFixed(1)+' vs 投产'+prodN.toFixed(1)+'：'+(d>=0?'加重':'损耗')+Math.abs(d).toFixed(1)+'%">'+(d>=0?'+':'')+d.toFixed(1)+'%</span>';}
+        dtr.appendChild(mkdtd('增减',lossH));
         var et=document.createElement('td');et.colSpan=3;et.style.cssText='border-bottom:1px solid #ECEAF8;background:#F7F6FF;padding:4px 8px';
         if(c.clrStatus){et.innerHTML='<span style="font-size:10px;color:#6B7280">'+esc(c.clrStatus)+'</span>';}
         dtr.appendChild(et);
@@ -6921,12 +6921,12 @@ function openOM(id){
       if(finEl)finEl.textContent=sumFin>0?sumFin.toFixed(1)+' KG':'—';
       var lossEl=document.getElementById('tot-loss');
       if(lossEl){
-        var prodRate=sumKg>0?((sumProd-sumKg)/sumKg*100):0;
-        var vatRate=sumProd>0?((sumProd-sumVat)/sumProd*100):0;
+        var prodRate=sumKg>0?((sumProd-sumKg)/sumKg*100):0;        // 投产 vs 下单
+        var vatRate=sumProd>0?((sumVat-sumProd)/sumProd*100):0;     // 落缸 vs 投产
         var prodStr=sumKg>0?(prodRate>=0?'+':'')+prodRate.toFixed(1)+'%':'—';
         var vatStr=sumProd>0?(vatRate>=0?'+':'')+vatRate.toFixed(1)+'%':'—';
-        function lossClr(v){return v<0?'#DC2626':v>25?'#DC2626':v>15?'#D97706':'#16A34A';}
-        lossEl.innerHTML='投产损耗率：<span style="color:'+lossClr(prodRate)+';font-weight:600">'+prodStr+'</span> / 落缸损耗率：<span style="color:'+lossClr(vatRate)+';font-weight:600">'+vatStr+'</span>';
+        function chgClr(v){return v>0?'#16A34A':(v<0?'#DC2626':'#6B7280');}  // +加重绿/−损耗红
+        lossEl.innerHTML='投产增减：<span style="color:'+chgClr(prodRate)+';font-weight:600">'+prodStr+'</span> / 落缸增减：<span style="color:'+chgClr(vatRate)+';font-weight:600">'+vatStr+'</span>';
       }
     }
     function attachTotalListeners(){
@@ -7162,7 +7162,7 @@ function openOD(id,readonly){
     if(tks.length){
       var rows=tks.map(function(t){
         var tr=document.createElement('tr');
-        var u=t.unit==='米'?'米':'kg';
+        var u=(t.unit||(String(o.prUnit||'').toUpperCase().indexOf('M')>=0?'米':'kg'))==='米'?'米':'kg';
         tr.innerHTML='<td>'+esc(t.proc)+'</td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+(t.sentQ?t.sentQ+u:'—')+'</td><td>'+(t.retQ?t.retQ+u:'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';
         return tr;
       });
@@ -7410,12 +7410,15 @@ function renderTrks(list){
   if(!list.length){var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3)';e.textContent='暂无加工记录';cb.appendChild(e);return;}
   var rows=list.map(function(t){
     var tr=document.createElement('tr');
-    // 得率 = 收回/发出 ×100%（>100%=加重，<100%=损耗），避免「损耗」正负号歧义
-    var yr=(t.sentQ&&t.retQ)?(t.retQ/t.sentQ*100):null;
-    var lc=yr===null?'':(yr>=100?'cg':yr>=95?'':yr>=90?'co':'cr');
-    var yt=yr===null?'':' title="得率=收回'+t.retQ+'÷发出'+t.sentQ+'×100%（'+(yr>=100?'加重'+(yr-100).toFixed(1)+'%':'损耗'+(100-yr).toFixed(1)+'%')+'）"';
-    var us='<span style="font-size:9px;color:#9CA3AF;margin-left:1px">'+(t.unit==='米'?'米':'kg')+'</span>';
-    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+(yr!==null?yr.toFixed(1)+'%':'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
+    // 增减% = (收回−发出)/发出（+绿=加重/多了，−红=损耗/少了），一眼看出多还是少
+    var diff=(t.sentQ&&t.retQ)?((t.retQ-t.sentQ)/t.sentQ*100):null;
+    var lc=diff===null?'':(diff>0?'cg':(diff<0?'cr':''));
+    var dStr=diff===null?'—':((diff>=0?'+':'')+diff.toFixed(1)+'%');
+    var yt=diff===null?'':' title="收回'+t.retQ+' vs 发出'+t.sentQ+'：'+(diff>=0?'加重'+diff.toFixed(1):'损耗'+(-diff).toFixed(1))+'%"';
+    var _ordM=(function(){var o=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});return o&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0;})();
+    var u=t.unit||(_ordM?'米':'kg');
+    var us='<span style="font-size:9px;color:#9CA3AF;margin-left:1px">'+(u==='米'?'米':'kg')+'</span>';
+    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+dStr+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
     // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
     // 修复：复用 openTM（编辑弹窗即详情，本系统其他模块的通用做法）
@@ -7426,7 +7429,7 @@ function renderTrks(list){
     if(t.voided){tr.style.background='#f2f2f2';tr.style.opacity='.6';tr.style.cursor='default';}
     return tr;
   });
-  cb.appendChild(buildTable(['订单号','工序','工厂','颜色','色号','纱批','机台','缸号','缸kg','发出量','收回量','得率%','加工费','付款','预计','实际','状态','操作'],rows));
+  cb.appendChild(buildTable(['订单号','工序','工厂','颜色','色号','纱批','机台','缸号','缸kg','发出量','收回量','增减%','加工费','付款','预计','实际','状态','操作'],rows));
 }
 function fTrk(){
   var q=(document.getElementById('tq').value||'').toLowerCase();

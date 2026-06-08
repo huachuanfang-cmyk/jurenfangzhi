@@ -523,7 +523,7 @@ test('客户毛利分析页存在且接入路由/菜单', () => {
 test('毛利成本必须从加工跟踪费用+纱线采购按订单联动汇总', () => {
   // 成本来自 trks.fee 和 yarns.amt（按订单聚合到 OS），且有成本完整度提醒
   if (!/os\.feeCost\+=fee/.test(html)) throw new Error('毛利未汇总加工跟踪加工费');
-  if (!/getOS\(ord\)\.matCost\+=exA\(/.test(html)) throw new Error('毛利未汇总纱线采购成本(不含税)');
+  if (!/os\.matCost\+=amtRaw/.test(html)) throw new Error('毛利未汇总纱线采购成本');
   if (!/os\.procCost\[pk\]/.test(html)) throw new Error('未按工序拆分加工成本（成本构成展开失效）');
   if (!/成本未录/.test(html)) throw new Error('毛利缺少成本漏录提醒');
 });
@@ -605,13 +605,13 @@ test('销售订单有其它成本字段且保存', () => {
 });
 
 test('毛利成本必须计入订单其它成本(miscCost)', () => {
-  if (!/getOS\(o\)\.miscCost\+=exA\(/.test(html)) throw new Error('毛利未汇总订单其它成本');
+  if (!/os\.miscCost\+=mcRaw/.test(html)) throw new Error('毛利未汇总订单其它成本');
   if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('毛利成本合计有误（增值税不应计入成本）');
 });
 
 test('毛利成本必须计入胚布采购（直接购胚模式材料成本）', () => {
   // 胚布采购金额按订单汇总进 gfCost
-  if (!/getOS\(ord\)\.gfCost\+=exA\(/.test(html)) throw new Error('毛利未汇总胚布采购成本(不含税)');
+  if (!/os\.gfCost\+=amtRaw/.test(html)) throw new Error('毛利未汇总胚布采购成本');
   if (!/DB\.greyfabs\|\|\[\]\)\.forEach/.test(html)) throw new Error('毛利未遍历胚布采购记录');
   // 成本合计必须含 gfCost
   if (!/\+\(s\.gfCost\|\|0\)/.test(html)) throw new Error('毛利成本合计未计入 gfCost（胚布采购）');
@@ -627,16 +627,17 @@ test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {
   if (!/paid:\(document\.getElementById\('gf-paid'\)/.test(html)) throw new Error('胚布采购保存未写入 paid');
 });
 
-test('毛利用「规范」口径：价税分离，增值税单独核算不计入成本', () => {
-  // 价税分离助手
-  if (!/function exA\(amt,isIncl\)/.test(html)) throw new Error('缺少不含税归一助手 exA');
+test('毛利用「落袋口径」：实收−实付成本−该单税金；税金=销项−进项', () => {
+  // 税额助手
   if (!/function vatA\(amt,isIncl\)/.test(html)) throw new Error('缺少税额助手 vatA');
-  // 毛利 = 不含税收入 − 不含税成本（成本里绝不能含增值税）
-  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('成本合计不应包含增值税');
-  if (/\+s\.taxB/.test(html)) throw new Error('增值税被错误计入成本（taxB 残留）');
-  // 增值税单列：销项/进项/应交
-  if (!/VAT\.out/.test(html) || !/VAT\.in/.test(html)) throw new Error('缺少销项/进项税');
-  if (!/vatPayable=VAT\.out-VAT\.in/.test(html)) throw new Error('缺少应交增值税');
+  // 成本=实付原值（不含税金），税金单独按 销项−进项 算
+  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('成本合计应为实付原值');
+  if (!/s\.taxAmt=\(s\.outVat\|\|0\)-\(s\.inVat\|\|0\)/.test(html)) throw new Error('该单税金应=销项−进项');
+  if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');
+  if (/\+s\.taxB/.test(html)) throw new Error('不应有旧的税负当成本逻辑(taxB)');
+  // 销项/进项按订单累计
+  if (!/os\.outVat\+=vatA/.test(html)) throw new Error('缺少销项税累计');
+  if (!/os\.inVat\+=vatA/.test(html)) throw new Error('缺少进项税累计');
   // 税率可调（默认13）
   if (!/window\._taxRate=parseFloat/.test(html)) throw new Error('缺少可调税率');
   // 各成本来源带「含税/不含税」标记

@@ -2246,12 +2246,6 @@ async function authLogin(email, pwd){
   }
 }
 
-async function authRegister(email, pwd){
-  // 自助注册仍关闭（员工账号由管理员在「用户管理」里创建）
-  showToast('暂不开放自助注册，请联系管理员','error');
-  return false;
-}
-
 // 管理员在用户管理里为员工创建登录账号（设初始密码）
 // 用独立的临时客户端 signUp，绝不影响当前管理员的登录会话
 async function createEmployeeLogin(email, pwd){
@@ -2879,8 +2873,6 @@ function applyCachedRoleEarly(){
   }catch(e){}
   return false;
 }
-// 当前角色是否管理员（blocked 用户不是管理员）
-function isAdmin(){return !_currentUser||(_currentUser.role==='admin'&&!_currentUser.blocked);}
 
 // ══════════════════════════════════════════════════════════════
 // 操作日志 / 审计 — 记录"谁、何时、改了什么单据"
@@ -3223,19 +3215,6 @@ document.addEventListener('keydown',function(e){
   cm();
 });
 
-function mkEl(tag,props,children){
-  var el=document.createElement(tag);
-  if(props)Object.keys(props).forEach(function(k){
-    if(k==='cls')el.className=props[k];
-    else if(k==='html')el.innerHTML=props[k];
-    else if(k==='txt')el.textContent=props[k];
-    else if(k==='style')el.style.cssText=props[k];
-    else if(k.startsWith('on'))el.addEventListener(k.slice(2),props[k]);
-    else el.setAttribute(k,props[k]);
-  });
-  if(children)children.forEach(function(c){if(c)el.appendChild(typeof c==='string'?document.createTextNode(c):c);});
-  return el;
-}
 function mkBtn(label,cls,fn){
   var b=document.createElement('button');
   b.type='button'; // 防御2：强制所有动态按钮不触发表单提交
@@ -3461,101 +3440,6 @@ function getFabMem(spec){return DB.fabMem.find(function(m){return m.spec===spec;
 
 // ═══ DASHBOARD ═══
 // ═══ 只读预览弹窗（工作台用）═══
-function previewWreadonly(ordId){
-  var cfg=DB.wdocs.find(function(x){return x.ordId===ordId;})||{};
-  var ord=DB.orders.find(function(o){return o.id===ordId;});
-  if(!ord){alert('找不到订单数据');return;}
-  // 构建d对象（和getWD一样的结构）
-  var d={
-    ord:ord,
-    facNm:cfg.facNm||'',
-    ct:cfg.ct||'',
-    due:cfg.due||'',
-    pr:cfg.pr||'',
-    taxType:cfg.taxType||'不含税',
-    ls:cfg.ls||'',
-    gaugeN:cfg.gaugeN||ord.gaugeN||'',
-    gaugeS:cfg.gaugeS||ord.gaugeS||'',
-    specWd:cfg.specWd||ord.width||'',
-    specWu:cfg.specWu||ord.widthUnit||'cm',
-    specWt:cfg.specWt||ord.weight||'',
-    shrink:cfg.shrink||'',
-    ra:cfg.ra||'',
-    raNm:cfg.raNm||'',
-    raCt:cfg.raCt||'',
-    raPh:cfg.raPh||'',
-    note:cfg.note||'',
-    rm:cfg.rm||'',
-    selectedColors:null
-  };
-  var html=buildWH(d);
-  var wrap=document.createElement('div');wrap.className='mo mxl';
-  var hdr=document.createElement('div');hdr.className='mh';
-  hdr.innerHTML='<div class="mt">织厂加工单预览 — '+esc(ord.no)+'</div>';
-  var x=document.createElement('button');x.type='button';x.className='mc';x.textContent='×';x.onclick=cm;
-  hdr.appendChild(x);
-  var body=document.createElement('div');body.className='mb2';body.style.cssText='overflow-y:auto;max-height:75vh';
-  body.innerHTML=html;
-  var ftr=document.createElement('div');ftr.className='mf';
-  var prtBtn=mkBtn('&#128424; 打印/PDF','btn boo',function(){
-    printDoc('织厂加工单',buildWH(d),ord.no);
-  });
-  var closeBtn=mkBtn('关闭','btn bs',cm);
-  ftr.appendChild(prtBtn);ftr.appendChild(closeBtn);
-  wrap.appendChild(hdr);wrap.appendChild(body);wrap.appendChild(ftr);
-  om(wrap);
-}
-
-function previewDreadonly(ordId){
-  var cfg=DB.ddocs.find(function(x){return x.ordId===ordId;})||{};
-  var ord=DB.orders.find(function(o){return o.id===ordId;});
-  if(!ord){alert('找不到订单数据');return;}
-  // 构建vatColors（从订单颜色+已保存的落缸数据）
-  var vatColors=(ord.colors||[]).map(function(c,i){
-    return{nm:c.nm,code:c.code||'',q1:c.prodQty||'',q2:'',q3:'',rm:''};
-  });
-  var d={
-    ord:ord,
-    facNm:cfg.facNm||'',
-    ct:cfg.ct||'',
-    due:cfg.due||'',
-    wb:cfg.wb||'',
-    ra:cfg.ra||'',
-    rct:cfg.rct||'',
-    rph:cfg.rph||'',
-    da:cfg.da||'',
-    dc:cfg.dc||'',
-    dp:cfg.dp||'',
-    sw:cfg.sw||'5%',
-    sl:cfg.sl||'5%',
-    sn:cfg.sn||'3%',
-    sk:cfg.sk||'',
-    sm:cfg.sm||'挂干',
-    specWd:cfg.specWd||ord.width||'',
-    specWu:cfg.specWu||ord.widthUnit||'cm',
-    specWt:cfg.specWt||ord.weight||'',
-    pj:cfg.pj||'',
-    rm:cfg.rm||'',
-    vatColors:vatColors
-  };
-  var html=buildDH(d);
-  var wrap=document.createElement('div');wrap.className='mo mxl';
-  var hdr=document.createElement('div');hdr.className='mh';
-  hdr.innerHTML='<div class="mt">染整加工单预览 — '+esc(ord.no)+'</div>';
-  var x=document.createElement('button');x.type='button';x.className='mc';x.textContent='×';x.onclick=cm;
-  hdr.appendChild(x);
-  var body=document.createElement('div');body.className='mb2';body.style.cssText='overflow-y:auto;max-height:75vh';
-  body.innerHTML=html;
-  var ftr=document.createElement('div');ftr.className='mf';
-  var prtBtn=mkBtn('&#128424; 打印/PDF','btn boo',function(){
-    printDoc('染整加工单',buildDH(d),ord.no);
-  });
-  var closeBtn=mkBtn('关闭','btn bs',cm);
-  ftr.appendChild(prtBtn);ftr.appendChild(closeBtn);
-  wrap.appendChild(hdr);wrap.appendChild(body);wrap.appendChild(ftr);
-  om(wrap);
-}
-
 function openClrEdit(ordId, clrNm){
   var ord=(DB.orders||[]).find(function(x){return x.id===ordId;});
   if(!ord)return;
@@ -4244,7 +4128,6 @@ function delC(id){
   if(!confirm('删除客户？\n确认这是未被业务使用的空档案。'))return;
   DB.remove('c',id);pgCusts();
 }
-function viewC(id){var c=DB.custs.find(function(x){return x.id===id;});if(!c)return;var modal=buildModal('客户详情','',function(body){var info='<div style=\"padding:8px;\"><table style=\"width:100%;line-height:1.8;\"><tr><td style=\"color:var(--t3);width:100px;\">客户名称</td><td><strong>'+esc(c.nm)+'</strong></td></tr><tr><td style=\"color:var(--t3);\">联系人</td><td>'+esc(c.ct||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">电话</td><td>'+esc(c.ph||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">微信</td><td>'+esc(c.wx||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">客户类型</td><td><span class=\"bx '+(c.tp==='外贸'?'bxb':'bxg')+'\">'+esc(c.tp||'内贸')+'</span></td></tr><tr><td style=\"color:var(--t3);\">账期</td><td>'+esc(c.tm||30)+'天</td></tr><tr><td style=\"color:var(--t3);\">付款方式</td><td>'+esc(c.pm||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">公司地址</td><td>'+esc(c.ad||'—')+'</td></tr><tr><td style=\"color:var(--t3);\">备注</td><td>'+esc(c.rm||'—')+'</td></tr></table></div>';body.innerHTML=info;},function(){cm();openCM(id);},'编辑');om(modal);}
 
 // ═══ FACTORIES ═══
 function pgFacts(){
@@ -5674,33 +5557,6 @@ function pgMat(){
     w.appendChild(info);
   }
   renderMatList();
-}
-
-function printMatLabel(m){
-  // ── 四项必填校验 ──
-  var missing=[];
-  if(!m.mid)missing.push('编号');
-  if(!m.alias&&!m.fab)missing.push('品名');
-  if(!m.width||!m.gsm)missing.push('规格（幅宽或克重不完整）');
-  if(!Array.isArray(m.comps)||!m.comps.length)missing.push('成份');
-  if(missing.length){
-    alert('以下信息不完整，无法打印标签：\n\n• '+missing.join('\n• ')+'\n\n请先编辑补全后再打印。');
-    return;
-  }
-  // ── 成份格式处理 ──
-  var compStr='';
-  if(m.comps.length===1&&(+m.comps[0].pct)===100){
-    compStr='100%'+m.comps[0].nm;
-  } else {
-    compStr=m.comps.map(function(c){return c.pct+c.nm;}).join(' ');
-  }
-  var widthDisp=m.width+(m.widthUnit||'cm');
-  var gsmDisp=m.gsm+'g/m²';
-  var specStr=widthDisp+' × '+gsmDisp;
-  var alias=m.alias||m.fab;
-  // ── 用printHTML方式（和所有单据一致，兼容Chrome本地文件）──
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'    +'<style>'    +'*{margin:0;padding:0;box-sizing:border-box;}'    +'@page{size:80mm 30mm;margin:0;}'    +'body{width:80mm;height:30mm;font-family:"Microsoft YaHei","SimHei",sans-serif;'    +'padding:2mm 3mm;display:flex;flex-direction:column;justify-content:center;gap:1mm;overflow:hidden;}'    +'.row{display:flex;align-items:baseline;gap:2mm;line-height:1.4;}'    +'.lbl{font-size:7pt;color:#444;white-space:nowrap;min-width:7mm;}'    +'.val{font-size:7.5pt;color:#000;word-break:break-all;}'    +'.mid-val{font-size:10pt;font-weight:700;color:#000;letter-spacing:0.5px;}'    +'.alias-val{font-size:8.5pt;font-weight:600;color:#000;}'    +'</style></head><body>'    +'<div class="row"><span class="lbl">编号：</span><span class="mid-val">'+esc(m.mid)+'</span></div>'    +'<div class="row"><span class="lbl">品名</span><span class="alias-val" style="margin-left:2mm">'+esc(alias)+'</span></div>'    +'<div class="row"><span class="lbl">规格：</span><span class="val">'+esc(specStr)+'</span></div>'    +'<div class="row"><span class="lbl">成份：</span><span class="val">'+esc(compStr)+'</span></div>'    +'</body></html>';
-  printHTML(html);
 }
 
 function openMatModal(id){
@@ -12684,14 +12540,6 @@ function yarnPoNo(){
   arr.n++;DB.save('yarnPoSeq',arr);
   return 'PO'+y+String(arr.n).padStart(4,'0');
 }
-function yarnFrNo(){
-  var y=new Date().getFullYear();
-  var arr=DB.load('yarnFrSeq');if(!arr||Array.isArray(arr)||arr.y===undefined){arr={y:y,n:0};}
-  if(arr.y!==y){arr={y:y,n:0};}
-  arr.n++;DB.save('yarnFrSeq',arr);
-  return 'FR'+y+String(arr.n).padStart(4,'0');
-}
-
 // ── 采购页 pgYarn ──
 function pgYarn(){
   if(!Array.isArray(DB.yarns))DB.yarns=[];
@@ -14940,23 +14788,6 @@ function openRollList(k,grp,rolls){
 
 // ── 登记入库弹窗 ──
 
-function buildColorSel(selId,orders,ordId,selectedClr){
-  var sel=mkSelect(selId,[{v:'',l:'先选择订单'}],[]);
-  function fill(oid,sc){
-    var o=(orders||[]).find(function(x){return x.id===oid;});
-    sel.innerHTML='';
-    var baseOpt=[{v:'',l:'请选择颜色'}];
-    var clrOpts=o?baseOpt.concat((o.colors||[]).map(function(c){return{v:c.nm,l:c.nm+(c.code?' ('+c.code+')':'')};})): baseOpt;
-    clrOpts.forEach(function(item){
-      var opt=document.createElement('option');opt.value=item.v;opt.textContent=item.l;
-      if(item.v===sc)opt.selected=true;
-      sel.appendChild(opt);
-    });
-  }
-  if(ordId)fill(ordId,selectedClr||'');
-  sel._fill=fill;
-  return sel;
-}
 
 // ═══ Disable wheel on inputs globally ═══
 document.addEventListener('wheel',function(e){

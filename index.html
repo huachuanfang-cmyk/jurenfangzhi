@@ -3364,6 +3364,32 @@ function fv(label,el,req){
 }
 function fvFull(label,el,req){var d=fv(label,el,req);d.classList.add('ff');return d;}
 
+// ═══ 多设备「改动冲突提醒」（本地指纹·只取标量·零误报·fail-safe）═══
+// 打开编辑时记下记录指纹；保存前若该记录已被其它设备同步进来的修改改变 → 提醒覆盖。
+// 仅对「云端权威」表（加工跟踪/采购/对账）有效；只比标量字段，避开同步往返导致的误报。
+var _editFingerprints={};
+function _recFp(rec){
+  if(!rec||typeof rec!=='object')return '';
+  try{
+    return Object.keys(rec).filter(function(k){
+      if(k.charAt(0)==='_')return false;            // 跳过内部字段
+      var v=rec[k];return v==null||typeof v!=='object'; // 只取标量，跳过数组/对象（往返易变序）
+    }).sort().map(function(k){return k+'='+String(rec[k]==null?'':rec[k]);}).join('|');
+  }catch(e){return '';}
+}
+function noteEditOpen(tag,rec){ if(rec&&rec.id)_editFingerprints[tag+':'+rec.id]=_recFp(rec); }
+function checkSaveConflict(tag,id,list){
+  try{
+    if(!id)return true;                              // 新建，无冲突
+    var base=_editFingerprints[tag+':'+id];
+    if(base===undefined)return true;                 // 没有基线，放行
+    var live=(list||[]).find(function(x){return x&&x.id===id;});
+    if(!live)return true;                            // 记录已不在（删除等），交由其它逻辑
+    if(_recFp(live)===base)return true;              // 未变化，放行
+    return confirm('⚠️ 改动冲突提醒\n\n这张单据在你编辑期间，被其它设备/同事改动过（已同步到本机）。\n继续保存会用你现在的版本覆盖对方的改动。\n\n确定要覆盖保存吗？');
+  }catch(e){return true;}                            // 任何异常一律放行，绝不卡正常保存
+}
+
 // ═══ MODAL BUILDER ═══
 function buildModal(title,cls,bodyFn,saveFn,saveLabel){
   var wrap=document.createElement('div');wrap.className='mo '+(cls||'');
@@ -7439,6 +7465,7 @@ function fTrk(){
 }
 function openTM(id){
   var t=(id&&DB.trks.find(function(x){return x.id===id;}))||{};
+  noteEditOpen('t',t);
   var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var so=t.ordId?ords.find(function(o){return o.id===t.ordId;}):null;
   var modal=buildModal((id?'编辑':'新增')+'加工跟踪记录','mxl',function(body){
@@ -7528,6 +7555,7 @@ function openTM(id){
 }
 function saveT(id){
   try{
+    if(!checkSaveConflict('t',id,DB.trks))return;
     var oid=document.getElementById('t-ord').value;
     var fn=document.getElementById('t-fc').value;
     if(!oid)return alert('请选择订单');if(!fn)return alert('请选择工厂');
@@ -12130,6 +12158,7 @@ function reconNo(){
 
 function openReconModal(id){
   var rec=id?(DB.recons||[]).find(function(x){return x.id===id;}):null;
+  noteEditOpen('rc',rec);
   var isNew=!rec;
   var facts=DB.facts||[];
   var modal=buildModal(isNew?'新建对账单':'查看/编辑对账单','mxl',function(body){
@@ -12299,6 +12328,7 @@ function openReconModal(id){
 
   },function(){
     // 保存
+    if(rec&&!checkSaveConflict('rc',rec.id,DB.recons))return;
     var factNm=(document.getElementById('rc-fact')||{value:''}).value;
     if(!factNm)return alert('请选择加工厂');
     var month=(document.getElementById('rc-month')||{value:''}).value;
@@ -12771,6 +12801,7 @@ function openYarnM(id){
     r=DB.yarns.find(function(x){return x.id===id;});
     if(!r){alert('原采购记录不存在，已停止保存。\n请刷新后重新进入，避免把编辑误保存成新采购单。');pgYarn();return;}
   }
+  noteEditOpen('y',r);
   var modal=buildModal((id?'编辑':'新增')+'原料订购合同','mxl',function(body){
 
     // ══ 顶部：关联销售订单 + 日期 ══
@@ -13009,6 +13040,7 @@ function openYarnDetail(id){
 function saveYarn(id){
   try{
     if(!Array.isArray(DB.yarns))DB.yarns=[];
+    if(!checkSaveConflict('y',id,DB.yarns))return;
     var sup=(document.getElementById('y-supplier-txt')||{value:''}).value.trim();
     if(!sup)return alert('请填写供应商名称');
     var spec=(document.getElementById('y-spec')||{value:''}).value.trim();
@@ -16618,6 +16650,7 @@ function pgGreyFab(){
 function openGreyFabM(id,readonly){
   if(!Array.isArray(DB.greyfabs))DB.greyfabs=[];
   var r=(id&&DB.greyfabs.find(function(x){return x.id===id;}))||{};
+  noteEditOpen('gf',r);
   var modal=buildModal((readonly?'查看':(id?'编辑':'新增'))+'胚布采购合同','mxl',function(body){
     // 关联订单
     var topGrid=document.createElement('div');
@@ -16796,6 +16829,7 @@ function openGreyFabM(id,readonly){
 
   },function(){
     // Save
+    if(!checkSaveConflict('gf',id,DB.greyfabs))return;
     var oid=(document.getElementById('gf-ordid')||{value:''}).value;
     if(!oid)return alert('请选择关联销售订单');
     var ord=DB.orders.find(function(o){return o.id===oid;})||{};

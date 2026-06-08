@@ -7162,10 +7162,11 @@ function openOD(id,readonly){
     if(tks.length){
       var rows=tks.map(function(t){
         var tr=document.createElement('tr');
-        tr.innerHTML='<td>'+esc(t.proc)+'</td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+(t.sentQ||'—')+'</td><td>'+(t.retQ||'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';
+        var u=t.unit==='米'?'米':'kg';
+        tr.innerHTML='<td>'+esc(t.proc)+'</td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+(t.sentQ?t.sentQ+u:'—')+'</td><td>'+(t.retQ?t.retQ+u:'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';
         return tr;
       });
-      body.appendChild(buildTable(['工序','工厂','颜色','缸号','发出kg','收回kg','加工费','状态'],rows));
+      body.appendChild(buildTable(['工序','工厂','颜色','缸号','发出量','收回量','加工费','状态'],rows));
     } else {
       var aw=document.createElement('div');aw.className='al aly';aw.textContent='该订单暂无加工记录';body.appendChild(aw);
     }
@@ -7510,6 +7511,9 @@ function openTM(id){
     var _tRelabel=function(){var u=unSel.value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
+    var _tHint=document.createElement('div');_tHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:4px 2px 0';
+    _tHint.textContent='💡 加工费按你实付金额录入即可（无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗。';
+    body.appendChild(_tHint);
     body.appendChild(secHdr('日期'));
     var g4=document.createElement('div');g4.className='fg2';
     g4.appendChild(fv('预计完成',mkInput('t-ed',t.estD,'','date')));
@@ -16547,6 +16551,9 @@ function openGreyFabM(id,readonly){
     totalDiv.innerHTML='<span>合计：<span id="gf-total-kg" style="color:var(--p)">0 KG</span></span>'
       +'<span>金额：<span id="gf-total-amt" style="color:var(--p)">¥0.00</span></span>';
     clrSec.appendChild(totalDiv);
+    var gfHint=document.createElement('div');gfHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:2px 2px 0';
+    gfHint.textContent='💡 单价/金额按你实付的钱录入即可（现金价就填现金价，无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗。';
+    clrSec.appendChild(gfHint);
     body.appendChild(clrSec);
 
     // Render saved colors

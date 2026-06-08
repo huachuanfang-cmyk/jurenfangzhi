@@ -12081,6 +12081,7 @@ function pgRecon(){
       var opTd=document.createElement('td');opTd.style.whiteSpace='nowrap';
       opTd.appendChild(mkBtn('查看','btn bsm bs',function(id){return function(){openReconModal(id);};}(r.id)));
       opTd.appendChild(mkBtn('打印','btn bsm boo',function(id){return function(){printAPRec(id);};}(r.id)));
+      opTd.appendChild(mkBtn('导出','btn bsm bs',function(id){return function(){exportAPRecExcel(id);};}(r.id)));
       if(r.status==='confirmed'){
         opTd.appendChild(mkBtn('标记付款','btn bsm bgn',function(id){return function(){
           var rec=DB.recons.find(function(x){return x.id===id;});
@@ -12419,6 +12420,52 @@ function printAPRec(id){
     +'<div>加工厂确认签章：<div style="margin-top:24px;border-top:1px solid #999;padding-top:4px;color:#666">日期：____________</div></div>'
     +'</div></body></html>';
   printHTML(html);
+}
+
+// 加工费对账单导出 Excel
+function exportAPRecExcel(id){
+  if(typeof ExcelJS==='undefined'){return alert('Excel导出库未加载，请联网后刷新页面（Ctrl+Shift+R）再试。');}
+  var r=(DB.recons||[]).find(function(x){return x.id===id;});
+  if(!r)return alert('找不到对账单');
+  var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'加工厂'};
+  var items=[],sysSum=0;
+  (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==r.factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(r.month&&dd&&dd!==r.month)return;sysSum+=parseFloat(t.fee)||0;items.push(t);});
+  var billAmt=parseFloat(r.billAmt)||0,deductTotal=parseFloat(r.deductTotal)||0;
+  var actualAmt=parseFloat(r.actualAmt)||Math.max(0,billAmt-deductTotal);
+  var wb=new ExcelJS.Workbook();
+  var ws=wb.addWorksheet('加工费对账单',{pageSetup:{paperSize:9,fitToPage:true,fitToWidth:1,margins:{left:0.5,right:0.5,top:0.6,bottom:0.6,header:0.3,footer:0.3}}});
+  ws.columns=[{width:16},{width:10},{width:12},{width:12},{width:11},{width:11},{width:12},{width:14}];
+  var FN='Microsoft YaHei',BLUE='FF1E3A8A';
+  function sst(cell,o){o=o||{};cell.font={name:FN,size:o.size||10,bold:!!o.bold,color:o.color?{argb:o.color}:undefined};if(o.fill)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:o.fill}};cell.alignment={horizontal:o.align||'left',vertical:'middle'};if(o.border)cell.border={top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}};if(o.fmt)cell.numFmt=o.fmt;}
+  var t1=ws.addRow([CO.nm]);ws.mergeCells('A1:H1');sst(t1.getCell(1),{bold:true,size:13,color:BLUE});
+  var t2=ws.addRow(['加 工 费 对 账 单']);ws.mergeCells('A2:H2');sst(t2.getCell(1),{bold:true,size:16,align:'center'});t2.height=24;
+  var t3=ws.addRow(['对账单号：'+(r.no||''),'','','','','加工厂：'+(r.factNm||''),'','']);ws.mergeCells('A3:C3');ws.mergeCells('F3:H3');sst(t3.getCell(1),{});sst(t3.getCell(6),{bold:true});
+  var t4=ws.addRow(['对账月份：'+(r.month||''),'','','','','账单日期：'+(r.billDate||''),'','']);ws.mergeCells('A4:C4');ws.mergeCells('F4:H4');sst(t4.getCell(1),{});sst(t4.getCell(6),{});
+  ws.addRow([]);
+  var hr=ws.addRow(['订单号','工序','颜色','缸号','发出','收回','单价','加工费']);
+  hr.eachCell(function(c){sst(c,{bold:true,align:'center',fill:'FFEFF6FF',border:true,color:BLUE});});
+  items.forEach(function(t){
+    var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
+    var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
+    var row=ws.addRow([t.ordNo||'',t.proc||'',t.clrNm||'',t.vatNo||'',(t.sentQ?t.sentQ+u:''),(t.retQ?t.retQ+u:''),(t.unitPr?'¥'+t.unitPr+'/'+u:''),parseFloat(t.fee)||0]);
+    row.eachCell(function(c,col){sst(c,{align:col>=5?'center':'left',border:true});});
+    sst(row.getCell(8),{align:'right',border:true,fmt:'¥#,##0.00'});
+  });
+  (r.deducts||[]).forEach(function(d){if(!d.reason&&!parseFloat(d.amt))return;var row=ws.addRow(['【扣减】'+(d.reason||'')+(d.ref?' ('+d.ref+')':''),'','','','','','',-(parseFloat(d.amt)||0)]);ws.mergeCells('A'+row.number+':G'+row.number);sst(row.getCell(1),{color:'FFDC2626',border:true});sst(row.getCell(8),{align:'right',color:'FFDC2626',border:true,fmt:'¥#,##0.00'});});
+  function totalRow(label,val,o){o=o||{};var row=ws.addRow([label,'','','','','','',val]);ws.mergeCells('A'+row.number+':G'+row.number);sst(row.getCell(1),{bold:true,size:o.size||10,align:'right',border:true,fill:o.fill,color:o.color});sst(row.getCell(8),{bold:true,size:o.size||10,align:'right',border:true,fmt:'¥#,##0.00',fill:o.fill,color:o.color});}
+  totalRow('合计加工费（我方记录）',sysSum);
+  totalRow('厂家账单金额',billAmt);
+  if(deductTotal)totalRow('扣减合计',-deductTotal,{color:'FFDC2626'});
+  totalRow('实付金额',actualAmt,{size:12,fill:'FF0F6E56',color:'FFFFFFFF'});
+  ws.addRow([]);
+  var sg=ws.addRow(['制单人：'+(currentPreparer()||''),'','','','加工厂确认签章：','','','']);ws.mergeCells('A'+sg.number+':D'+sg.number);ws.mergeCells('E'+sg.number+':H'+sg.number);sst(sg.getCell(1),{});sst(sg.getCell(5),{});
+  var fname=(r.voided?'[作废]':'')+'加工费对账单_'+(r.factNm||'')+'_'+(r.month||r.no||'')+'.xlsx';
+  wb.xlsx.writeBuffer().then(function(buf){
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=fname;a.click();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    showToast('Excel已导出：'+fname,'success');
+  }).catch(function(e){alert('导出失败：'+e.message);});
 }
 
 function pgRecv(){

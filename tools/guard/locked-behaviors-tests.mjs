@@ -615,6 +615,9 @@ test('毛利成本必须计入胚布采购（直接购胚模式材料成本）',
   if (!/DB\.greyfabs\|\|\[\]\)\.forEach/.test(html)) throw new Error('毛利未遍历胚布采购记录');
   // 成本合计必须含 gfCost
   if (!/\+\(s\.gfCost\|\|0\)/.test(html)) throw new Error('毛利成本合计未计入 gfCost（胚布采购）');
+  // 胚布采购成本须按「实收」结算（实收优先，未填用下单数）
+  if (!/gf-akg/.test(html)) throw new Error('胚布采购缺少实收(gf-akg)字段');
+  if (!/parseFloat\(c\.akg\)>0\?parseFloat\(c\.akg\):/.test(html)) throw new Error('胚布成本未按实收优先结算');
 });
 
 test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {

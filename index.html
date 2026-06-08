@@ -7461,8 +7461,8 @@ function openTM(id){
     var _tunit=t.unit||((so&&so.prUnit==='元/M')?'米':'kg');
     var unSel=mkSelect('t-un',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],_tunit);
     g3.appendChild(fv('计量单位',unSel));
-    // 计费基准：织布厂按「收回胚布」计费（含氨纶会加重，厂家按胚布收费）；染整/印花按「发出」
-    var _fbDef=t.feeBase||((t.proc||PROCS[0])==='织布厂'?'ret':'sent');
+    // 计费基准：织布厂(收回胚布,含氨纶加重)、印花厂(按印花后收回米数)默认「按收回」；染整等默认「按发出」
+    var _fbDef=t.feeBase||(['织布厂','印花厂'].indexOf(t.proc||PROCS[0])>=0?'ret':'sent');
     var fbSel=mkSelect('t-fb',[{v:'sent',l:'按发出数量'},{v:'ret',l:'按收回(胚布)'},{v:'act',l:'按实际入库'}],_fbDef);
     g3.appendChild(fv('计费基准',fbSel));
     // 统一加工费计算：基准数量 × 单价（始终自动重算，只读）
@@ -7491,7 +7491,7 @@ function openTM(id){
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
     fbSel.onchange=function(){_tFee();};
     // 工序切换时按业界惯例切换默认计费基准并重算（用本地引用 pcSel，避免 build 时 DOM 未挂载）
-    if(pcSel)pcSel.addEventListener('change',function(){fbSel.value=this.value==='织布厂'?'ret':'sent';_tFee();});
+    if(pcSel)pcSel.addEventListener('change',function(){fbSel.value=['织布厂','印花厂'].indexOf(this.value)>=0?'ret':'sent';_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
     var _tRelabel=function(){var u=unSel.value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();

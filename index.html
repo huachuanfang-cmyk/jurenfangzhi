@@ -12080,6 +12080,7 @@ function pgRecon(){
         '<td>'+stBadge+'</td>';
       var opTd=document.createElement('td');opTd.style.whiteSpace='nowrap';
       opTd.appendChild(mkBtn('查看','btn bsm bs',function(id){return function(){openReconModal(id);};}(r.id)));
+      opTd.appendChild(mkBtn('打印','btn bsm boo',function(id){return function(){printAPRec(id);};}(r.id)));
       if(r.status==='confirmed'){
         opTd.appendChild(mkBtn('标记付款','btn bsm bgn',function(id){return function(){
           var rec=DB.recons.find(function(x){return x.id===id;});
@@ -12245,7 +12246,8 @@ function openReconModal(id){
       var dv=document.getElementById('rc-detail');if(!dv)return;
       if(!o.fac||!o.items.length){dv.innerHTML='';return;}
       var rows='';o.items.forEach(function(t){
-        var u=t.unit==='米'?'米':'kg';
+        var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
+        var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
         rows+='<tr style="border-bottom:1px solid #EEF2F7">'
           +'<td style="padding:4px 8px;font-family:monospace;color:#4338CA">'+esc(t.ordNo||'')+'</td>'
           +'<td style="padding:4px 8px">'+esc(t.proc||'')+'</td>'
@@ -12253,14 +12255,15 @@ function openReconModal(id){
           +'<td style="padding:4px 8px;color:#64748B">'+esc(t.vatNo||'')+'</td>'
           +'<td style="padding:4px 8px;text-align:right">'+(t.sentQ?t.sentQ+u:'—')+'</td>'
           +'<td style="padding:4px 8px;text-align:right">'+(t.retQ?t.retQ+u:'—')+'</td>'
+          +'<td style="padding:4px 8px;text-align:right;color:#475569">'+(t.unitPr?('¥'+t.unitPr+'/'+u):'—')+'</td>'
           +'<td style="padding:4px 8px;text-align:right;font-weight:700;color:#0F6E56">'+fmtM(t.fee)+'</td></tr>';
       });
       dv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;margin:4px 0 4px">📋 加工费明细（来自加工跟踪，'+o.cnt+'笔）</div>'
         +'<div style="max-height:200px;overflow:auto;border:1px solid var(--bd);border-radius:6px">'
         +'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#F3F4F6">'
-        +['订单号','工序','颜色','缸号','发出','收回','加工费'].map(function(h,i){return '<th style="padding:5px 8px;text-align:'+(i>=4?'right':'left')+';white-space:nowrap;position:sticky;top:0;background:#F3F4F6">'+h+'</th>';}).join('')
+        +['订单号','工序','颜色','缸号','发出','收回','单价','加工费'].map(function(h,i){return '<th style="padding:5px 8px;text-align:'+(i>=4?'right':'left')+';white-space:nowrap;position:sticky;top:0;background:#F3F4F6">'+h+'</th>';}).join('')
         +'</tr></thead><tbody>'+rows+'</tbody>'
-        +'<tfoot><tr style="background:#ECFDF5;font-weight:700"><td colspan="6" style="padding:5px 8px;text-align:right">合计加工费（我方应付）</td><td style="padding:5px 8px;text-align:right;color:#0F6E56">'+fmtM(o.sum)+'</td></tr></tfoot>'
+        +'<tfoot><tr style="background:#ECFDF5;font-weight:700"><td colspan="7" style="padding:5px 8px;text-align:right">合计加工费（我方应付）</td><td style="padding:5px 8px;text-align:right;color:#0F6E56">'+fmtM(o.sum)+'</td></tr></tfoot>'
         +'</table></div>';
     }
     // 选好加工厂+月份后，自动把"我方应付"先填进厂家账单（厂家账单不同再改）
@@ -12354,6 +12357,68 @@ function openReconModal(id){
     pgRecon();showToast('对账单已保存 '+data.no,'success');
   },'保存');
   om(modal);
+}
+
+// 加工费对账单打印（明细来自加工跟踪）
+function printAPRec(id){
+  var r=(DB.recons||[]).find(function(x){return x.id===id;});
+  if(!r)return alert('找不到对账单');
+  var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'加工厂'};
+  // 重新汇总该厂该月加工跟踪明细
+  var items=[],sysSum=0;
+  (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==r.factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(r.month&&dd&&dd!==r.month)return;sysSum+=parseFloat(t.fee)||0;items.push(t);});
+  function td(c,s){return '<td style="border:1px solid #ccc;padding:4px 6px;font-size:10px;'+(s||'')+'">'+c+'</td>';}
+  var rows='';
+  items.forEach(function(t,i){
+    var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
+    var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
+    rows+='<tr style="'+(i%2?'background:#f8f9ff':'')+'">'
+      +td(esc(t.ordNo||''),'font-family:monospace;color:#1e3a8a')
+      +td(esc(t.proc||''))
+      +td(esc(t.clrNm||''))
+      +td(esc(t.vatNo||''),'color:#666')
+      +td(t.sentQ?t.sentQ+u:'—','text-align:center')
+      +td(t.retQ?t.retQ+u:'—','text-align:center')
+      +td(t.unitPr?'¥'+t.unitPr+'/'+u:'—','text-align:center;color:#1e3a8a')
+      +td(t.fee?'¥'+Number(t.fee).toFixed(2):'—','text-align:right;font-weight:600')
+      +'</tr>';
+  });
+  var billAmt=parseFloat(r.billAmt)||0;
+  var deductTotal=parseFloat(r.deductTotal)||0;
+  var actualAmt=parseFloat(r.actualAmt)||Math.max(0,billAmt-deductTotal);
+  var diff=billAmt-sysSum;
+  var deductRows='';
+  (r.deducts||[]).forEach(function(d){if(!d.reason&&!parseFloat(d.amt))return;deductRows+='<tr style="background:#FEF2F2">'+'<td colspan="7" style="border:1px solid #ccc;padding:4px 6px;font-size:10px;text-align:right;color:#DC2626">【扣减】'+esc(d.reason||'')+(d.ref?' ('+esc(d.ref)+')':'')+'</td>'+'<td style="border:1px solid #ccc;padding:4px 6px;text-align:right;color:#DC2626;font-weight:700;font-size:10px">-¥'+(parseFloat(d.amt)||0).toFixed(2)+'</td></tr>';});
+  var _voided=!!r.voided;
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>加工费对账单 '+esc(r.no||'')+'</title>'
+    +'<style>body{font-family:"Noto Sans SC","Microsoft YaHei",sans-serif;margin:0;padding:7mm 10mm;font-size:11px;color:#111}@media print{@page{size:A4;margin:6mm 8mm}}'
+    +(_voided?'.vb{background:#FEE2E2;border:2px solid #DC2626;color:#991B1B;padding:6px;font-weight:700;text-align:center;margin-bottom:6px;border-radius:4px}':'')+'</style></head><body>'
+    +(_voided?'<div class="vb">⚠ 本对账单已作废，仅供存档参考</div>':'')
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:5px">'
+    +'<div style="display:flex;gap:10px;align-items:flex-start"><img src="'+LOGO+'" style="width:40px;height:40px;object-fit:contain">'
+    +'<div><div style="font-size:15px;font-weight:800">'+esc(CO.nm)+'</div><div style="font-size:9px;color:#555;line-height:1.8">'+esc(CO.addr)+'　|　电话：'+esc(CO.tel)+'</div></div></div>'
+    +'<div style="text-align:right"><div style="font-size:8px;color:#999">对账单号</div><div style="font-size:12px;font-weight:800;font-family:monospace;color:#1e3a8a">'+esc(r.no||'')+'</div></div></div>'
+    +'<div style="text-align:center;font-size:15px;font-weight:800;letter-spacing:6px;padding:4px 0;border-top:2px solid #222;border-bottom:2px solid #222;margin:4px 0">加 工 费 对 账 单</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;margin-bottom:5px">'
+    +'<div><div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef"><span style="color:#666;min-width:64px">加工厂：</span><span style="font-weight:700">'+esc(r.factNm||'')+'</span></div>'
+    +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef"><span style="color:#666;min-width:64px">厂家类型：</span><span>'+esc(tNames[r.factType]||'加工厂')+'</span></div></div>'
+    +'<div><div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef"><span style="color:#666;min-width:64px">对账月份：</span><span style="font-weight:600">'+esc(r.month||'')+'</span></div>'
+    +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef"><span style="color:#666;min-width:64px">账单日期：</span><span>'+esc(r.billDate||'')+'</span></div></div></div>'
+    +'<table style="width:100%;border-collapse:collapse;margin-bottom:3px"><thead><tr style="background:#EFF6FF">'
+    +['订单号','工序','颜色','缸号','发出','收回','单价','加工费'].map(function(h,i){return '<th style="border:1px solid #ccc;padding:5px 6px;color:#1e3a8a;text-align:'+(i>=4?'center':'left')+';font-size:10px">'+h+'</th>';}).join('')
+    +'</tr></thead><tbody>'+(rows||'<tr><td colspan="8" style="border:1px solid #ccc;padding:10px;text-align:center;color:#999">该加工厂在此月份暂无加工跟踪明细</td></tr>')+deductRows+'</tbody>'
+    +'<tfoot>'
+    +'<tr style="background:#EAECF4;font-weight:700"><td colspan="7" style="border:1px solid #ccc;padding:5px 6px;text-align:right">合计加工费（我方记录）</td><td style="border:1px solid #ccc;padding:5px 6px;text-align:right">¥'+sysSum.toFixed(2)+'</td></tr>'
+    +'<tr><td colspan="7" style="border:1px solid #ccc;padding:5px 6px;text-align:right;color:#475569">厂家账单金额</td><td style="border:1px solid #ccc;padding:5px 6px;text-align:right;font-weight:700">¥'+billAmt.toFixed(2)+'</td></tr>'
+    +(Math.abs(diff)>=0.01?'<tr><td colspan="7" style="border:1px solid #ccc;padding:4px 6px;text-align:right;color:#DC2626;font-size:10px">与我方差额</td><td style="border:1px solid #ccc;padding:4px 6px;text-align:right;color:#DC2626;font-weight:700;font-size:10px">'+(diff>=0?'+':'')+diff.toFixed(2)+'</td></tr>':'')
+    +(deductTotal?'<tr style="background:#FEF2F2"><td colspan="7" style="border:1px solid #ccc;padding:4px 6px;text-align:right;color:#DC2626">扣减合计</td><td style="border:1px solid #ccc;padding:4px 6px;text-align:right;color:#DC2626;font-weight:800">-¥'+deductTotal.toFixed(2)+'</td></tr>':'')
+    +'<tr style="background:#0F6E56"><td colspan="7" style="border:1px solid #0F6E56;padding:6px;text-align:right;color:#fff;font-weight:700;font-size:12px">实付金额</td><td style="border:1px solid #0F6E56;padding:6px;text-align:right;color:#A7F3D0;font-weight:800;font-size:14px">¥'+actualAmt.toFixed(2)+'</td></tr>'
+    +'</tfoot></table>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:30px;font-size:11px">'
+    +'<div>制单人：'+esc(currentPreparer()||'')+'　联系电话：'+esc(CO.tel)+'<div style="margin-top:24px;border-top:1px solid #999;padding-top:4px;color:#666">本公司（'+esc(CO.nm)+'）</div></div>'
+    +'<div>加工厂确认签章：<div style="margin-top:24px;border-top:1px solid #999;padding-top:4px;color:#666">日期：____________</div></div>'
+    +'</div></body></html>';
+  printHTML(html);
 }
 
 function pgRecv(){

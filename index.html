@@ -3390,6 +3390,27 @@ function checkSaveConflict(tag,id,list){
   }catch(e){return true;}                            // 任何异常一律放行，绝不卡正常保存
 }
 
+// ═══ 共享助手（消除重复逻辑：单位推断 + 应付明细汇总）═══
+// 加工跟踪记录的计量单位：优先记录自身，否则按源头订单计价单位(米/kg)
+function trkUnit(t){
+  if(!t)return 'kg';
+  if(t.unit)return t.unit==='米'?'米':'kg';
+  var o=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
+  return (o&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg';
+}
+// 某加工厂(+月份)的加工跟踪应付明细汇总（按完成月份匹配，月份留空则不限）
+function apReconItems(factNm,month){
+  var items=[],sum=0;
+  (DB.trks||[]).forEach(function(t){
+    if(!t||t.voided)return;
+    if(t.factNm!==factNm)return;
+    var dd=(t.actD||t.estD||'').slice(0,7);
+    if(month&&dd&&dd!==month)return;
+    sum+=parseFloat(t.fee)||0;items.push(t);
+  });
+  return {items:items,sum:sum,cnt:items.length};
+}
+
 // ═══ MODAL BUILDER ═══
 function buildModal(title,cls,bodyFn,saveFn,saveLabel){
   var wrap=document.createElement('div');wrap.className='mo '+(cls||'');
@@ -7188,7 +7209,7 @@ function openOD(id,readonly){
     if(tks.length){
       var rows=tks.map(function(t){
         var tr=document.createElement('tr');
-        var u=(t.unit||(String(o.prUnit||'').toUpperCase().indexOf('M')>=0?'米':'kg'))==='米'?'米':'kg';
+        var u=trkUnit(t);
         tr.innerHTML='<td>'+esc(t.proc)+'</td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td>'+(t.sentQ?t.sentQ+u:'—')+'</td><td>'+(t.retQ?t.retQ+u:'—')+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+tBx(t.status)+'</td>';
         return tr;
       });
@@ -7441,9 +7462,7 @@ function renderTrks(list){
     var lc=diff===null?'':(diff>0?'cg':(diff<0?'cr':''));
     var dStr=diff===null?'—':((diff>=0?'+':'')+diff.toFixed(1)+'%');
     var yt=diff===null?'':' title="收回'+t.retQ+' vs 发出'+t.sentQ+'：'+(diff>=0?'加重'+diff.toFixed(1):'损耗'+(-diff).toFixed(1))+'%"';
-    var _ordM=(function(){var o=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});return o&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0;})();
-    var u=t.unit||(_ordM?'米':'kg');
-    var us='<span style="font-size:9px;color:#9CA3AF;margin-left:1px">'+(u==='米'?'米':'kg')+'</span>';
+    var us='<span style="font-size:9px;color:#9CA3AF;margin-left:1px">'+trkUnit(t)+'</span>';
     tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+dStr+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
     // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
@@ -12267,17 +12286,15 @@ function openReconModal(id){
     function _sysOwe(){
       var fac=(document.getElementById('rc-fact')||{value:''}).value;
       var mon=(document.getElementById('rc-month')||{value:''}).value;
-      var sum=0,items=[];
-      (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==fac)return;var dd=(t.actD||t.estD||'').slice(0,7);if(mon&&dd&&dd!==mon)return;sum+=parseFloat(t.fee)||0;items.push(t);});
-      return {fac:fac,mon:mon,sum:sum,cnt:items.length,items:items};
+      var o=apReconItems(fac,mon);
+      return {fac:fac,mon:mon,sum:o.sum,cnt:o.cnt,items:o.items};
     }
     // 明细表：列出构成"我方应付"的每条加工跟踪（订单/颜色/缸号/发出收回/加工费）——从加工跟踪自动拉，无需另录
     function _renderApDetail(o){
       var dv=document.getElementById('rc-detail');if(!dv)return;
       if(!o.fac||!o.items.length){dv.innerHTML='';return;}
       var rows='';o.items.forEach(function(t){
-        var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
-        var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
+        var u=trkUnit(t);
         rows+='<tr style="border-bottom:1px solid #EEF2F7">'
           +'<td style="padding:4px 8px;font-family:monospace;color:#4338CA">'+esc(t.ordNo||'')+'</td>'
           +'<td style="padding:4px 8px">'+esc(t.proc||'')+'</td>'
@@ -12336,7 +12353,7 @@ function openReconModal(id){
     var billAmt=(document.getElementById('rc-billAmt')||{value:''}).value;
     if(!(parseFloat(billAmt)>0)){
       // 厂家账单未填：若系统里有该厂该月的加工跟踪应付，直接用它（视为与厂家一致）
-      var _o=0;(DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(month&&dd&&dd!==month)return;_o+=parseFloat(t.fee)||0;});
+      var _o=apReconItems(factNm,month).sum;
       if(_o>0){billAmt=_o.toFixed(2);}
       else return alert('请填写厂家账单金额（该加工厂在此月份的加工跟踪里也没有可汇总的加工费）');
     }
@@ -12396,13 +12413,11 @@ function printAPRec(id){
   if(!r)return alert('找不到对账单');
   var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'加工厂'};
   // 重新汇总该厂该月加工跟踪明细
-  var items=[],sysSum=0;
-  (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==r.factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(r.month&&dd&&dd!==r.month)return;sysSum+=parseFloat(t.fee)||0;items.push(t);});
+  var _ap=apReconItems(r.factNm,r.month),items=_ap.items,sysSum=_ap.sum;
   function td(c,s){return '<td style="border:1px solid #ccc;padding:4px 6px;font-size:10px;'+(s||'')+'">'+c+'</td>';}
   var rows='';
   items.forEach(function(t,i){
-    var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
-    var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
+    var u=trkUnit(t);
     rows+='<tr style="'+(i%2?'background:#f8f9ff':'')+'">'
       +td(esc(t.ordNo||''),'font-family:monospace;color:#1e3a8a')
       +td(esc(t.proc||''))
@@ -12458,8 +12473,7 @@ function exportAPRecExcel(id){
   var r=(DB.recons||[]).find(function(x){return x.id===id;});
   if(!r)return alert('找不到对账单');
   var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'加工厂'};
-  var items=[],sysSum=0;
-  (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==r.factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(r.month&&dd&&dd!==r.month)return;sysSum+=parseFloat(t.fee)||0;items.push(t);});
+  var _ap=apReconItems(r.factNm,r.month),items=_ap.items,sysSum=_ap.sum;
   var billAmt=parseFloat(r.billAmt)||0,deductTotal=parseFloat(r.deductTotal)||0;
   var actualAmt=parseFloat(r.actualAmt)||Math.max(0,billAmt-deductTotal);
   var wb=new ExcelJS.Workbook();
@@ -12475,8 +12489,7 @@ function exportAPRecExcel(id){
   var hr=ws.addRow(['订单号','工序','颜色','缸号','发出','收回','单价','加工费']);
   hr.eachCell(function(c){sst(c,{bold:true,align:'center',fill:'FFEFF6FF',border:true,color:BLUE});});
   items.forEach(function(t){
-    var ordRec=(DB.orders||[]).find(function(x){return x.id===t.ordId||x.no===t.ordNo;});
-    var u=t.unit||((ordRec&&String(ordRec.prUnit||'').toUpperCase().indexOf('M')>=0)?'米':'kg');u=(u==='米'?'米':'kg');
+    var u=trkUnit(t);
     var row=ws.addRow([t.ordNo||'',t.proc||'',t.clrNm||'',t.vatNo||'',(t.sentQ?t.sentQ+u:''),(t.retQ?t.retQ+u:''),(t.unitPr?'¥'+t.unitPr+'/'+u:''),parseFloat(t.fee)||0]);
     row.eachCell(function(c,col){sst(c,{align:col>=5?'center':'left',border:true});});
     sst(row.getCell(8),{align:'right',border:true,fmt:'¥#,##0.00'});

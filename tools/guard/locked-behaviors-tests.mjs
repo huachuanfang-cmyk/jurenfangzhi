@@ -623,10 +623,13 @@ test('毛利成本必须计入胚布采购（直接购胚模式材料成本）',
 test('应付对账「两边对账」：自动汇总加工跟踪我方应付并与厂家账单比差额', () => {
   if (!/rc-sys-banner/.test(html)) throw new Error('应付对账缺少两边对账比对条');
   // 我方应付 = 该加工厂(+月份)的加工跟踪 fee 汇总
-  if (!/if\(t\.factNm!==fac\)return;[\s\S]{0,80}?sysOwe\+=parseFloat\(t\.fee\)/.test(html)) {
-    throw new Error('未按加工厂汇总加工跟踪应付(sysOwe)');
+  if (!/function _sysOwe\(\)/.test(html)) throw new Error('缺少 _sysOwe 汇总助手');
+  if (!/if\(t\.factNm!==fac\)return;[\s\S]{0,90}?sum\+=parseFloat\(t\.fee\)/.test(html)) {
+    throw new Error('未按加工厂汇总加工跟踪应付');
   }
   if (!/我方加工跟踪应付/.test(html)) throw new Error('缺少我方应付展示');
+  // 厂家账单留空时自动用我方应付（不再硬性逼填）
+  if (!/function _prefillBill\(\)/.test(html)) throw new Error('缺少厂家账单自动带入');
 });
 
 test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {

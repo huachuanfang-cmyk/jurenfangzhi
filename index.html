@@ -12160,12 +12160,12 @@ function openReconModal(id){
       typeHid.value=t;
       var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'其他'};
       typeDisp.textContent=tNames[t]||'其他';
-      calcActual();   // 切换加工厂后重算"我方应付"
+      _prefillBill();   // 切换加工厂后：自动带入我方应付并重算
     };
 
     g1.appendChild(mFld('加工厂 *',factSel));
     g1.appendChild(mFld('厂家类型（自动）',typeDisp));
-    var monInp=mInp('month',rec?rec.month:'','','month');monInp.onchange=function(){calcActual();};
+    var monInp=mInp('month',rec?rec.month:'','','month');monInp.onchange=function(){_prefillBill();};
     g1.appendChild(mFld('对账月份 *',monInp));
     g1.appendChild(mFld('账单日期',mInp('billDate',rec?rec.billDate:'','','date')));
     s1.appendChild(g1);
@@ -12230,6 +12230,20 @@ function openReconModal(id){
     // 隐藏字段
     body.appendChild(typeHid);
 
+    // 汇总该加工厂(+月份)的加工跟踪应付（按完成月份匹配；月份留空则不限）
+    function _sysOwe(){
+      var fac=(document.getElementById('rc-fact')||{value:''}).value;
+      var mon=(document.getElementById('rc-month')||{value:''}).value;
+      var sum=0,cnt=0;
+      (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==fac)return;var dd=(t.actD||t.estD||'').slice(0,7);if(mon&&dd&&dd!==mon)return;sum+=parseFloat(t.fee)||0;cnt++;});
+      return {fac:fac,mon:mon,sum:sum,cnt:cnt};
+    }
+    // 选好加工厂+月份后，自动把"我方应付"先填进厂家账单（厂家账单不同再改）
+    function _prefillBill(){
+      var o=_sysOwe();var bi=document.getElementById('rc-billAmt');
+      if(bi&&!(parseFloat(bi.value)>0)&&o.sum>0){bi.value=o.sum.toFixed(2);}
+      calcActual();
+    }
     function calcActual(){
       var bill=parseFloat((document.getElementById('rc-billAmt')||{value:0}).value)||0;
       var deductTotal=0;
@@ -12239,17 +12253,12 @@ function openReconModal(id){
       var b=document.getElementById('rc-calc-bill');if(b)b.textContent=fmt(bill);
       var d=document.getElementById('rc-calc-deduct');if(d)d.textContent=fmt(deductTotal);
       var a=document.getElementById('rc-calc-actual');if(a)a.textContent=fmt(actual);
-      // 两边对账：汇总该加工厂在该月份的加工跟踪应付（按完成月份匹配；月份留空则不限）
-      var fac=(document.getElementById('rc-fact')||{value:''}).value;
-      var mon=(document.getElementById('rc-month')||{value:''}).value;
-      var sysOwe=0,cnt=0;
-      (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==fac)return;var dd=(t.actD||t.estD||'').slice(0,7);if(mon&&dd&&dd!==mon)return;sysOwe+=parseFloat(t.fee)||0;cnt++;});
-      var sb=document.getElementById('rc-sys-banner');
+      var o=_sysOwe();var sb=document.getElementById('rc-sys-banner');
       if(sb){
-        if(!fac){sb.textContent='选择加工厂 + 对账月份后，自动汇总该厂「加工跟踪」应付，与厂家账单比对。';}
+        if(!o.fac){sb.textContent='选择加工厂 + 对账月份后，自动汇总该厂「加工跟踪」应付，与厂家账单比对。';}
         else{
-          var diff=bill-sysOwe;var ok=Math.abs(diff)<0.01;
-          sb.innerHTML='📊 我方加工跟踪应付（'+esc(fac)+(mon?' · '+mon:' · 全部月份')+'，'+cnt+'笔）：<b style="color:#0369A1">'+fmt(sysOwe)+'</b>'
+          var diff=bill-o.sum;var ok=Math.abs(diff)<0.01;
+          sb.innerHTML='📊 我方加工跟踪应付（'+esc(o.fac)+(o.mon?' · '+o.mon:' · 全部月份')+'，'+o.cnt+'笔）：<b style="color:#0369A1">'+fmt(o.sum)+'</b>'
             +'　｜　厂家账单：<b style="color:#1e3a8a">'+fmt(bill)+'</b>'
             +'　｜　差额：<b style="color:'+(ok?'#16A34A':'#DC2626')+'">'+(diff>=0?'+':'')+diff.toFixed(2)+'</b>'
             +(bill<=0?'':(ok?' <span style="color:#16A34A;font-weight:700">✓ 一致</span>':' <span style="color:#DC2626;font-weight:700">⚠ 有差额，请核对</span>'));
@@ -12266,7 +12275,12 @@ function openReconModal(id){
     var month=(document.getElementById('rc-month')||{value:''}).value;
     if(!month)return alert('请填写对账月份');
     var billAmt=(document.getElementById('rc-billAmt')||{value:''}).value;
-    if(!billAmt)return alert('请填写厂家账单金额');
+    if(!(parseFloat(billAmt)>0)){
+      // 厂家账单未填：若系统里有该厂该月的加工跟踪应付，直接用它（视为与厂家一致）
+      var _o=0;(DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==factNm)return;var dd=(t.actD||t.estD||'').slice(0,7);if(month&&dd&&dd!==month)return;_o+=parseFloat(t.fee)||0;});
+      if(_o>0){billAmt=_o.toFixed(2);}
+      else return alert('请填写厂家账单金额（该加工厂在此月份的加工跟踪里也没有可汇总的加工费）');
+    }
 
     var deducts=[];
     var rows=document.querySelectorAll('.rc-deduct-row');

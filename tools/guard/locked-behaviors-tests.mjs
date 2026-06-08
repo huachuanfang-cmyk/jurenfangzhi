@@ -606,7 +606,14 @@ test('销售订单有其它成本字段且保存', () => {
 
 test('毛利成本必须计入订单其它成本(miscCost)', () => {
   if (!/miscCost\+=mcRaw/.test(html)) throw new Error('毛利未汇总订单其它成本');
-  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('毛利成本合计有误（增值税不应计入成本）');
+  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\)\+\(s\.stockCost\|\|0\);/.test(html)) throw new Error('毛利成本合计有误（增值税不应计入成本）');
+});
+
+test('现货倒卖：订单进货成本计入毛利（纯贸易单）', () => {
+  if (!/o-stock/.test(html)) throw new Error('订单缺少现货进货成本字段 o-stock');
+  if (!/stockCost:\(document\.getElementById\('o-stock'\)/.test(html)) throw new Error('订单未保存 stockCost');
+  if (!/getOS\(o\)\.stockCost\+=scRaw/.test(html)) throw new Error('毛利未汇总现货进货成本');
+  if (!/现货进货：/.test(html)) throw new Error('成本构成缺少现货进货明细');
 });
 
 test('毛利成本必须计入胚布采购（直接购胚模式材料成本）', () => {
@@ -671,7 +678,7 @@ test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合
   if (!/var TB=\(parseFloat\(window\._taxBurden/.test(html)) throw new Error('缺少综合税耗率 TB（默认6%）');
   if (!/CO\.taxBurden!=null\?CO\.taxBurden:6/.test(html)) throw new Error('综合税耗率默认应为6且可配置');
   // 成本=实付原值；税金=开票订单×综合税耗率，现金不开票=0
-  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('成本合计应为实付原值');
+  if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\)\+\(s\.stockCost\|\|0\);/.test(html)) throw new Error('成本合计应为实付原值');
   if (!/s\.taxed=!\(s\.ord&&s\.ord\.taxType==='excl'\)/.test(html)) throw new Error('开票订单判定缺失');
   if (!/s\.taxAmt=s\.taxed\?\(s\.rev\*TB\):0/.test(html)) throw new Error('税金应=开票订单×综合税耗率');
   if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');

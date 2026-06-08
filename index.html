@@ -12160,11 +12160,13 @@ function openReconModal(id){
       typeHid.value=t;
       var tNames={dyeing:'染厂',finishing:'后整理厂',weaving:'织厂',other:'其他'};
       typeDisp.textContent=tNames[t]||'其他';
+      calcActual();   // 切换加工厂后重算"我方应付"
     };
 
     g1.appendChild(mFld('加工厂 *',factSel));
     g1.appendChild(mFld('厂家类型（自动）',typeDisp));
-    g1.appendChild(mFld('对账月份 *',mInp('month',rec?rec.month:'','','month')));
+    var monInp=mInp('month',rec?rec.month:'','','month');monInp.onchange=function(){calcActual();};
+    g1.appendChild(mFld('对账月份 *',monInp));
     g1.appendChild(mFld('账单日期',mInp('billDate',rec?rec.billDate:'','','date')));
     s1.appendChild(g1);
 
@@ -12203,6 +12205,11 @@ function openReconModal(id){
     // ③ 核对结果
     var s3=document.createElement('div');
     s3.innerHTML='<div style="font-size:10px;font-weight:700;color:#0F6E56;letter-spacing:1px;margin-bottom:8px">③ 核对结果（自动计算）</div>';
+    // 两边对账：系统自动汇总该厂加工跟踪应付，与厂家账单比对
+    var sysBanner=document.createElement('div');sysBanner.id='rc-sys-banner';
+    sysBanner.style.cssText='font-size:11.5px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:6px;padding:8px 14px;margin-bottom:10px;color:#475569';
+    sysBanner.textContent='选择加工厂 + 对账月份后，自动汇总该厂「加工跟踪」应付，与厂家账单比对。';
+    s3.appendChild(sysBanner);
     var calcRow=document.createElement('div');calcRow.style.cssText='display:flex;align-items:center;gap:16px;background:#1e3a8a;color:#fff;padding:12px 16px;border-radius:6px;flex-wrap:wrap';
     function calcItem(lbl,id,color){var w=document.createElement('div');w.style.cssText='text-align:right;flex:1;min-width:100px';var l=document.createElement('div');l.style.cssText='font-size:9px;color:#93C5FD;margin-bottom:2px';l.textContent=lbl;var v=document.createElement('div');v.id='rc-calc-'+id;v.style.cssText='font-size:16px;font-weight:800;'+(color||'color:#fff');v.textContent='¥0.00';w.appendChild(l);w.appendChild(v);return w;}
     var opDiv1=document.createElement('div');opDiv1.style.cssText='font-size:20px;color:#93C5FD;padding-top:12px';opDiv1.textContent='−';
@@ -12232,6 +12239,22 @@ function openReconModal(id){
       var b=document.getElementById('rc-calc-bill');if(b)b.textContent=fmt(bill);
       var d=document.getElementById('rc-calc-deduct');if(d)d.textContent=fmt(deductTotal);
       var a=document.getElementById('rc-calc-actual');if(a)a.textContent=fmt(actual);
+      // 两边对账：汇总该加工厂在该月份的加工跟踪应付（按完成月份匹配；月份留空则不限）
+      var fac=(document.getElementById('rc-fact')||{value:''}).value;
+      var mon=(document.getElementById('rc-month')||{value:''}).value;
+      var sysOwe=0,cnt=0;
+      (DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(t.factNm!==fac)return;var dd=(t.actD||t.estD||'').slice(0,7);if(mon&&dd&&dd!==mon)return;sysOwe+=parseFloat(t.fee)||0;cnt++;});
+      var sb=document.getElementById('rc-sys-banner');
+      if(sb){
+        if(!fac){sb.textContent='选择加工厂 + 对账月份后，自动汇总该厂「加工跟踪」应付，与厂家账单比对。';}
+        else{
+          var diff=bill-sysOwe;var ok=Math.abs(diff)<0.01;
+          sb.innerHTML='📊 我方加工跟踪应付（'+esc(fac)+(mon?' · '+mon:' · 全部月份')+'，'+cnt+'笔）：<b style="color:#0369A1">'+fmt(sysOwe)+'</b>'
+            +'　｜　厂家账单：<b style="color:#1e3a8a">'+fmt(bill)+'</b>'
+            +'　｜　差额：<b style="color:'+(ok?'#16A34A':'#DC2626')+'">'+(diff>=0?'+':'')+diff.toFixed(2)+'</b>'
+            +(bill<=0?'':(ok?' <span style="color:#16A34A;font-weight:700">✓ 一致</span>':' <span style="color:#DC2626;font-weight:700">⚠ 有差额，请核对</span>'));
+        }
+      }
     }
     // 初始计算
     setTimeout(calcActual,50);

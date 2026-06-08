@@ -620,6 +620,15 @@ test('毛利成本必须计入胚布采购（直接购胚模式材料成本）',
   if (!/parseFloat\(c\.akg\)>0\?parseFloat\(c\.akg\):/.test(html)) throw new Error('胚布成本未按实收优先结算');
 });
 
+test('应付对账「两边对账」：自动汇总加工跟踪我方应付并与厂家账单比差额', () => {
+  if (!/rc-sys-banner/.test(html)) throw new Error('应付对账缺少两边对账比对条');
+  // 我方应付 = 该加工厂(+月份)的加工跟踪 fee 汇总
+  if (!/if\(t\.factNm!==fac\)return;[\s\S]{0,80}?sysOwe\+=parseFloat\(t\.fee\)/.test(html)) {
+    throw new Error('未按加工厂汇总加工跟踪应付(sysOwe)');
+  }
+  if (!/我方加工跟踪应付/.test(html)) throw new Error('缺少我方应付展示');
+});
+
 test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {
   // build 时 modal 未挂载，必须在 om(modal) 之后再调一次 calcGFTotal
   if (!/om\(modal\);[\s\S]{0,260}?calcGFTotal\(\);\s*\}/.test(html)) {

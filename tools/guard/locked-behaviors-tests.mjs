@@ -627,18 +627,21 @@ test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {
   if (!/paid:\(document\.getElementById\('gf-paid'\)/.test(html)) throw new Error('胚布采购保存未写入 paid');
 });
 
-test('毛利支持含税/不含税口径切换 + 税负估算', () => {
-  // 归一与税额助手
-  if (!/function exA\(amt,tt,def\)/.test(html)) throw new Error('缺少不含税归一助手 exA');
-  if (!/function vatA\(amt,tt,def\)/.test(html)) throw new Error('缺少税额助手 vatA');
+test('毛利支持含税/不含税口径切换 + 税负估算（价税分离·每笔税率）', () => {
+  // 归一与税额助手（按每笔税率/税点）
+  if (!/function exA\(amt,r,defR\)/.test(html)) throw new Error('缺少不含税归一助手 exA');
+  if (!/function vatA\(amt,r,defR\)/.test(html)) throw new Error('缺少税额助手 vatA');
+  if (!/function _rate\(r,defR\)/.test(html)) throw new Error('缺少税率解析助手 _rate（0=现金无票）');
   // 口径状态 + 切换按钮
   if (!/window\._profitTaxMode/.test(html)) throw new Error('缺少口径状态 _profitTaxMode');
   if (!/taxBtn\.onclick/.test(html)) throw new Error('缺少口径切换按钮');
   // 税负卡：销项/进项
   if (!/VAT\.out/.test(html) || !/VAT\.in/.test(html)) throw new Error('缺少销项/进项税估算');
-  // 成本来源带含税标记
-  if (!/mkSelect\('t-tax'/.test(html)) throw new Error('加工跟踪缺少含税/不含税标记');
-  if (!/mkSelect\('gf-tax'/.test(html)) throw new Error('胚布采购缺少含税/不含税标记');
+  // 各成本来源带「税率/税点」字段并保存 taxRate
+  if (!/mkInput\('t-taxr'/.test(html)) throw new Error('加工跟踪缺少税率/税点字段 t-taxr');
+  if (!/mkInput\('gf-taxr'/.test(html)) throw new Error('胚布采购缺少税率/税点字段 gf-taxr');
+  if (!/mkInput\('y-taxr'/.test(html)) throw new Error('纱线采购缺少税率/税点字段 y-taxr');
+  if (!/taxRate:\(document\.getElementById\('gf-taxr'\)/.test(html)) throw new Error('胚布采购未保存 taxRate');
 });
 
 test('加工跟踪：应付加工费只读且始终自动重算', () => {

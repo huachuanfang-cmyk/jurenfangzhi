@@ -627,21 +627,24 @@ test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {
   if (!/paid:\(document\.getElementById\('gf-paid'\)/.test(html)) throw new Error('胚布采购保存未写入 paid');
 });
 
-test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合税耗', () => {
-  // 综合税耗率（默认6%，可配置，不写死）
-  if (!/var TB=\(parseFloat\(window\._taxBurden/.test(html)) throw new Error('缺少综合税耗率 TB（默认6%）');
-  if (!/CO\.taxBurden!=null\?CO\.taxBurden:6/.test(html)) throw new Error('综合税耗率默认应为6且可配置');
-  // 成本=实付原值；税金=开票订单×综合税耗率，现金不开票=0
+test('毛利用「落袋·精细税耗」：暂估采购×暂估率 + 开票销售×尾差率', () => {
+  // 两个可配置率
+  if (!/var PROVR=\(parseFloat\(window\._provRate/.test(html)) throw new Error('缺少暂估税耗率 PROVR');
+  if (!/CO\.provRate!=null\?CO\.provRate:5/.test(html)) throw new Error('暂估税耗率默认应为5且可配置');
+  if (!/var TAILR=\(parseFloat\(window\._taxBurden/.test(html)) throw new Error('缺少开票尾差率 TAILR');
+  // 成本=实付原值；税金=暂估补票+开票尾差
   if (!/s\.cost=s\.feeCost\+s\.matCost\+\(s\.gfCost\|\|0\)\+\(s\.miscCost\|\|0\);/.test(html)) throw new Error('成本合计应为实付原值');
-  if (!/s\.taxed=!\(s\.ord&&s\.ord\.taxType==='excl'\)/.test(html)) throw new Error('开票订单判定缺失');
-  if (!/s\.taxAmt=s\.taxed\?\(s\.rev\*TB\):0/.test(html)) throw new Error('税金应=开票订单×综合税耗率');
+  if (!/s\.provTax=\(s\.provBase\|\|0\)\*PROVR/.test(html)) throw new Error('暂估补票税耗算法缺失');
+  if (!/s\.tailTax=s\.taxed\?\(s\.rev\*TAILR\):0/.test(html)) throw new Error('开票尾差算法缺失');
+  if (!/s\.taxAmt=s\.provTax\+s\.tailTax/.test(html)) throw new Error('税金应=暂估补票+开票尾差');
   if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');
-  if (/\+s\.taxB/.test(html)) throw new Error('不应有旧的税负当成本逻辑(taxB)');
-  // 综合税耗率可调
-  if (!/window\._taxBurden=parseFloat/.test(html)) throw new Error('缺少可调综合税耗率');
-  // 已去掉每单含税/不含税繁琐标记（综合税耗模型不需要）
-  if (/mkSelect\('t-inc'/.test(html)) throw new Error('综合税耗模型下不应保留 t-inc');
-  if (/mkSelect\('gf-inc'/.test(html)) throw new Error('综合税耗模型下不应保留 gf-inc');
+  // 暂估判定：发票状态=prov 的采购累计进 provBase
+  if (!/rec\.invStatus==='prov'/.test(html)) throw new Error('暂估判定缺失');
+  if (!/os\.provBase\+=/.test(html)) throw new Error('暂估金额未累计');
+  // 各采购/加工单带「发票状态」(随货附票/延后交付暂估)
+  if (!/mkSelect\('t-inv'/.test(html)) throw new Error('加工跟踪缺少发票状态 t-inv');
+  if (!/mkSelect\('gf-inv'/.test(html)) throw new Error('胚布采购缺少发票状态 gf-inv');
+  if (!/mkSelect\('y-inv'/.test(html)) throw new Error('纱线采购缺少发票状态 y-inv');
 });
 
 test('加工跟踪：应付加工费只读且始终自动重算', () => {

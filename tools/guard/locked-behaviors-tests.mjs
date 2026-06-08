@@ -617,6 +617,24 @@ test('毛利成本必须计入胚布采购（直接购胚模式材料成本）',
   if (!/\+\(s\.gfCost\|\|0\)/.test(html)) throw new Error('毛利成本合计未计入 gfCost（胚布采购）');
 });
 
+test('胚布采购：金额合计须挂载后再算 + 有付款状态', () => {
+  // build 时 modal 未挂载，必须在 om(modal) 之后再调一次 calcGFTotal
+  if (!/om\(modal\);[\s\S]{0,260}?calcGFTotal\(\);\s*\}/.test(html)) {
+    throw new Error('胚布采购未在 om(modal) 后重算 calcGFTotal，金额/合计会显示 0');
+  }
+  // 付款状态可编辑并保存
+  if (!/mkSelect\('gf-paid'/.test(html)) throw new Error('胚布采购缺少付款状态选择器 gf-paid');
+  if (!/paid:\(document\.getElementById\('gf-paid'\)/.test(html)) throw new Error('胚布采购保存未写入 paid');
+});
+
+test('加工跟踪：应付加工费只读且始终自动重算', () => {
+  if (!/feeInp\.readOnly=true/.test(html)) throw new Error('应付加工费未设为只读');
+  // 保存时加工费直接由 基准数量×单价 算出，不取手填值
+  if (!/var fee=\(baseQ&&up\)\?\(baseQ\*up\)\.toFixed\(2\):''/.test(html)) {
+    throw new Error('saveT 的加工费应始终按 基准数量×单价 计算（只读派生）');
+  }
+});
+
 // ═══════════════════════════════════════════════
 // 锁 37：染整加工单工厂下拉包含印花厂/后整理厂
 // ═══════════════════════════════════════════════

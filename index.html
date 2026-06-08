@@ -7451,28 +7451,33 @@ function openTM(id){
     var _fbDef=t.feeBase||((t.proc||PROCS[0])==='织布厂'?'ret':'sent');
     var fbSel=mkSelect('t-fb',[{v:'sent',l:'按发出数量'},{v:'ret',l:'按收回(胚布)'},{v:'act',l:'按实际入库'}],_fbDef);
     g3.appendChild(fv('计费基准',fbSel));
-    // 统一加工费计算：基准数量 × 单价（force=true 时覆盖已有值）
-    var _tFee=function(force){
+    // 统一加工费计算：基准数量 × 单价（始终自动重算，只读）
+    var _tFee=function(){
       var fb=(document.getElementById('t-fb')||{value:'sent'}).value;
       var qid=fb==='ret'?'t-rq':(fb==='act'?'t-aw':'t-sq');
       var q=parseFloat((document.getElementById(qid)||{value:0}).value)||0;
       var u=parseFloat((document.getElementById('t-up')||{value:0}).value)||0;
       var f=document.getElementById('t-fe');if(!f)return;
-      if(q&&u&&(force||!f.value))f.value=(q*u).toFixed(2);
+      f.value=(q&&u)?(q*u).toFixed(2):'';
     };
-    var sqi=mkInput('t-sq',t.sentQ,'','number');sqi.oninput=function(){_tFee(false);};
+    var sqi=mkInput('t-sq',t.sentQ,'','number');sqi.oninput=function(){_tFee();};
     var fvSq=fv('发出数量(kg)',sqi);g3.appendChild(fvSq);
-    var rqi=mkInput('t-rq',t.retQ,'','number');rqi.oninput=function(){_tFee(false);};
+    var rqi=mkInput('t-rq',t.retQ,'','number');rqi.oninput=function(){_tFee();};
     var fvRq=fv('收回数量(kg)',rqi);g3.appendChild(fvRq);
-    var awi=mkInput('t-aw',t.actW,'复称重量','number');awi.oninput=function(){_tFee(false);};
+    var awi=mkInput('t-aw',t.actW,'复称重量','number');awi.oninput=function(){_tFee();};
     var fvAw=fv('实际入库(kg)',awi);g3.appendChild(fvAw);
-    var upi=mkInput('t-up',t.unitPr,'','number');upi.oninput=function(){_tFee(false);};
+    var upi=mkInput('t-up',t.unitPr,'','number');upi.oninput=function(){_tFee();};
     var fvUp=fv('加工单价(元/kg)',upi);g3.appendChild(fvUp);
-    g3.appendChild(fv('应付加工费(元)',mkInput('t-fe',t.fee,'自动计算','number')));
+    // 初始加工费：按计费基准数量×单价直接算（不依赖未挂载的 DOM）
+    var _initBaseQ=_fbDef==='ret'?(parseFloat(t.retQ)||0):(_fbDef==='act'?(parseFloat(t.actW)||0):(parseFloat(t.sentQ)||0));
+    var _initFee=(_initBaseQ&&parseFloat(t.unitPr))?(_initBaseQ*parseFloat(t.unitPr)).toFixed(2):(t.fee||'');
+    var feeInp=mkInput('t-fe',_initFee,'自动计算','number');
+    feeInp.readOnly=true;feeInp.style.background='#F3F4F6';feeInp.style.cursor='not-allowed';feeInp.title='= 计费基准数量 × 加工单价（自动计算，不可手改）';
+    g3.appendChild(fv('应付加工费(元·自动)',feeInp));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
-    fbSel.onchange=function(){_tFee(true);};
+    fbSel.onchange=function(){_tFee();};
     // 工序切换时按业界惯例切换默认计费基准并重算（用本地引用 pcSel，避免 build 时 DOM 未挂载）
-    if(pcSel)pcSel.addEventListener('change',function(){fbSel.value=this.value==='织布厂'?'ret':'sent';_tFee(true);});
+    if(pcSel)pcSel.addEventListener('change',function(){fbSel.value=this.value==='织布厂'?'ret':'sent';_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
     var _tRelabel=function(){var u=unSel.value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();
@@ -7500,7 +7505,7 @@ function saveT(id){
     var rqv=parseFloat((document.getElementById('t-rq')||{value:0}).value)||0;
     var awv=parseFloat((document.getElementById('t-aw')||{value:0}).value)||0;
     var baseQ=fb==='ret'?rqv:(fb==='act'?awv:sq);
-    var fee=document.getElementById('t-fe').value||(baseQ&&up?(baseQ*up).toFixed(2):'');
+    var fee=(baseQ&&up)?(baseQ*up).toFixed(2):'';
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
     var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
@@ -16560,6 +16565,13 @@ function openGreyFabM(id,readonly){
       renderGFColors(null,false);
     }
 
+    // 付款状态
+    var payDiv=document.createElement('div');payDiv.style.cssText='margin-bottom:14px';
+    payDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
+    var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
+    paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
+    payDiv.appendChild(paySel);body.appendChild(payDiv);
+
     // Remarks
     var rmDiv=document.createElement('div');rmDiv.style.cssText='margin-bottom:14px';
     rmDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">备注</div>'
@@ -16600,6 +16612,7 @@ function openGreyFabM(id,readonly){
       ordDate:(document.getElementById('gf-odate')||{value:''}).value,
       delDate:(document.getElementById('gf-delDate')||{value:''}).value,
       colors:colors,totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
+      paid:(document.getElementById('gf-paid')||{value:'0'}).value==='1',
       rm:(document.getElementById('gf-rm')||{value:''}).value
     };
     var l=DB.greyfabs||[];var i2=id?l.findIndex(function(x){return x.id===id;}):-1;
@@ -16608,6 +16621,9 @@ function openGreyFabM(id,readonly){
     showToast('胚布采购合同保存成功 ✓','success');
   });
   om(modal);
+  // 挂载到 DOM 后再算一次：build 阶段 modal 尚未挂载，querySelectorAll 取不到行，
+  // 会导致金额列与合计显示 0/—（与 openTM 同类问题）
+  calcGFTotal();
 }
 
 function calcGFTotal(){

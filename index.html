@@ -4959,7 +4959,7 @@ function pgGrossProfit(){
   var OS={}; // ordId -> {ord,rev,feeCost,matCost}
   function getOS(ord){var k=ord.id||('no_'+ord.no);if(!OS[k])OS[k]={ord:ord,rev:0,feeCost:0,matCost:0,gfCost:0,miscCost:0,procCost:{}};return OS[k];}
   // ── 落袋口径（综合税耗）：落袋利润 = 实收收入 − 实付成本 − 该单税金 ──
-  // 该单税金：开票订单=实收×综合税耗率(默认6%，含买票过账+补缴尾数)；现金不开票订单=0
+  // 该单税金：开票订单=实收×综合税耗率(默认6%，采购税耗+增值税预估)；现金不开票订单=0
   var TB=(parseFloat(window._taxBurden!=null?window._taxBurden:(CO.taxBurden!=null?CO.taxBurden:6))||0)/100; // 综合税耗率(默认6%)
   var orphan={rev:0}; // 无关联订单的出货（快速出货等）
   // 收入：实收(含税原值)
@@ -5016,11 +5016,11 @@ function pgGrossProfit(){
   hdr.innerHTML='<span style="font-size:24px">💰</span>'
     +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#166534">利润分析 · 落袋口径</div>'
     +'<div style="font-size:11px;color:#475569;margin-top:3px">落袋利润 = 实收收入 − 实付成本 − 综合税耗。成本按你实付的钱（含现金）；'
-    +'<b style="color:#C2410C">开票订单：税金=实收×综合税耗率（含买票过账+补缴尾数）；现金不开票订单税金=0。右侧可调税耗率。</b></div></div>';
+    +'<b style="color:#C2410C">开票订单：税金=实收×综合税耗率（采购税耗+增值税预估）；现金不开票订单税金=0。右侧可调税耗率。</b></div></div>';
   var taxWrap=document.createElement('div');taxWrap.style.cssText='display:flex;align-items:center;gap:6px;white-space:nowrap';
   taxWrap.innerHTML='<span style="font-size:11px;color:#475569;font-weight:600">综合税耗率</span>';
   var taxRateInp=document.createElement('input');taxRateInp.type='number';taxRateInp.step='0.5';taxRateInp.value=(TB*100).toString();
-  taxRateInp.title='开票订单的综合税耗率%（买票过账+月底补缴，一般5~6）。改后即时重算';
+  taxRateInp.title='开票订单的综合税耗率%（采购税耗+月底应交增值税预估，一般5~6）。改后即时重算';
   taxRateInp.style.cssText='width:58px;padding:7px 8px;border:1.5px solid #CBD5E1;border-radius:6px;font-size:12px;font-weight:700;color:#0369A1;text-align:right';
   taxRateInp.onchange=function(){window._taxBurden=parseFloat(this.value)||0;pgGrossProfit();};
   var taxPct=document.createElement('span');taxPct.textContent='%';taxPct.style.cssText='font-size:11px;color:#475569;font-weight:600';
@@ -5045,7 +5045,7 @@ function pgGrossProfit(){
   // 税金说明条
   var taxBar=document.createElement('div');
   taxBar.style.cssText='font-size:11px;color:#9CA3AF;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:6px;padding:7px 14px;margin-bottom:14px';
-  taxBar.innerHTML='🧾 综合税耗（默认'+(TB*100).toFixed(1)+'%）= 买票过账成本 + 月底补缴增值税尾数，已含过账费(不另记)。仅开票订单计提；订单是否开票看「销售订单·单价」旁的含税/不含税。此为内部管理预估，非税务申报口径。';
+  taxBar.innerHTML='🧾 综合税耗（默认'+(TB*100).toFixed(1)+'%）= 采购环节税耗预估 + 月底应交增值税预估。仅开票订单计提；订单是否开票看「销售订单·单价」旁的含税/不含税。此为内部管理预估，非税务申报口径。';
   pg.appendChild(taxBar);
 
   // 标签栏

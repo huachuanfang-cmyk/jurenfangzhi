@@ -4957,12 +4957,10 @@ function pgGrossProfit(){
 
   // ── 统一数据：按订单聚合收入/成本，再派生 客户/月份 ──
   var OS={}; // ordId -> {ord,rev,feeCost,matCost}
-  function getOS(ord){var k=ord.id||('no_'+ord.no);if(!OS[k])OS[k]={ord:ord,rev:0,feeCost:0,matCost:0,gfCost:0,miscCost:0,provBase:0,procCost:{}};return OS[k];}
-  // ── 落袋口径（精细税耗）：落袋利润 = 实收 − 实付成本 − 税金 ──
-  // 税金 = 暂估补票(无票采购×暂估税耗率) + 开票尾差(开票销售×尾差率)
-  var PROVR=(parseFloat(window._provRate!=null?window._provRate:(CO.provRate!=null?CO.provRate:5))||0)/100;   // 暂估税耗率(无票采购补票成本,默认5%)
-  var TAILR=(parseFloat(window._taxBurden!=null?window._taxBurden:(CO.taxBurden!=null?CO.taxBurden:1.5))||0)/100; // 开票尾差率(默认1.5%)
-  var isProv=function(rec){return rec&&rec.invStatus==='prov';}; // 延后交付(暂估·无票)
+  function getOS(ord){var k=ord.id||('no_'+ord.no);if(!OS[k])OS[k]={ord:ord,rev:0,feeCost:0,matCost:0,gfCost:0,miscCost:0,procCost:{}};return OS[k];}
+  // ── 落袋口径（综合税耗）：落袋利润 = 实收 − 实付成本 − 税金 ──
+  // 税金：开票订单=实收×综合税耗率(默认6%，含买票+增值税尾数)；现金不开票订单=0
+  var TB=(parseFloat(window._taxBurden!=null?window._taxBurden:(CO.taxBurden!=null?CO.taxBurden:6))||0)/100; // 综合税耗率(默认6%)
   var orphan={rev:0}; // 无关联订单的出货（快速出货等）
   // 收入：实收(含税原值)
   (DB.fgouts||[]).forEach(function(o){
@@ -4986,34 +4984,30 @@ function pgGrossProfit(){
   });
   (DB.trks||[]).forEach(function(t){
     if(!t||t.voided)return;var feeRaw=parseFloat(t.fee)||0;if(!feeRaw)return;
-    var ord=ordOf(t);if(!ord)return;var os=getOS(ord);os.feeCost+=feeRaw;if(isProv(t))os.provBase+=feeRaw;
+    var ord=ordOf(t);if(!ord)return;var os=getOS(ord);os.feeCost+=feeRaw;
     var pk=t.proc||'其他加工';os.procCost[pk]=(os.procCost[pk]||0)+feeRaw;
   });
   (DB.yarns||[]).forEach(function(y){
     if(!y||y.voided)return;var amtRaw=parseFloat(y.amt)||0;if(!amtRaw)return;
-    var ord=ordOf(y);if(!ord)return;var os=getOS(ord);os.matCost+=amtRaw;if(isProv(y))os.provBase+=amtRaw;
+    var ord=ordOf(y);if(!ord)return;getOS(ord).matCost+=amtRaw;
   });
   // 胚布采购（直接购胚模式的材料成本，与纱线分列）
   (DB.greyfabs||[]).forEach(function(g){
     if(!g||g.voided)return;var amtRaw=parseFloat(g.totalAmt)||0;if(!amtRaw)return;
-    var ord=ordOf(g);if(!ord)return;var os=getOS(ord);os.gfCost+=amtRaw;if(isProv(g))os.provBase+=amtRaw;
+    var ord=ordOf(g);if(!ord)return;getOS(ord).gfCost+=amtRaw;
   });
   // 其它成本（运费/杂费，订单级手填）
   orders.forEach(function(o){var mcRaw=parseFloat(o.miscCost)||0;if(mcRaw>0)getOS(o).miscCost+=mcRaw;});
   var osList=Object.keys(OS).map(function(k){
     var s=OS[k];s.cost=s.feeCost+s.matCost+(s.gfCost||0)+(s.miscCost||0);
-    s.taxed=!(s.ord&&s.ord.taxType==='excl');           // 开票订单才有开票尾差；现金不开票=0
-    s.provTax=(s.provBase||0)*PROVR;                     // 暂估补票税耗
-    s.tailTax=s.taxed?(s.rev*TAILR):0;                   // 开票尾差
-    s.taxAmt=s.provTax+s.tailTax;
+    s.taxed=!(s.ord&&s.ord.taxType==='excl');           // 开票订单才有综合税耗；现金不开票=0
+    s.taxAmt=s.taxed?(s.rev*TB):0;
     s.profit=s.rev-s.cost-s.taxAmt;s.margin=s.rev>0?(s.profit/s.rev*100):0;return s;
   }).filter(function(s){return s.rev>0||s.cost>0;});
 
   var totRev=osList.reduce(function(a,s){return a+s.rev;},0)+orphan.rev;
   var totCost=osList.reduce(function(a,s){return a+s.cost;},0);
   var totTax=osList.reduce(function(a,s){return a+(s.taxAmt||0);},0);
-  var totProv=osList.reduce(function(a,s){return a+(s.provTax||0);},0);
-  var totTail=osList.reduce(function(a,s){return a+(s.tailTax||0);},0);
   var totProfit=totRev-totCost-totTax;
 
   // 页头
@@ -5021,28 +5015,24 @@ function pgGrossProfit(){
   hdr.style.cssText='background:linear-gradient(90deg,#F0FDF4,#EFF6FF);border:1px solid #BBF7D0;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px';
   hdr.innerHTML='<span style="font-size:24px">💰</span>'
     +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#166534">利润分析 · 落袋口径</div>'
-    +'<div style="font-size:11px;color:#475569;margin-top:3px">落袋利润 = 实收 − 实付成本 − 税金。成本按实付的钱；'
-    +'<b style="color:#C2410C">税金 = 暂估采购(无票)×暂估税耗率 + 开票销售×尾差率。采购按「发票状态」区分，右侧两率可调。</b></div></div>';
-  function _rateBox(lbl,val,step,cb){
-    var w=document.createElement('div');w.style.cssText='display:flex;align-items:center;gap:5px;white-space:nowrap';
-    w.innerHTML='<span style="font-size:11px;color:#475569;font-weight:600">'+lbl+'</span>';
-    var i=document.createElement('input');i.type='number';i.step=step;i.value=val.toString();
-    i.style.cssText='width:52px;padding:7px 6px;border:1.5px solid #CBD5E1;border-radius:6px;font-size:12px;font-weight:700;color:#0369A1;text-align:right';
-    i.onchange=function(){cb(parseFloat(this.value)||0);pgGrossProfit();};
-    var p=document.createElement('span');p.textContent='%';p.style.cssText='font-size:11px;color:#475569;font-weight:600';
-    w.appendChild(i);w.appendChild(p);return w;
-  }
-  var rateWrap=document.createElement('div');rateWrap.style.cssText='display:flex;gap:12px;align-items:center';
-  rateWrap.appendChild(_rateBox('暂估税耗率',(PROVR*100),'0.5',function(v){window._provRate=v;}));
-  rateWrap.appendChild(_rateBox('开票尾差率',(TAILR*100),'0.5',function(v){window._taxBurden=v;}));
-  hdr.appendChild(rateWrap);
+    +'<div style="font-size:11px;color:#475569;margin-top:3px">落袋利润 = 实收 − 实付成本 − 综合税耗。成本按实付的钱；'
+    +'<b style="color:#C2410C">开票订单：税金=实收×综合税耗率（已含买票成本+增值税尾数）；现金不开票订单=0。右侧可调。</b></div></div>';
+  var taxWrap=document.createElement('div');taxWrap.style.cssText='display:flex;align-items:center;gap:6px;white-space:nowrap';
+  taxWrap.innerHTML='<span style="font-size:11px;color:#475569;font-weight:600">综合税耗率</span>';
+  var taxRateInp=document.createElement('input');taxRateInp.type='number';taxRateInp.step='0.5';taxRateInp.value=(TB*100).toString();
+  taxRateInp.title='开票订单综合税耗率%（买票成本+增值税尾数，一般5~6）。改后即时重算';
+  taxRateInp.style.cssText='width:58px;padding:7px 8px;border:1.5px solid #CBD5E1;border-radius:6px;font-size:12px;font-weight:700;color:#0369A1;text-align:right';
+  taxRateInp.onchange=function(){window._taxBurden=parseFloat(this.value)||0;pgGrossProfit();};
+  var taxPct=document.createElement('span');taxPct.textContent='%';taxPct.style.cssText='font-size:11px;color:#475569;font-weight:600';
+  taxWrap.appendChild(taxRateInp);taxWrap.appendChild(taxPct);
+  hdr.appendChild(taxWrap);
   pg.appendChild(hdr);
 
   // 汇总卡（落袋口径）
   var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(5,1fr)';
   [['实收收入',money(totRev),'客户实付(含税)','sb'],
    ['实付成本',money(totCost),'加工+纱线+胚布+杂费','so'],
-   ['预估税金',money(totTax),'暂估补票'+money(totProv)+'+尾差'+money(totTail),'sr2'],
+   ['预估税金',money(totTax),'开票订单×'+(TB*100).toFixed(1)+'%','sr2'],
    ['落袋利润',money(totProfit),(totRev>0?(totProfit/totRev*100).toFixed(1)+'% 利润率':''),'sg'],
    ['订单数',osList.length+'张','有业务','sb']
   ].forEach(function(s){
@@ -5055,7 +5045,7 @@ function pgGrossProfit(){
   // 税金说明条
   var taxBar=document.createElement('div');
   taxBar.style.cssText='font-size:11px;color:#9CA3AF;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:6px;padding:7px 14px;margin-bottom:14px';
-  taxBar.innerHTML='🧾 税金 = 暂估补票（采购单标「延后交付(暂估)」的×'+(PROVR*100).toFixed(1)+'%买票成本）+ 开票尾差（开票销售×'+(TAILR*100).toFixed(1)+'%补缴尾数）。采购单选「随货附票」则不计暂估。此为内部管理预估，非税务申报口径。';
+  taxBar.innerHTML='🧾 综合税耗（默认'+(TB*100).toFixed(1)+'%）= 买票成本 + 月底应交增值税尾数，一把算。仅开票订单计提（看销售订单·单价旁的含税/不含税）；现金不开票订单=0。此为内部管理预估，非税务申报口径。';
   pg.appendChild(taxBar);
 
   // 标签栏
@@ -5121,9 +5111,8 @@ function pgGrossProfit(){
       if(s.matCost>0)parts.push('纱线采购：'+money(s.matCost));
       if(s.gfCost>0)parts.push('胚布采购：'+money(s.gfCost));
       if(s.miscCost>0)parts.push('其它成本：'+money(s.miscCost));
-      if(s.provTax>0)parts.push('暂估补票('+(PROVR*100).toFixed(1)+'%)：'+money(s.provTax));
-      if(s.tailTax>0)parts.push('开票尾差('+(TAILR*100).toFixed(1)+'%)：'+money(s.tailTax));
-      if(!s.taxAmt&&s.rev>0)parts.push('税金：0(现金不开票·采购随货附票)');
+      if(s.taxAmt>0)parts.push('综合税耗('+(TB*100).toFixed(1)+'%)：'+money(s.taxAmt));
+      else if(s.rev>0)parts.push('税金：0(现金不开票)');
       var detail=parts.length?parts.join('　·　'):'该订单暂无成本明细（加工费/纱线均未录入）';
       rows+='<tr class="prof-d prof-d-'+i+'" style="display:none;background:#FCFCFE;border-bottom:1px solid #F1F5F9">'
         +'<td colspan="9" style="padding:6px 10px 6px 28px;font-size:10.5px;color:#475569">💴 落袋构成：'+detail+'</td></tr>';
@@ -7516,7 +7505,6 @@ function openTM(id){
     feeInp.readOnly=true;feeInp.style.background='#F3F4F6';feeInp.style.cursor='not-allowed';feeInp.title='= 计费基准数量 × 加工单价（自动计算，不可手改）';
     g3.appendChild(fv('应付加工费(元·自动)',feeInp));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
-    g3.appendChild(fv('发票状态',mkSelect('t-inv',[{v:'with',l:'随货附票(已含税)'},{v:'prov',l:'延后交付(暂估)'}],t.invStatus||'with')));
     fbSel.onchange=function(){_tFee();};
     if(pcSel)pcSel.addEventListener('change',function(){_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
@@ -7524,7 +7512,7 @@ function openTM(id){
     unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
     var _tHint=document.createElement('div');_tHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:4px 2px 0';
-    _tHint.textContent='💡 加工费按实付金额录入。发票状态：织厂/染厂正规开票选「随货附票」；现金无票需补票的选「延后交付(暂估)」，毛利里自动按暂估税耗率补税。';
+    _tHint.textContent='💡 加工费按实付金额录入即可（无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗（开票订单×综合税耗率）。';
     body.appendChild(_tHint);
     body.appendChild(secHdr('日期'));
     var g4=document.createElement('div');g4.className='fg2';
@@ -7553,7 +7541,7 @@ function saveT(id){
     var fee=(baseQ&&up)?(baseQ*up).toFixed(2):'';
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
-    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,invStatus:(document.getElementById('t-inv')||{value:'with'}).value,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
+    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
     DB.trks=l;cm();pgTrk();
@@ -12684,7 +12672,6 @@ function openYarnM(id){
     amtInp.style.cssText='font-weight:700;font-size:13px;color:#c0392b';
     g.appendChild(fv('金额（元）',amtInp));
     g.appendChild(fv('付款状态',mkSelect('y-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
-    g.appendChild(fv('发票状态',mkSelect('y-inv',[{v:'with',l:'随货附票(已含税)'},{v:'prov',l:'延后交付(暂估)'}],r.invStatus||'with')));
     body.appendChild(g);
 
     // ══ 到货确认 ══
@@ -12895,7 +12882,6 @@ function saveYarn(id){
       arrDate:(document.getElementById('y-arrDate')||{value:''}).value,
       actKg:(document.getElementById('y-actKg')||{value:''}).value,
       paid:(document.getElementById('y-paid')||{value:'0'}).value==='1',
-      invStatus:(document.getElementById('y-inv')||{value:'with'}).value,
       rm:(document.getElementById('y-rm')||{value:''}).value,
       delFacId:(document.getElementById('y-delFac')||{value:''}).value
     };
@@ -16566,7 +16552,7 @@ function openGreyFabM(id,readonly){
       +'<span>金额：<span id="gf-total-amt" style="color:var(--p)">¥0.00</span></span>';
     clrSec.appendChild(totalDiv);
     var gfHint=document.createElement('div');gfHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:2px 2px 0';
-    gfHint.textContent='💡 单价/金额按实付的钱录入（现金价就填现金价）。下方「发票状态」：现金无票购胚选「延后交付(暂估)」，毛利里自动按暂估税耗率补税；正规开票选「随货附票」。';
+    gfHint.textContent='💡 单价/金额按实付的钱录入即可（现金价就填现金价，无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗。';
     clrSec.appendChild(gfHint);
     body.appendChild(clrSec);
 
@@ -16615,19 +16601,12 @@ function openGreyFabM(id,readonly){
       renderGFColors(null,false);
     }
 
-    // 付款状态 + 发票状态
-    var payDiv=document.createElement('div');payDiv.style.cssText='margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap';
-    var payL=document.createElement('div');
-    payL.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
+    // 付款状态
+    var payDiv=document.createElement('div');payDiv.style.cssText='margin-bottom:14px';
+    payDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
     var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
     paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
-    payL.appendChild(paySel);
-    var invL=document.createElement('div');
-    invL.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">发票状态（现金购胚选暂估）</div>';
-    var invSel=mkSelect('gf-inv',[{v:'with',l:'随货附票(已含税)'},{v:'prov',l:'延后交付(暂估)'}],r.invStatus||'with');
-    invSel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:170px';
-    invL.appendChild(invSel);
-    payDiv.appendChild(payL);payDiv.appendChild(invL);body.appendChild(payDiv);
+    payDiv.appendChild(paySel);body.appendChild(payDiv);
 
     // Remarks
     var rmDiv=document.createElement('div');rmDiv.style.cssText='margin-bottom:14px';
@@ -16670,7 +16649,6 @@ function openGreyFabM(id,readonly){
       delDate:(document.getElementById('gf-delDate')||{value:''}).value,
       colors:colors,totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
       paid:(document.getElementById('gf-paid')||{value:'0'}).value==='1',
-      invStatus:(document.getElementById('gf-inv')||{value:'with'}).value,
       rm:(document.getElementById('gf-rm')||{value:''}).value
     };
     var l=DB.greyfabs||[];var i2=id?l.findIndex(function(x){return x.id===id;}):-1;

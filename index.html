@@ -10464,6 +10464,9 @@ function pgARec(){
   if(cleaned)DB.fgouts=fgoutsDB;
   var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
   var recs=DB.arecs||[];
+  // ── 实时一致：进入页面时把每张对账单的保存合计刷新成当前真实值(本期货款/退货/应收)，
+  //    使 列表 = 查看 = 打印 三处永远一致(变化才写回，避免同步抖动) ──
+  (function(){var anyChg=false;recs.forEach(function(r){if(refreshARecStored(r))anyChg=true;});if(anyChg)DB.arecs=recs;})();
   var today=new Date();today.setHours(0,0,0,0);
 
   // 页头
@@ -10729,6 +10732,42 @@ function getARecReturnRows(rec, fgoutsDB, orders, rolls){
     });
   });
   return rows;
+}
+
+// ══ 对账单实时合计（单一口径，列表/查看/打印共用，避免三处数字不一致）══
+// 与 printARec 完全相同的算法：本期货款(实时按当前送货单)、退货扣损(实时)、扣减/附加(手录)、已收款
+function arecComputeTotals(rec){
+  var fgoutsDB=DB.fgouts||[],orders=DB.orders||[],rolls=(typeof fgRolls==='function')?fgRolls():[];
+  function voided(o){return !!(o&&(o.voided||o.status==='voided'||o.status==='cancelled'));}
+  var grandTotal=0,totalFee=0;
+  (rec&&rec.outIds||[]).forEach(function(oid){
+    var out=fgoutsDB.find(function(x){return x.id===oid;});if(!out||voided(out))return;
+    var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
+    if(out.isQuick){var q=(typeof calcQuickOutAmount==='function')?calcQuickOutAmount(out):{amt:0};grandTotal+=q.amt||0;totalFee+=parseFloat(out.feeAmt)||0;return;}
+    var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
+    var kg=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0):(parseFloat(out.totalKG)||parseFloat(out.kg)||0);
+    var mSum=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0):(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
+    var unitPr=parseFloat(ord.unitPr)||0;
+    var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
+    grandTotal+=(byM?Number(mSum.toFixed(1)):Number(kg.toFixed(1)))*unitPr;
+  });
+  var returnTotal=getARecReturnRows(rec,fgoutsDB,orders,rolls).reduce(function(s,d){return s+(parseFloat(d.amt)||0);},0);
+  var deductTotal=parseFloat(rec&&rec.deductTotal)||0;
+  var addTotal=parseFloat(rec&&rec.addTotal)||0;
+  var paidTotal=parseFloat(rec&&rec.paidTotal)||0;
+  var billable=grandTotal+totalFee-returnTotal-deductTotal+addTotal; // 本次应收(未减已收)
+  var balance=Math.max(0,billable-paidTotal);
+  return {goods:Number(grandTotal.toFixed(2)),fee:Number(totalFee.toFixed(2)),returnTotal:Number(returnTotal.toFixed(2)),deduct:deductTotal,add:addTotal,paid:paidTotal,billable:Number(billable.toFixed(2)),balance:Number(balance.toFixed(2))};
+}
+// 把对账单的保存值刷新成实时值(只在变化时写回，避免无谓同步)；返回是否有改动
+function refreshARecStored(rec){
+  if(!rec||rec.status==='voided')return false;
+  var t=arecComputeTotals(rec);
+  var changed=false;
+  if(Math.abs((parseFloat(rec.totalAmt)||0)-t.goods)>0.005){rec.totalAmt=String(t.goods);changed=true;}
+  if(Math.abs((parseFloat(rec.balanceAmt)||0)-t.balance)>0.005){rec.balanceAmt=String(t.balance);changed=true;}
+  if(Math.abs((parseFloat(rec.returnTotal)||0)-t.returnTotal)>0.005){rec.returnTotal=String(t.returnTotal);changed=true;}
+  return changed;
 }
 
 // ── 对账单导出Excel（简洁专业版）──

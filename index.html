@@ -10356,6 +10356,103 @@ function openMultiColorSheet(){
   om(modal);
 }
 
+// ══ 多色合并入库（一次登记多色，每色逐卷重量；自动核对现货采购实际重量）══
+function openMultiColorIn(){
+  var orders=(DB.orders||[]).filter(function(o){return o.status!=='cancelled';});
+  function parseW(s){return String(s||'').split(/[\s,，、]+/).map(function(x){return parseFloat(x);}).filter(function(n){return !isNaN(n)&&n>0;});}
+  var modal=buildModal('📥 多色合并入库','mxl',function(body){
+    body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:78vh';
+    var g1=document.createElement('div');g1.style.cssText='display:grid;grid-template-columns:2fr 1fr;gap:8px';
+    function fld(lbl,el){var w=document.createElement('div');var l=document.createElement('label');l.style.cssText='display:block;font-size:9px;font-weight:700;color:#999;letter-spacing:.5px;margin-bottom:3px';l.textContent=lbl;w.appendChild(l);w.appendChild(el);return w;}
+    var ordSel=document.createElement('select');ordSel.id='mci-ord';
+    ordSel.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:12px;background:#fff;cursor:pointer;color:#1E40AF;font-weight:500';
+    ordSel.appendChild(new Option('请选择订单',''));
+    orders.forEach(function(o){ordSel.appendChild(new Option(o.no+' — '+shortName(o.custNm||''),o.id));});
+    var dateInp=document.createElement('input');dateInp.id='mci-date';dateInp.type='date';dateInp.value=new Date().toISOString().slice(0,10);
+    dateInp.style.cssText='width:100%;padding:7px 10px;border:1.5px solid #BFDBFE;border-radius:6px;font-size:12px;box-sizing:border-box';
+    g1.appendChild(fld('关联订单 *',ordSel));g1.appendChild(fld('入库日期',dateInp));
+    body.appendChild(g1);
+    var hint=document.createElement('div');hint.style.cssText='font-size:10.5px;color:#94A3B8';
+    hint.innerHTML='💡 选订单后自动列出所有颜色（并带出现货采购的实际重量做核对）。每色填缸号 + 逐卷重量（空格或逗号分隔，如 <b>26.5 26.6 27</b>），自动算疋数/小计，送货单可展开每卷。';
+    body.appendChild(hint);
+    var wrap=document.createElement('div');wrap.id='mci-wrap';wrap.style.cssText='display:flex;flex-direction:column;gap:4px';
+    body.appendChild(wrap);
+    var totBar=document.createElement('div');totBar.id='mci-tot';totBar.style.cssText='padding:8px 12px;background:#333;color:#fff;border-radius:6px;font-weight:700;font-size:13px;display:none';
+    body.appendChild(totBar);
+    function recalc(){
+      var totRolls=0,totKG=0,nClr=0;
+      wrap.querySelectorAll('.mci-row').forEach(function(row){
+        var ws=parseW((row.querySelector('.mci-w')||{value:''}).value);
+        var sub=ws.reduce(function(a,b){return a+b;},0);
+        var subEl=row.querySelector('.mci-sub');var tgt=parseFloat(row.dataset.target||'')||0;
+        if(ws.length){nClr++;totRolls+=ws.length;totKG+=sub;
+          var mk='';if(tgt>0){var diff=sub-tgt;mk=Math.abs(diff)<=Math.max(0.5,tgt*0.02)?' <span style="color:#16A34A">✓</span>':' <span style="color:#DC2626">⚠'+(diff>0?'+':'')+diff.toFixed(1)+'</span>';}
+          subEl.innerHTML='<b>'+ws.length+'疋 '+sub.toFixed(1)+'KG</b>'+mk;
+        }else subEl.innerHTML=tgt>0?'<span style="color:#CBD5E1">采购'+tgt.toFixed(1)+'KG</span>':'—';
+      });
+      totBar.style.display=totRolls?'block':'none';
+      totBar.innerHTML='合计：<span style="color:#ffc107">'+nClr+'</span> 色 ／ <span style="color:#ffc107">'+totRolls+'</span> 疋 ／ <span style="color:#ffc107">'+totKG.toFixed(1)+'</span> KG';
+    }
+    ordSel.onchange=function(){
+      wrap.innerHTML='';
+      var o=orders.find(function(x){return x.id===ordSel.value;});if(!o){totBar.style.display='none';return;}
+      var tgtByClr={};
+      (DB.spots||[]).forEach(function(sp){if(!sp||sp.voided||sp.ordId!==o.id)return;(sp.colors||[]).forEach(function(c){if(c.actQty)tgtByClr[c.nm]=(tgtByClr[c.nm]||0)+(parseFloat(c.actQty)||0);});});
+      var hdr=document.createElement('div');hdr.style.cssText='display:grid;grid-template-columns:150px 110px 1fr 130px;gap:8px;padding:3px 6px;font-size:9px;font-weight:700;color:#7C3AED';
+      hdr.innerHTML='<div>颜色(#色号)</div><div>缸号</div><div>逐卷重量(空格分隔)</div><div style="text-align:right">小计 / 核对采购</div>';
+      wrap.appendChild(hdr);
+      var clrs=(o.colors||[]).slice();
+      // 现货采购里有、订单颜色没有的也补进来
+      Object.keys(tgtByClr).forEach(function(nm){if(!clrs.some(function(c){return c.nm===nm;}))clrs.push({nm:nm,code:''});});
+      clrs.forEach(function(c){
+        var row=document.createElement('div');row.className='mci-row';row.style.cssText='display:grid;grid-template-columns:150px 110px 1fr 130px;gap:8px;align-items:center;padding:4px 6px;border:1px solid #E9D5FF;border-radius:5px;background:#fff';
+        row.dataset.clr=c.nm;row.dataset.code=c.code||'';if(tgtByClr[c.nm])row.dataset.target=tgtByClr[c.nm];
+        var lbl=document.createElement('div');lbl.style.cssText='font-size:11.5px;font-weight:600;color:#333';lbl.textContent=c.nm+(c.code?' #'+c.code:'');
+        var vat=document.createElement('input');vat.className='mci-vat';vat.placeholder='缸号(可空)';vat.style.cssText='width:100%;padding:4px 6px;border:1px solid #DDD6FE;border-radius:4px;font-size:11px;box-sizing:border-box';
+        var w=document.createElement('input');w.className='mci-w';w.placeholder='如 26.5 26.6 27';w.style.cssText='width:100%;padding:4px 6px;border:1px solid #86EFAC;border-radius:4px;font-size:12px;box-sizing:border-box';w.addEventListener('input',recalc);
+        var sub=document.createElement('div');sub.className='mci-sub';sub.style.cssText='font-size:10.5px;text-align:right;color:#475569';sub.innerHTML=tgtByClr[c.nm]?'<span style="color:#CBD5E1">采购'+tgtByClr[c.nm].toFixed(1)+'KG</span>':'—';
+        row.appendChild(lbl);row.appendChild(vat);row.appendChild(w);row.appendChild(sub);wrap.appendChild(row);
+      });
+      recalc();
+    };
+  },function(){
+    var savedN='';
+    try{
+      var ordId=(document.getElementById('mci-ord')||{value:''}).value;
+      var o=orders.find(function(x){return x.id===ordId;});
+      if(!o)return alert('请选择订单');
+      var date=(document.getElementById('mci-date')||{value:''}).value||new Date().toISOString().slice(0,10);
+      var wdoc=(DB.wdocs||[]).find(function(w){return w.ordId===ordId;})||{};
+      var wvFac=wdoc.facNm||'';
+      var batches=[];
+      document.querySelectorAll('#mci-wrap .mci-row').forEach(function(row){
+        var ws=parseW((row.querySelector('.mci-w')||{value:''}).value);if(!ws.length)return;
+        batches.push({clrNm:row.dataset.clr,code:row.dataset.code||'',vatNo:(row.querySelector('.mci-vat')||{value:''}).value||'',ws:ws});
+      });
+      if(!batches.length)return alert('请至少给一个颜色录入逐卷重量');
+      var noVat=batches.filter(function(b){return !b.vatNo;});
+      if(noVat.length&&!confirm(noVat.length+' 个颜色没填缸号，仍然入库吗？\n（现货调货可不填；填布行批次/卷号更便于追溯）'))return;
+      var fgins=DB.fgins||[];var y=new Date().getFullYear();var maxNo=0;
+      fgins.forEach(function(r){if(r.no&&r.no.indexOf('IN'+y)===0){var n=parseInt(r.no.slice(6))||0;if(n>maxNo)maxNo=n;}});
+      var existRolls=fgRolls();var totRollN=0;
+      batches.forEach(function(b){
+        maxNo++;var inNo='IN'+y+String(maxNo).padStart(4,'0');
+        var inRec={id:'fgi_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),no:inNo,date:date,ordId:ordId,ordNo:o.no,custNm:o.custNm||'',colorNm:b.clrNm,colorCode:b.code,vatNo:b.vatNo,wvFac:wvFac,rollCount:b.ws.length};
+        fgins.push(inRec);
+        b.ws.forEach(function(kg,i){
+          existRolls.push({id:'rl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+i,inId:inRec.id,ordId:ordId,ordNo:o.no,custNm:o.custNm||'',fab:o.fab||'',colorNm:b.clrNm,colorCode:b.code,vatNo:b.vatNo,wvFac:wvFac,rollNo:'',kg:String(kg),m:'',rm:'',status:'in',outId:''});
+          totRollN++;
+        });
+      });
+      DB.fgins=fgins;saveFgRolls(existRolls);savedN=batches.length+'色/'+totRollN+'疋';
+      logAction('多色合并入库','成品入库',o.no,(o.custNm||'')+' '+savedN);
+    }catch(err){alert('入库失败：'+(err&&err.message||err));return;}
+    cm();try{pgFGStock();}catch(e){}
+    showToast('多色合并入库成功 ✓ '+savedN,'success');
+  },'📥 保存入库');
+  om(modal);
+}
+
 function pgARec(){
   // 自动清理：出货记录的arecId指向已不存在的对账单，自动清除
   var validArecIds=new Set((DB.arecs||[]).map(function(x){return x.id;}));
@@ -13800,6 +13897,7 @@ function pgFGStock(){
   // ── 快捷操作 ──
   var qc=document.createElement('div');qc.style.cssText='display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap';
   qc.appendChild(mkBtn('＋ 登记入库','btn bp',function(){openFGInM(null);}));
+  qc.appendChild(mkBtn('📥 多色合并入库','btn bp',function(){openMultiColorIn();}));
   qc.appendChild(mkBtn('＋ 登记出货','btn bq',function(){openFGOutM(null);}));
   qc.appendChild(mkBtn('⚡ 快速出货（无订单）','btn bs',function(){openQuickOut();}));
   qc.appendChild(mkBtn('📋 多色合并送货单','btn',function(){openMultiColorSheet();}));

@@ -9571,7 +9571,7 @@ function pgQuot(){
           var tdItno=document.createElement('td');tdItno.className='qt-itno'+(expired?' qt-exp-row':'');tdItno.textContent=item.no||'—';tr.appendChild(tdItno);
           var tdFab=document.createElement('td');tdFab.className='qt-fab'+(expired?' qt-exp-row':'');tdFab.textContent=item.fab||'—';tr.appendChild(tdFab);
           var tdSpec=document.createElement('td');tdSpec.className='qt-spec'+(expired?' qt-exp-row':'');tdSpec.textContent=specStr;tr.appendChild(tdSpec);
-          var tdMoq=document.createElement('td');tdMoq.className='qt-moq'+(expired?' qt-exp-row':'');tdMoq.textContent=item.moq||'—';tr.appendChild(tdMoq);
+          var tdMoq=document.createElement('td');tdMoq.className='qt-moq'+(expired?' qt-exp-row':'');tdMoq.textContent=item.moq?(/^[\d.,]+$/.test(String(item.moq).trim())?item.moq+' KG':item.moq):'—';tr.appendChild(tdMoq);
           var tdPrice=document.createElement('td');tdPrice.className='qt-price'+(expired?' qt-exp-row':'');tdPrice.textContent=item.price?'¥'+item.price+'/KG':'—';tr.appendChild(tdPrice);
           var tdComp=document.createElement('td');tdComp.className='qt-comp'+(expired?' qt-exp-row':'');tdComp.textContent=compStr;tr.appendChild(tdComp);
           var tdRef=document.createElement('td');tdRef.className='qt-ref'+(expired?' qt-exp-row':'');tdRef.textContent=item.refPrice?'¥'+item.refPrice+'/m':'—';tr.appendChild(tdRef);
@@ -9678,7 +9678,7 @@ function openQuotModal(id){
     var hCols=[
       {t:'编号'},{t:'布类名称'},{t:'门幅'},
       {t:'',isUnitBtn:true},
-      {t:'克重'},{t:'起订量'},{t:'单价/KG'},
+      {t:'克重'},{t:'起订量/KG'},{t:'单价/KG'},
       {t:'',isMeterToggle:true},
       {t:'成份'},{t:''}
     ];
@@ -9998,7 +9998,7 @@ function printQuot(id){
       +'<td class="col-center td-no">'+esc(item.no||'')+'</td>'
       +'<td class="col-left td-fab">'+esc(item.fab||'')+'</td>'
       +'<td class="col-center td-spec">'+esc(specStr)+'</td>'
-      +'<td class="col-center td-moq">'+esc(item.moq||'')+'</td>'
+      +'<td class="col-center td-moq">'+(item.moq?(/^[\d.,]+$/.test(String(item.moq).trim())?esc(item.moq)+' KG':esc(item.moq)):'')+'</td>'
       +'<td class="col-right td-price">'+(item.price?'¥'+item.price+'/KG':'')+'</td>'
       +meterTd
       +'<td class="col-comp td-comp">'+esc(compStr)+'</td>'

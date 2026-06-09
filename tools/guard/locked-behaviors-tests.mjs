@@ -776,6 +776,9 @@ test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合
   if (!/s\.taxed=!\(s\.ord&&s\.ord\.taxType==='excl'\)/.test(html)) throw new Error('开票订单判定缺失');
   if (!/s\.taxAmt=s\.taxed\?\(s\.rev\*TB\):0/.test(html)) throw new Error('税金应=开票订单×综合税耗率');
   if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');
+  // 收入(实收)必须含每色加价(extraPr)，与对账单口径一致，否则毛利与对账单对不上
+  if (!/function _ordExtra\(ord,clrNm\)/.test(html)) throw new Error('毛利收入缺少颜色加价 _ordExtra(与对账单不一致)');
+  if (!/s\+q\*\(unitPr\+_ordExtra\(ord,r\.colorNm\)\)/.test(html)) throw new Error('毛利收入未逐疋加颜色加价(与对账单不一致)');
   if (/\+s\.taxB/.test(html)) throw new Error('不应有旧的税负当成本逻辑(taxB)');
   // 综合税耗率可调
   if (!/window\._taxBurden=parseFloat/.test(html)) throw new Error('缺少可调综合税耗率');

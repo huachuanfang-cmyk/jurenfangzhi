@@ -4916,16 +4916,15 @@ function pgGrossProfit(){
   var TB=(parseFloat(window._taxBurden!=null?window._taxBurden:(CO.taxBurden!=null?CO.taxBurden:6))||0)/100; // 综合税耗率(默认6%)
   var orphan={rev:0}; // 无关联订单的出货（快速出货等）
   // 收入：实收(含税原值)
+  function _ordExtra(ord,clrNm){if(!ord)return 0;var c=(ord.colors||[]).find(function(x){return x.nm===clrNm;})||{};return parseFloat(c.extraPr)||0;} // 该颜色加价(撞白等)
   (DB.fgouts||[]).forEach(function(o){
     if(o.voided)return;
     var ord=ordOf(o);
     var oRolls=rolls.filter(function(r){return (o.rollIds||[]).indexOf(r.id)>=0;});
-    var kg=oRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0);
-    var m=oRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0);
     var unitPr=ord?(parseFloat(ord.unitPr)||0):0;
     var byM=ord&&((String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0));
-    var qty=byM?Number(m.toFixed(1)):Number(kg.toFixed(1));
-    var revRaw=qty*unitPr;
+    // 收入=逐疋 qty×(单价+该色加价)，与对账单口径完全一致
+    var revRaw=oRolls.reduce(function(s,r){var q=byM?(parseFloat(r.m)||0):(parseFloat(r.kg)||0);return s+q*(unitPr+_ordExtra(ord,r.colorNm));},0);
     if(ord)getOS(ord).rev+=revRaw;else orphan.rev+=revRaw;
   });
   (DB.fgreturns||[]).forEach(function(ret){
@@ -4933,7 +4932,9 @@ function pgGrossProfit(){
     var ord=ordOf(ret);if(!ord)return;
     var unitPr=parseFloat(ord.unitPr)||0;
     var dq=parseFloat(ret.deductKG)||parseFloat(ret.totalKG)||0;
-    if(dq>0&&unitPr>0)getOS(ord).rev-=dq*unitPr;
+    var retRolls=rolls.filter(function(x){return (ret.rollIds||[]).indexOf(x.id)>=0;});
+    var ex=_ordExtra(ord,(retRolls[0]&&retRolls[0].colorNm)||'');
+    if(dq>0&&unitPr>0)getOS(ord).rev-=dq*(unitPr+ex); // 退货扣收入也含加价，与对账单一致
   });
   (DB.trks||[]).forEach(function(t){
     if(!t||t.voided)return;var feeRaw=parseFloat(t.fee)||0;if(!feeRaw)return;

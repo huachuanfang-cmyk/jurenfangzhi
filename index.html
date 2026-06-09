@@ -4134,6 +4134,7 @@ function openCM(id){
       var i=id?l.findIndex(function(x){return x.id===id;}):-1;
       if(i>=0)l[i]=d;else l.push(d);
       DB.custs=l;
+      logAction(i>=0?'编辑客户档案':'新增客户档案','客户档案',d.nm||'',(d.ct||'')+' '+(d.ph||''));
       cm();
       pgCusts();
       showToast('客户档案保存成功！', 'success');
@@ -4263,6 +4264,7 @@ function openFM(id){
       var i=id?l.findIndex(function(x){return x.id===id;}):-1;
       if(i>=0)l[i]=d;else l.push(d);
       DB.facts=l;
+      logAction(i>=0?'编辑加工厂档案':'新增加工厂档案','加工厂档案',d.nm||'',(Array.isArray(d.prcs)?d.prcs.join('/'):(d.prcs||''))+' '+(d.ct||''));
       cm();
       pgFacts();
     } catch(err) {
@@ -5767,6 +5769,7 @@ function openMatModal(id){
     var idx=list.findIndex(function(x){return x.id===data.id;});
     if(idx>=0)list[idx]=data;else list.push(data);
     DB.mats=list;
+    logAction(idx>=0?'编辑物料档案':'新增物料档案','物料档案',data.mid||'',(data.fab||'')+(data.price?' 单价'+data.price:'')+(data.origPrice?' 原价'+data.origPrice:''));
     cm();pgMat();showToast('物料档案已保存 '+data.mid,'success');
   },'保存物料');
   om(modal);
@@ -7519,7 +7522,9 @@ function saveT(id){
     var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
-    DB.trks=l;cm();pgTrk();
+    DB.trks=l;
+    logAction(id?'编辑加工跟踪':'新增加工跟踪','加工跟踪',(d.ordNo||'')+'/'+(d.proc||''),(d.factNm||'')+' '+(d.clrNm||'')+' '+(d.proc||'')+(d.fee?' 加工费¥'+d.fee:''));
+    cm();pgTrk();
   } catch(err){ alert("保存失败: " + err.message); }
 }
 function delT(id){
@@ -7528,6 +7533,7 @@ function delT(id){
   if(rec.fPaid)return alert('此加工跟踪已标记「已付款」，不能作废。如需取消付款请先到付款看板操作。');
   if(!confirm('确认作废加工跟踪记录？\n订单：'+rec.ordNo+'\n工厂：'+rec.factNm+'\n工序：'+rec.proc+'\n加工费：'+(rec.fee||'—')))return;
   rec.voided=true;DB.save('t',DB.trks);
+  logAction('作废加工跟踪','加工跟踪',(rec.ordNo||'')+'/'+(rec.proc||''),(rec.factNm||'')+' '+(rec.clrNm||'')+' '+(rec.proc||'')+(rec.fee?' 加工费¥'+rec.fee:''));
   pgTrk();
 }
 
@@ -9942,6 +9948,7 @@ function openQuotModal(id){
     };
     var list=DB.quots||[];var idx=list.findIndex(function(x){return x.id===data.id;});
     if(idx>=0)list[idx]=data;else list.push(data);DB.quots=list;
+    logAction(idx>=0?'编辑报价单':'新增报价单','报价单',data.no,(data.custNm||'')+' 共'+(data.items||[]).length+'款');
     // ── 自动收录新编号到物料档案（待确认状态）──
     var newMats=0;
     (data.items||[]).forEach(function(item){
@@ -12063,7 +12070,9 @@ function pgRecon(){
           var rec=DB.recons.find(function(x){return x.id===id;});
           if(rec&&confirm('确认已付款 ¥'+parseFloat(rec.actualAmt).toFixed(2)+'？')){
             rec.status='paid';rec.paidDate=new Date().toISOString().slice(0,10);
-            DB.recons=DB.recons;pgRecon();showToast('已标记付款','success');
+            DB.recons=DB.recons;
+            logAction('标记付款','应付对账',rec.no||id,(rec.factNm||'')+' '+(rec.month||'')+' ¥'+(rec.actualAmt||0));
+            pgRecon();showToast('已标记付款','success');
           }
         };}(r.id)));
       }
@@ -12072,6 +12081,7 @@ function pgRecon(){
         if(rec&&rec.status==='paid')return alert('此对账单已标记「已付款」，不能作废。');
         if(!confirm('确认作废此对账单？\n工厂：'+(rec?rec.factNm:'')+'\n月份：'+(rec?rec.month:'')+'\n金额：¥'+(rec?rec.actualAmt||'0':'0')))return;
         rec.status='voided';DB.save('rc',DB.recons);
+        logAction('作废应付对账','应付对账',rec.no||id,(rec.factNm||'')+' '+(rec.month||'')+' ¥'+(rec.actualAmt||0));
         pgRecon();showToast('已作废','success');
       };}(r.id)));}
       tr.appendChild(opTd);
@@ -12322,6 +12332,7 @@ function openReconModal(id){
     var idx=list.findIndex(function(x){return x.id===data.id;});
     if(idx>=0)list[idx]=data;else list.push(data);
     DB.recons=list;
+    logAction(idx>=0?'编辑应付对账':'新增应付对账','应付对账',data.no,(data.factNm||'')+' '+(data.month||'')+' 实付¥'+(data.actualAmt||0));
 
     cm();
     // 如果是待核对状态，提示是否确认
@@ -13031,7 +13042,9 @@ function saveYarn(id){
     var l=DB.yarns;
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
-    DB.yarns=l;pgYarn();
+    DB.yarns=l;
+    logAction(i>=0?'编辑纱线采购':'新增纱线采购','纱线采购',d.poNo||d.ordNo||'',(d.supplier||'')+' '+(d.spec||'')+' '+(d.ordKg||'')+'KG ¥'+(d.amt||0));
+    pgYarn();
     showToast('原料采购保存成功 ✓','success');
   }catch(err){alert('保存失败: '+err.message);}
 }
@@ -13082,7 +13095,9 @@ function openFabStallM(id){
     var l=DB.fabstalls;if(!Array.isArray(l))l=[];
     var d={id:id||uid(),nm:nm,loc:(document.getElementById('fh-loc')||{value:''}).value.trim(),ct:(document.getElementById('fh-ct')||{value:''}).value.trim(),ph:(document.getElementById('fh-ph')||{value:''}).value.trim(),rm:(document.getElementById('fh-rm')||{value:''}).value.trim()};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;if(i>=0)l[i]=d;else l.push(d);
-    DB.fabstalls=l;cm();pgFabStall();showToast('布行档案已保存 ✓','success');
+    DB.fabstalls=l;
+    logAction(i>=0?'编辑布行档案':'新增布行档案','布行档案',d.nm||'',(d.loc||'')+' '+(d.ct||''));
+    cm();pgFabStall();showToast('布行档案已保存 ✓','success');
   });
   om(modal);
 }
@@ -13250,7 +13265,9 @@ function openSpotM(id){
       rm:(document.getElementById('sp-rm')||{value:''}).value};
     var l=DB.spots;if(!Array.isArray(l))l=[];var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
-    DB.spots=l;cm();pgSpot();showToast('现货采购单已保存 '+d.no,'success');
+    DB.spots=l;
+    logAction(i>=0?'编辑现货采购':'新增现货采购','现货采购',d.no,(d.stallNm||'')+' '+(d.fab||'')+' '+(d.ordNo||'')+' ¥'+(d.totalAmt||0));
+    cm();pgSpot();showToast('现货采购单已保存 '+d.no,'success');
   });
   om(modal);
   _spotCalc();
@@ -17050,7 +17067,9 @@ function openGreyFabM(id,readonly){
     };
     var l=DB.greyfabs||[];var i2=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i2>=0)l[i2]=d;else l.push(d);
-    DB.greyfabs=l;pgGreyFab();
+    DB.greyfabs=l;
+    logAction(i2>=0?'编辑胚布采购':'新增胚布采购','胚布采购',d.contractNo||d.ordNo||'',(d.supplier||'')+' '+(d.fab||'')+' '+(d.totalKg||0)+'KG ¥'+(d.totalAmt||0));
+    pgGreyFab();
     showToast('胚布采购合同保存成功 ✓','success');
   });
   om(modal);

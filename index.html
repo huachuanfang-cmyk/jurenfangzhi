@@ -13139,22 +13139,92 @@ function renderSpot(){
   });
   cb.appendChild(buildTable(['单号','日期','布行','关联订单','布料','采购量','合计金额','付款','操作'],rows));
 }
+// 退货红冲弹窗（独立轻量浮层，不动主弹窗）。在颜色行点「退货」打开。
+function openSpotReturn(tr){
+  var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
+  var extra=parseFloat((tr.querySelector('.sp-extra')||{value:0}).value)||0;
+  var act=parseFloat((tr.querySelector('.sp-act')||{value:0}).value)||0;
+  var nm=(tr.querySelector('.sp-nm')||{value:''}).value||'该颜色';
+  if(!(act>0))return alert('请先填写该颜色的「实际重量」，才能办理退货');
+  var unitPr=base+extra;
+  var ex=tr._ret||{};
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#fff;border-radius:12px;max-width:390px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13px;max-height:90vh;overflow:auto';
+  var head=document.createElement('div');
+  head.innerHTML='<div style="font-size:15px;font-weight:700;color:#DC2626;margin-bottom:4px">↩ 退货红冲 — '+esc(nm)+'</div>'
+    +'<div style="font-size:11px;color:#94A3B8;margin-bottom:12px;line-height:1.6">实际重量 <b>'+act+'</b> · 单价 <b>¥'+unitPr.toFixed(2)+'</b>。布行退款=（单价−搬运费−包装费）×退货量；搬运/包装费由我方承担、计入成本。</div>';
+  card.appendChild(head);
+  function field(label,el){var w=document.createElement('div');w.style.cssText='margin-bottom:10px';var l=document.createElement('div');l.style.cssText='font-size:11px;color:#475569;font-weight:600;margin-bottom:3px';l.textContent=label;w.appendChild(l);w.appendChild(el);return w;}
+  function ip(val,ph,type){var i=document.createElement('input');i.type=type||'number';i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;box-sizing:border-box';return i;}
+  var qtyI=ip(ex.qty!=null?ex.qty:act,'退货重量');
+  var dateI=ip(ex.date||tod(),'','date');
+  var handI=ip(ex.handFee!=null?ex.handFee:1,'元/KG');
+  var packI=ip(ex.packFee!=null&&parseFloat(ex.packFee)>0?ex.packFee:1,'元/KG');
+  var packChk=document.createElement('input');packChk.type='checkbox';packChk.checked=(parseFloat(ex.packFee)||0)>0;packChk.style.cssText='width:15px;height:15px';
+  var reasonI=ip(ex.reason||'','如：选错色 / 质量问题','text');
+  var preview=document.createElement('div');preview.style.cssText='background:#FEF2F2;border-radius:8px;padding:10px 12px;margin:4px 0 12px;font-size:12px;line-height:1.8';
+  function calc(){
+    var q=parseFloat(qtyI.value)||0;var h=parseFloat(handI.value)||0;var p=packChk.checked?(parseFloat(packI.value)||0):0;
+    var fee=q*(h+p);var refund=Math.max(0,q*unitPr-fee);
+    preview.innerHTML='退货重量：<b>'+q+' KG</b>　费率：搬运¥'+h+(packChk.checked?'＋包装¥'+p:'')+'/KG<br>布行退款：<b style="color:#16A34A">¥'+refund.toFixed(2)+'</b>（已扣费）<br>我方承担费用：<b style="color:#DC2626">¥'+fee.toFixed(2)+'</b>（计入成本，毛利红冲）';
+    packI.disabled=!packChk.checked;packI.style.opacity=packChk.checked?'1':'.4';
+  }
+  qtyI.oninput=calc;handI.oninput=calc;packI.oninput=calc;packChk.onchange=calc;
+  card.appendChild(field('退货重量 (KG)',qtyI));
+  card.appendChild(field('退货日期',dateI));
+  card.appendChild(field('搬运费 (元/KG · 布行收)',handI));
+  var packRow=document.createElement('div');packRow.style.cssText='margin-bottom:10px';
+  var pl=document.createElement('label');pl.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;color:#475569;font-weight:600;margin-bottom:4px;cursor:pointer';pl.appendChild(packChk);pl.appendChild(document.createTextNode('已拆包装（加收包装费 元/KG）'));
+  packRow.appendChild(pl);packRow.appendChild(packI);card.appendChild(packRow);
+  card.appendChild(field('退货原因',reasonI));
+  card.appendChild(preview);calc();
+  var btns=document.createElement('div');btns.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  function close(){ov.remove();}
+  if(tr._ret){btns.appendChild(mkBtn('撤销退货','btn bsm br',function(){tr._ret=null;_spotCalc();close();}));}
+  btns.appendChild(mkBtn('取消','btn bsm bs',close));
+  btns.appendChild(mkBtn('确认退货','btn bp',function(){
+    var q=parseFloat(qtyI.value)||0;if(!(q>0))return alert('请填写退货重量');
+    if(q>act&&!confirm('退货重量大于实际重量，确定继续？'))return;
+    tr._ret={qty:q,date:dateI.value||tod(),handFee:parseFloat(handI.value)||0,packFee:packChk.checked?(parseFloat(packI.value)||0):0,reason:reasonI.value||''};
+    _spotCalc();close();
+  }));
+  card.appendChild(btns);
+  ov.appendChild(card);ov.onmousedown=function(e){if(e.target===ov)close();};
+  document.body.appendChild(ov);
+}
+// 退货红冲：净成本 = 留用量×单价 + 退货量×(搬运费+包装费)；布行退款 = 退货量×单价 − 费用
+function _spotRowNet(row,base){
+  var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;
+  var extra=parseFloat((row.querySelector('.sp-extra')||{value:0}).value)||0;
+  var unitPr=base+extra;
+  var ret=row._ret;
+  var retQty=ret?Math.min(parseFloat(ret.qty)||0,act):0;
+  var fee=ret?retQty*((parseFloat(ret.handFee)||0)+(parseFloat(ret.packFee)||0)):0;
+  var refund=ret?Math.max(0,retQty*unitPr-fee):0;
+  var keptQty=Math.max(0,act-retQty);
+  var amt=act>0?(keptQty*unitPr+fee):0; // 净成本：留用部分 + 我方承担的退货费用
+  return {act:act,unitPr:unitPr,retQty:retQty,fee:fee,refund:refund,amt:amt};
+}
 function _spotCalc(){
   var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
   var unit=(document.getElementById('sp-unit')||{value:'kg'}).value;
-  var totAmt=0,totBuy=0,totAct=0;
+  var u=(unit==='米'?'米':'KG');
+  var totAmt=0,totBuy=0,totAct=0,totRefund=0,totFee=0;
   document.querySelectorAll('.sp-row').forEach(function(row){
     var buy=parseFloat((row.querySelector('.sp-buy')||{value:0}).value)||0;     // 采购重量(下单给布行)
-    var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;     // 实际重量(后填,算成本)
-    var extra=parseFloat((row.querySelector('.sp-extra')||{value:0}).value)||0; // 加价
-    var amt=act>0?act*(base+extra):0;                                           // 金额只按"实际重量"算；未填则不计(避免误导)
-    var aEl=row.querySelector('.sp-amt');if(aEl)aEl.textContent=(act>0&&amt)?'¥'+amt.toFixed(2):'—';
-    totAmt+=amt;totBuy+=buy;totAct+=act;
+    var n=_spotRowNet(row,base);                                                // 实际重量+退货后的净成本
+    var aEl=row.querySelector('.sp-amt');if(aEl)aEl.textContent=(n.act>0)?'¥'+n.amt.toFixed(2):'—';
+    var bEl=row.querySelector('.sp-ret-badge');if(bEl)bEl.textContent=n.retQty>0?('🔴退'+n.retQty+u+'·退款¥'+n.refund.toFixed(0)):'';
+    var rb=row.querySelector('.sp-ret-btn');if(rb){rb.textContent=n.retQty>0?'已退货':'退货';rb.style.background=n.retQty>0?'var(--r)':'var(--o)';rb.style.color='#fff';}
+    totAmt+=n.amt;totBuy+=buy;totAct+=n.act;totRefund+=n.refund;totFee+=n.fee;
   });
-  var u=(unit==='米'?' 米':' KG');
-  var tb=document.getElementById('sp-tot-buy');if(tb)tb.textContent=totBuy.toFixed(1)+u;
-  var ta=document.getElementById('sp-tot-act');if(ta)ta.textContent=totAct>0?(totAct.toFixed(1)+u):'—';
+  var tb=document.getElementById('sp-tot-buy');if(tb)tb.textContent=totBuy.toFixed(1)+' '+u;
+  var ta=document.getElementById('sp-tot-act');if(ta)ta.textContent=totAct>0?(totAct.toFixed(1)+' '+u):'—';
   var tA=document.getElementById('sp-tot-amt');if(tA)tA.textContent='¥'+totAmt.toFixed(2);
+  var rn=document.getElementById('sp-ret-note');
+  if(rn)rn.innerHTML=totFee>0?('🔴 含退货红冲：布行退款合计 <b style="color:#16A34A">¥'+totRefund.toFixed(2)+'</b>，我方承担费用 <b style="color:#DC2626">¥'+totFee.toFixed(2)+'</b>（搬运/包装费，已计入上方成本）'):'';
 }
 function openSpotM(id){
   if(!Array.isArray(DB.spots))DB.spots=[];
@@ -13194,6 +13264,7 @@ function openSpotM(id){
     sec.appendChild(tbl);
     var clrBody=tbl.querySelector('#sp-clr-body'); // 本地引用：build 时 modal 未挂载
     var addBtn=mkBtn('&#43; 添加颜色','btn bsm bq',function(){addSpotRow({});});addBtn.style.marginTop='6px';sec.appendChild(addBtn);
+    var retNote=document.createElement('div');retNote.id='sp-ret-note';retNote.style.cssText='font-size:11px;margin-top:6px;line-height:1.6';sec.appendChild(retNote);
     body.appendChild(sec);
     var g4=document.createElement('div');g4.className='fg';g4.appendChild(fvFull('备注/特别约定（打印到采购合同）',mkTA('sp-rm',r.rm)));body.appendChild(g4);
     var hint=document.createElement('div');hint.style.cssText='font-size:10.5px;color:#94A3B8;margin-top:4px';
@@ -13201,6 +13272,7 @@ function openSpotM(id){
     body.appendChild(hint);
     function addSpotRow(c){
       var tb=clrBody;if(!tb)return;var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
+      tr._ret=(c.ret&&(parseFloat(c.ret.qty)>0))?{qty:c.ret.qty,date:c.ret.date||'',handFee:(c.ret.handFee==null?1:c.ret.handFee),packFee:(c.ret.packFee==null?0:c.ret.packFee),reason:c.ret.reason||''}:null;
       function inp(cls,val,w,ph,extra){var i=document.createElement('input');i.className=cls;i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:'+(w||'70px')+';padding:5px 7px;border:1px solid var(--bd);border-radius:5px;font-size:12px'+(extra||'');i.addEventListener('input',_spotCalc);return i;}
       function tdwrap(el){var td=document.createElement('td');td.style.padding='4px 6px';td.appendChild(el);return td;}
       tr.appendChild(tdwrap(inp('sp-nm',c.nm,'100px','颜色')));
@@ -13208,8 +13280,14 @@ function openSpotM(id){
       tr.appendChild(tdwrap(inp('sp-buy',c.buyQty,'78px','采购量')));
       tr.appendChild(tdwrap(inp('sp-act',c.actQty,'78px','实际量',';border-color:#86EFAC')));
       tr.appendChild(tdwrap(inp('sp-extra',c.extraPr,'56px','+加价')));
-      var tdA=document.createElement('td');tdA.className='sp-amt';tdA.style.cssText='padding:4px 8px;text-align:right;color:#C41E3A;font-weight:600';tdA.textContent='—';tr.appendChild(tdA);
-      var tdX=document.createElement('td');tdX.style.padding='4px 6px';tdX.appendChild(mkBtn('×','btn bsm br',function(){tr.remove();_spotCalc();}));tr.appendChild(tdX);
+      var tdA=document.createElement('td');tdA.style.cssText='padding:4px 8px;text-align:right;white-space:nowrap';
+      tdA.innerHTML='<span class="sp-amt" style="color:#C41E3A;font-weight:600">—</span><span class="sp-ret-badge" style="display:block;font-size:9px;color:#DC2626;font-weight:700;margin-top:1px"></span>';
+      tr.appendChild(tdA);
+      var tdX=document.createElement('td');tdX.style.cssText='padding:4px 6px;white-space:nowrap';
+      var retBtn=mkBtn('退货','btn bsm',function(){openSpotReturn(tr);});retBtn.className='sp-ret-btn btn bsm';retBtn.style.cssText+=';margin-right:3px;background:var(--o);color:#fff';
+      tdX.appendChild(retBtn);
+      tdX.appendChild(mkBtn('×','btn bsm br',function(){tr.remove();_spotCalc();}));
+      tr.appendChild(tdX);
       tb.appendChild(tr);
     }
     function renderSpotColors(fromOrder){
@@ -13251,9 +13329,11 @@ function openSpotM(id){
       var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;
       var extra=parseFloat((row.querySelector('.sp-extra')||{value:''}).value)||0;
       if(!nm&&!buy&&!act)return;
-      var amt=act>0?act*(base+extra):0; // 成本只按实际重量；未填则金额=0(尚未计成本)
-      colors.push({nm:nm,code:code,buyQty:buy||'',actQty:act||'',extraPr:extra||'',amt:Number(amt.toFixed(2))});
-      totAmt+=amt;totBuy+=buy;totAct+=act;
+      var n=_spotRowNet(row,base); // 退货红冲后的净成本/退款/费用
+      var co={nm:nm,code:code,buyQty:buy||'',actQty:act||'',extraPr:extra||'',amt:Number(n.amt.toFixed(2))};
+      if(row._ret&&n.retQty>0){co.ret={qty:n.retQty,date:row._ret.date||'',handFee:row._ret.handFee||0,packFee:row._ret.packFee||0,reason:row._ret.reason||'',refund:Number(n.refund.toFixed(2)),fee:Number(n.fee.toFixed(2))};}
+      colors.push(co);
+      totAmt+=n.amt;totBuy+=buy;totAct+=act;
     });
     var d={id:id||uid(),no:r.no||spotNo(),date:(document.getElementById('sp-date')||{value:''}).value,
       stallId:stallId,stallNm:stall.nm||'',ordId:ordId,ordNo:ord.no||'',
@@ -13286,6 +13366,26 @@ function prtSpot(id){
       +'<td style="border:1px solid #ccc;padding:6px 8px;text-align:right">'+(pr?'¥'+pr.toFixed(2):'—')+'</td>'
       +'<td style="border:1px solid #ccc;padding:6px 8px;text-align:right;font-weight:600">'+(amt?'¥'+amt.toFixed(2):'—')+'</td></tr>';
   });
+  // 退货红冲明细（如有）
+  var retList=(r.colors||[]).filter(function(c){return c.ret&&parseFloat(c.ret.qty)>0;});
+  var retHtml='';
+  if(retList.length){
+    var rTot=0,fTot=0;
+    var rRows=retList.map(function(c){
+      var rq=parseFloat(c.ret.qty)||0;var rf=parseFloat(c.ret.refund)||0;var fe=parseFloat(c.ret.fee)||0;rTot+=rf;fTot+=fe;
+      return '<tr><td style="border:1px solid #ccc;padding:5px 8px">'+esc(c.nm||'')+'</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;color:#555">'+esc(c.code||'')+'</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right">'+rq.toFixed(1)+u+'</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right">搬运¥'+(parseFloat(c.ret.handFee)||0)+(parseFloat(c.ret.packFee)>0?' 包装¥'+c.ret.packFee:'')+'/KG</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right;color:#16A34A;font-weight:600">¥'+rf.toFixed(2)+'</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;color:#888">'+esc(c.ret.reason||'')+'</td></tr>';
+    }).join('');
+    retHtml='<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:#DC2626;margin-bottom:4px">↩ 退货明细（红冲）</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#FEF2F2">'
+      +['颜色','色号','退货量','费率（我方承担）','应退款','原因'].map(function(h){return '<th style="border:1px solid #ccc;padding:5px 8px;color:#991B1B;text-align:left">'+h+'</th>';}).join('')
+      +'</tr></thead><tbody>'+rRows+'</tbody>'
+      +'<tfoot><tr style="background:#FEE2E2;font-weight:700"><td colspan="4" style="border:1px solid #ccc;padding:5px 8px;text-align:right">合计：布行应退款</td><td style="border:1px solid #ccc;padding:5px 8px;text-align:right;color:#16A34A">¥'+rTot.toFixed(2)+'</td><td style="border:1px solid #ccc;padding:5px 8px;color:#DC2626">承担费¥'+fTot.toFixed(2)+'</td></tr></tfoot></table></div>';
+  }
   var TERMS='一、质量：面料须符合封样标准；未达标的，乙方有权退货；严重影响销售的，甲方须双倍返还定金。<br>'
     +'二、交货：甲方按指定地点及日期送货；送货单须注明布类、颜色、色号、数量及乙方合同编号。<br>'
     +'三、重量：以实际过磅为准（已扣纸筒/空差的实际成品重量）；数量允许3%增减。<br>'
@@ -13306,6 +13406,7 @@ function prtSpot(id){
     +['颜色名称','色号','采购数量('+u+')','单价(元/'+u+')','金额(元)'].map(function(h){return '<th style="border:1px solid #ccc;padding:6px 8px;color:#1e3a8a;text-align:left;font-size:10px">'+h+'</th>';}).join('')
     +'</tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="border:1px solid #ccc;padding:10px;text-align:center;color:#999">无明细</td></tr>')+'</tbody>'
     +'<tfoot><tr style="background:#EAECF4;font-weight:700"><td colspan="4" style="border:1px solid #ccc;padding:6px 8px;text-align:right">合计金额</td><td style="border:1px solid #ccc;padding:6px 8px;text-align:right;color:#C41E3A;font-size:13px">¥'+tot.toFixed(2)+'</td></tr></tfoot></table>'
+    +retHtml
     +(r.rm?'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:10.5px;color:#92400E"><b>备注/特别约定：</b>'+esc(r.rm).replace(/\n/g,'<br>')+'</div>':'')
     +'<div style="margin-top:8px;font-size:10px;color:#444;line-height:1.9"><div style="font-weight:700;color:#C2410C;margin-bottom:3px">合同条款（供方必须严格执行）</div>'+TERMS+'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:30px;font-size:11px">'

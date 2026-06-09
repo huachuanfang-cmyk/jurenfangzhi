@@ -13305,6 +13305,66 @@ function _spotRowNet(row,base){
   var amt=act>0?(keptQty*unitPr+fee):0; // 净成本：留用部分 + 我方承担的退货扣费
   return {act:act,unitPr:unitPr,retQty:retQty,feeRate:feeRate,fee:fee,refund:refund,amt:amt};
 }
+// 纯数据版颜色净成本(供「退回布行」等外部红冲，不依赖DOM)
+function _spotColorNet(c,basePr){
+  var act=parseFloat(c.actQty)||0;var extra=parseFloat(c.extraPr)||0;var unitPr=(parseFloat(basePr)||0)+extra;
+  var ret=c.ret;var retQty=ret?Math.min(parseFloat(ret.qty)||0,act):0;var feeRate=_retFeeRate(ret);var fee=retQty*feeRate;
+  var keptQty=Math.max(0,act-retQty);var amt=act>0?(keptQty*unitPr+fee):0;var refund=ret?Math.max(0,retQty*unitPr-fee):0;
+  return {amt:amt,refund:refund,fee:fee,retQty:retQty,unitPr:unitPr};
+}
+function _spotRecalcTotal(sp){var tot=0;(sp.colors||[]).forEach(function(c){var n=_spotColorNet(c,sp.basePr);c.amt=Number(n.amt.toFixed(2));tot+=n.amt;});sp.totalAmt=Number(tot.toFixed(2));return sp;}
+// 找某订单+颜色对应的现货采购单(用于「退回布行」红冲)
+function findSpotForColor(ordId,colorNm){
+  return (DB.spots||[]).find(function(sp){return sp&&!sp.voided&&sp.ordId===ordId&&(sp.colors||[]).some(function(c){return c.nm===colorNm;});})||null;
+}
+// 退回布行：客户退回的现货货 → 退回原布行，自动红冲现货采购(布行退款−扣费、成本回冲)
+function openSupplierReturn(gd,onDone){
+  var sp=findSpotForColor(gd.ordId,gd.colorNm);
+  if(!sp)return alert('未找到「'+gd.colorNm+'」对应的现货采购单，无法自动退回布行。\n（此功能仅适用于现货调货的货；自产货请走退染厂流程）');
+  var col=(sp.colors||[]).find(function(c){return c.nm===gd.colorNm;});
+  var net0=_spotColorNet(col,sp.basePr);var unitPr=net0.unitPr;
+  var maxQty=parseFloat(col.actQty)||gd.kg;
+  var prevQty=(col.ret&&parseFloat(col.ret.qty))||0;
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
+  var card=document.createElement('div');card.style.cssText='background:#fff;border-radius:12px;max-width:400px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13px;max-height:90vh;overflow:auto';
+  card.innerHTML='<div style="font-size:15px;font-weight:700;color:#DC2626;margin-bottom:4px">↩ 退回布行 — '+esc(gd.colorNm)+'</div>'
+    +'<div style="font-size:11px;color:#94A3B8;margin-bottom:12px;line-height:1.6">关联现货采购 <b style="font-family:monospace">'+esc(sp.no||'')+'</b>（'+esc(sp.stallNm||'')+'）· 单价 <b>¥'+unitPr.toFixed(2)+'</b>。客户退回 '+gd.kg.toFixed(1)+'KG，现退回布行红冲。'+(prevQty>0?'<br><span style="color:#B45309">该色已退过 '+prevQty+'KG，本次将累加。</span>':'')+'</div>';
+  function field(label,el,hint){var w=document.createElement('div');w.style.cssText='margin-bottom:10px';var l=document.createElement('div');l.style.cssText='font-size:11px;color:#475569;font-weight:600;margin-bottom:3px';l.textContent=label;w.appendChild(l);w.appendChild(el);if(hint){var h=document.createElement('div');h.style.cssText='font-size:10px;color:#94A3B8;margin-top:2px';h.textContent=hint;w.appendChild(h);}return w;}
+  function ip(val,ph,type){var i=document.createElement('input');i.type=type||'number';i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;box-sizing:border-box';return i;}
+  var qtyI=ip(Math.min(gd.kg,Math.max(0,maxQty-prevQty)),'退货重量');
+  var feeI=ip('','元/KG');
+  var reasonI=ip(gd.reason?('客户退回('+gd.reason+')转退布行'):'客户退回转退布行','','text');
+  var preview=document.createElement('div');preview.style.cssText='background:#FEF2F2;border-radius:8px;padding:10px 12px;margin:4px 0 12px;font-size:12px;line-height:1.8';
+  function calc(){
+    var q=parseFloat(qtyI.value)||0;var fr=parseFloat(feeI.value)||0;var fee=q*fr;var refund=Math.max(0,q*unitPr-fee);
+    preview.innerHTML='退货重量：<b>'+q+' KG</b>　扣费：<b>¥'+fr+'/KG</b><br>布行退款：<b style="color:#16A34A">¥'+refund.toFixed(2)+'</b>（已扣费）<br>我方承担费用：<b style="color:#DC2626">¥'+fee.toFixed(2)+'</b>（计入成本，毛利红冲）';
+  }
+  qtyI.oninput=calc;feeI.oninput=calc;
+  card.appendChild(field('退货重量 (KG)',qtyI));
+  card.appendChild(field('退货扣费 (元/KG · 我方承担)',feeI,'布行从退款中扣的费用，无扣费填0。'));
+  card.appendChild(field('备注 / 扣费说明',reasonI));
+  card.appendChild(preview);calc();
+  var btns=document.createElement('div');btns.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  function close(){ov.remove();}
+  btns.appendChild(mkBtn('取消','btn bsm bs',close));
+  btns.appendChild(mkBtn('确认退回布行','btn bp',function(){
+    var q=parseFloat(qtyI.value)||0;if(!(q>0))return alert('请填写退货重量');
+    var fr=parseFloat(feeI.value)||0;
+    var newQty=Math.min(maxQty,prevQty+q);
+    col.ret={qty:newQty,date:tod(),feeRate:fr,reason:reasonI.value||''};
+    var n=_spotColorNet(col,sp.basePr);
+    col.ret.refund=Number(n.refund.toFixed(2));col.ret.fee=Number(n.fee.toFixed(2));
+    _spotRecalcTotal(sp);
+    var sps=DB.spots;var idx=sps.findIndex(function(x){return x.id===sp.id;});if(idx>=0)sps[idx]=sp;DB.spots=sps;
+    logAction('退回布行','现货采购',sp.no,(sp.stallNm||'')+' '+gd.colorNm+' 退'+q+'KG 退款¥'+col.ret.refund);
+    close();
+    if(onDone)onDone({qty:q,refund:col.ret.refund,fee:col.ret.fee,reason:reasonI.value||'',spNo:sp.no,stallNm:sp.stallNm||''});
+  }));
+  card.appendChild(btns);
+  ov.appendChild(card);ov.onmousedown=function(e){if(e.target===ov)close();};
+  document.body.appendChild(ov);
+}
 function _spotCalc(){
   var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
   var unit=(document.getElementById('sp-unit')||{value:'kg'}).value;
@@ -14728,6 +14788,17 @@ function pgFGStock(){
           resolveRetGroup(gd,'written_off','deducted',{deductNote:reason});
           pgFGStock();showToast('已确认扣损 '+gd.cnt+'匹，退货单保留记录','info');
         };})(k)));
+        // ── ④ 退回布行（仅现货货：自动红冲原现货采购，布行退款−扣费）──
+        if(findSpotForColor(retGroup[k].ordId,retGroup[k].colorNm)){
+          opTd.appendChild(mkBtn('↩ 退回布行','btn bsm bo',(function(gk){return function(){
+            var gd=retGroup[gk];if(!gd)return;
+            openSupplierReturn(gd,function(info){
+              resolveRetGroup(gd,'returned_to_supplier','returned_supplier',{supplierReturnNote:info.reason,supplierReturnKg:info.qty,supplierRefund:info.refund,supplierFee:info.fee,supplierSpNo:info.spNo,stallNm:info.stallNm});
+              pgFGStock();showToast('已退回布行 '+gd.colorNm+'，布行退款¥'+(info.refund||0).toFixed(2),'success');
+            });
+          };})(k)));
+          opTd.lastChild.style.cssText+=';background:var(--o);color:#fff';
+        }
         tr.appendChild(opTd);
         retRolTbody.appendChild(tr);
       });
@@ -14783,8 +14854,8 @@ function pgFGStock(){
         tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
         tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
         // 处理结果状态
-        var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废',voided:'🚫 已作废'};
-        var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700',voided:'color:#6b7280;font-weight:700'};
+        var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废',returned_supplier:'↩ 已退回布行',voided:'🚫 已作废'};
+        var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700',returned_supplier:'color:#EA580C;font-weight:700',voided:'color:#6b7280;font-weight:700'};
         var retSt=ret.status||'pending';
         var retStLabel=retStatusMap[retSt]||retSt;
         var retStStyle=retStatusStyle[retSt]||'';

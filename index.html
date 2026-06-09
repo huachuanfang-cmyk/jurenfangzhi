@@ -9720,17 +9720,19 @@ function openQuotModal(id){
 
       var noI=rI('qt-item-no',item.no,'编号');noI.style.fontFamily='monospace';
       // ── 物料档案联动 ──
-      noI.addEventListener('blur',function(){
-        var mid=this.value.trim();if(!mid)return;
-        var mat=(DB.mats||[]).find(function(m){return sameCode(m.mid,mid);});
+      function fillFromMat(){
+        var mid=noI.value.trim();if(!mid)return;
+        var mat=(DB.mats||[]).find(function(m){return sameCode(matCode(m),mid);});
         if(mat){
           // 找到物料 → 自动填入可编辑字段
           var fab=row.querySelector('.qt-item-fab');
           var wInp=row.querySelector('.qt-item-w');
           var gInp=row.querySelector('.qt-item-g');
-          if(fab&&!fab.value)fab.value=mat.fab||'';
+          var prInp=row.querySelector('.qt-item-pr');
+          if(fab&&!fab.value)fab.value=mat.fab||mat.alias||'';
           if(wInp&&!wInp.value)wInp.value=mat.width||'';
           if(gInp&&!gInp.value)gInp.value=mat.gsm||'';
+          if(prInp&&!prInp.value&&(mat.price||mat.origPrice))prInp.value=mat.price||mat.origPrice; // 单价也带入
           // 成份
           if(Array.isArray(mat.comps)&&mat.comps.length&&!compData.length){
             compData=mat.comps.slice();
@@ -9743,7 +9745,9 @@ function openQuotModal(id){
           // 未找到 → 静默提示，保存时再自动生成待确认物料
           showToast('编号「'+mid+'」暂无物料档案，保存报价单后自动收录','');
         }
-      });
+      }
+      noI.addEventListener('blur',fillFromMat);
+      noI.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();fillFromMat();}});
       var fabI=rI('qt-item-fab',item.fab,'布类名称');
 
       var wI=rI('qt-item-w',item.width,'');wI.style.textAlign='center';wI.oninput=function(){calcMeter(row);};

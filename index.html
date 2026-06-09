@@ -13196,20 +13196,20 @@ function openSpotM(id){
     }
     function renderSpotColors(fromOrder){
       var tb=clrBody;if(!tb)return;tb.innerHTML='';
-      var src=(r.colors&&r.colors.length)?r.colors:(fromOrder?((fromOrder.colors||[]).map(function(c){return{nm:c.nm,code:c.code||'',extraPr:c.extraPr||''};})):[]);
+      var src=(r.colors&&r.colors.length)?r.colors:(fromOrder?((fromOrder.colors||[]).map(function(c){return{nm:c.nm,code:c.code||'',buyQty:c.qty||'',extraPr:c.extraPr||''};})):[]);
       if(!src.length)src=[{}];
       src.forEach(function(c){addSpotRow(c);});
       _spotCalc();
     }
     matSel.onchange=function(){
-      var m=(DB.mats||[]).find(function(x){return x.id===this.value;});if(!m)return;
+      var mid=this.value;var m=(DB.mats||[]).find(function(x){return x.id===mid;});if(!m)return;
       var fabEl=document.getElementById('sp-fab');if(fabEl&&!fabEl.value)fabEl.value=m.fab||m.alias||'';
       var pEl=document.getElementById('sp-basepr');if(pEl&&!pEl.value&&m.unitPr)pEl.value=m.unitPr;
       if(m.unitPr)showToast('该物料上次单价 ¥'+m.unitPr+(m.origPr?'（原 ¥'+m.origPr+'）':''),'info');
       _spotCalc();
     };
     ordSel.onchange=function(){
-      var o=(DB.orders||[]).find(function(x){return x.id===this.value;});
+      var oid=this.value;var o=(DB.orders||[]).find(function(x){return x.id===oid;});
       var fabEl=document.getElementById('sp-fab');if(o&&fabEl&&!fabEl.value)fabEl.value=o.fab||'';
       var uEl=document.getElementById('sp-unit');if(o&&uEl&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0)uEl.value='米';
       renderSpotColors(o);

@@ -13154,31 +13154,25 @@ function openSpotReturn(tr){
   card.style.cssText='background:#fff;border-radius:12px;max-width:390px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13px;max-height:90vh;overflow:auto';
   var head=document.createElement('div');
   head.innerHTML='<div style="font-size:15px;font-weight:700;color:#DC2626;margin-bottom:4px">↩ 退货红冲 — '+esc(nm)+'</div>'
-    +'<div style="font-size:11px;color:#94A3B8;margin-bottom:12px;line-height:1.6">实际重量 <b>'+act+'</b> · 单价 <b>¥'+unitPr.toFixed(2)+'</b>。布行退款=（单价−搬运费−包装费）×退货量；搬运/包装费由我方承担、计入成本。</div>';
+    +'<div style="font-size:11px;color:#94A3B8;margin-bottom:12px;line-height:1.6">实际重量 <b>'+act+'</b> · 单价 <b>¥'+unitPr.toFixed(2)+'</b>。布行退款=（单价−扣费）×退货量；扣费由我方承担、计入成本。</div>';
   card.appendChild(head);
-  function field(label,el){var w=document.createElement('div');w.style.cssText='margin-bottom:10px';var l=document.createElement('div');l.style.cssText='font-size:11px;color:#475569;font-weight:600;margin-bottom:3px';l.textContent=label;w.appendChild(l);w.appendChild(el);return w;}
+  function field(label,el,hint){var w=document.createElement('div');w.style.cssText='margin-bottom:10px';var l=document.createElement('div');l.style.cssText='font-size:11px;color:#475569;font-weight:600;margin-bottom:3px';l.textContent=label;w.appendChild(l);w.appendChild(el);if(hint){var h=document.createElement('div');h.style.cssText='font-size:10px;color:#94A3B8;margin-top:2px';h.textContent=hint;w.appendChild(h);}return w;}
   function ip(val,ph,type){var i=document.createElement('input');i.type=type||'number';i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:100%;padding:7px 9px;border:1.5px solid #E2E8F0;border-radius:7px;font-size:13px;box-sizing:border-box';return i;}
   var qtyI=ip(ex.qty!=null?ex.qty:act,'退货重量');
   var dateI=ip(ex.date||tod(),'','date');
-  var handI=ip(ex.handFee!=null?ex.handFee:1,'元/KG');
-  var packI=ip(ex.packFee!=null&&parseFloat(ex.packFee)>0?ex.packFee:1,'元/KG');
-  var packChk=document.createElement('input');packChk.type='checkbox';packChk.checked=(parseFloat(ex.packFee)||0)>0;packChk.style.cssText='width:15px;height:15px';
-  var reasonI=ip(ex.reason||'','如：选错色 / 质量问题','text');
+  var feeI=ip(_retFeeRate(ex)||'','元/KG');
+  var reasonI=ip(ex.reason||'','如：选错色；扣搬运+包装¥2/KG','text');
   var preview=document.createElement('div');preview.style.cssText='background:#FEF2F2;border-radius:8px;padding:10px 12px;margin:4px 0 12px;font-size:12px;line-height:1.8';
   function calc(){
-    var q=parseFloat(qtyI.value)||0;var h=parseFloat(handI.value)||0;var p=packChk.checked?(parseFloat(packI.value)||0):0;
-    var fee=q*(h+p);var refund=Math.max(0,q*unitPr-fee);
-    preview.innerHTML='退货重量：<b>'+q+' KG</b>　费率：搬运¥'+h+(packChk.checked?'＋包装¥'+p:'')+'/KG<br>布行退款：<b style="color:#16A34A">¥'+refund.toFixed(2)+'</b>（已扣费）<br>我方承担费用：<b style="color:#DC2626">¥'+fee.toFixed(2)+'</b>（计入成本，毛利红冲）';
-    packI.disabled=!packChk.checked;packI.style.opacity=packChk.checked?'1':'.4';
+    var q=parseFloat(qtyI.value)||0;var fr=parseFloat(feeI.value)||0;
+    var fee=q*fr;var refund=Math.max(0,q*unitPr-fee);
+    preview.innerHTML='退货重量：<b>'+q+' KG</b>　扣费：<b>¥'+fr+'/KG</b><br>布行退款：<b style="color:#16A34A">¥'+refund.toFixed(2)+'</b>（已扣费）<br>我方承担费用：<b style="color:#DC2626">¥'+fee.toFixed(2)+'</b>（计入成本，毛利红冲）';
   }
-  qtyI.oninput=calc;handI.oninput=calc;packI.oninput=calc;packChk.onchange=calc;
+  qtyI.oninput=calc;feeI.oninput=calc;
   card.appendChild(field('退货重量 (KG)',qtyI));
   card.appendChild(field('退货日期',dateI));
-  card.appendChild(field('搬运费 (元/KG · 布行收)',handI));
-  var packRow=document.createElement('div');packRow.style.cssText='margin-bottom:10px';
-  var pl=document.createElement('label');pl.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;color:#475569;font-weight:600;margin-bottom:4px;cursor:pointer';pl.appendChild(packChk);pl.appendChild(document.createTextNode('已拆包装（加收包装费 元/KG）'));
-  packRow.appendChild(pl);packRow.appendChild(packI);card.appendChild(packRow);
-  card.appendChild(field('退货原因',reasonI));
+  card.appendChild(field('退货扣费 (元/KG · 我方承担)',feeI,'布行从退款中扣的费用，单价不含税口径。无扣费填0。'));
+  card.appendChild(field('备注 / 扣费说明',reasonI,'说明退货原因与扣费内容，如：选错色，扣搬运+包装。'));
   card.appendChild(preview);calc();
   var btns=document.createElement('div');btns.style.cssText='display:flex;gap:8px;justify-content:flex-end';
   function close(){ov.remove();}
@@ -13187,25 +13181,32 @@ function openSpotReturn(tr){
   btns.appendChild(mkBtn('确认退货','btn bp',function(){
     var q=parseFloat(qtyI.value)||0;if(!(q>0))return alert('请填写退货重量');
     if(q>act&&!confirm('退货重量大于实际重量，确定继续？'))return;
-    tr._ret={qty:q,date:dateI.value||tod(),handFee:parseFloat(handI.value)||0,packFee:packChk.checked?(parseFloat(packI.value)||0):0,reason:reasonI.value||''};
+    tr._ret={qty:q,date:dateI.value||tod(),feeRate:parseFloat(feeI.value)||0,reason:reasonI.value||''};
     _spotCalc();close();
   }));
   card.appendChild(btns);
   ov.appendChild(card);ov.onmousedown=function(e){if(e.target===ov)close();};
   document.body.appendChild(ov);
 }
-// 退货红冲：净成本 = 留用量×单价 + 退货量×(搬运费+包装费)；布行退款 = 退货量×单价 − 费用
+// 退货扣费率(元/KG，我方承担)。兼容旧数据(handFee+packFee)。
+function _retFeeRate(ret){
+  if(!ret)return 0;
+  if(ret.feeRate!=null)return parseFloat(ret.feeRate)||0;
+  return (parseFloat(ret.handFee)||0)+(parseFloat(ret.packFee)||0); // 旧数据折算
+}
+// 退货红冲：净成本 = 留用量×单价 + 退货量×扣费率；布行退款 = 退货量×单价 − 扣费
 function _spotRowNet(row,base){
   var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;
   var extra=parseFloat((row.querySelector('.sp-extra')||{value:0}).value)||0;
   var unitPr=base+extra;
   var ret=row._ret;
   var retQty=ret?Math.min(parseFloat(ret.qty)||0,act):0;
-  var fee=ret?retQty*((parseFloat(ret.handFee)||0)+(parseFloat(ret.packFee)||0)):0;
+  var feeRate=_retFeeRate(ret);
+  var fee=retQty*feeRate;
   var refund=ret?Math.max(0,retQty*unitPr-fee):0;
   var keptQty=Math.max(0,act-retQty);
-  var amt=act>0?(keptQty*unitPr+fee):0; // 净成本：留用部分 + 我方承担的退货费用
-  return {act:act,unitPr:unitPr,retQty:retQty,fee:fee,refund:refund,amt:amt};
+  var amt=act>0?(keptQty*unitPr+fee):0; // 净成本：留用部分 + 我方承担的退货扣费
+  return {act:act,unitPr:unitPr,retQty:retQty,feeRate:feeRate,fee:fee,refund:refund,amt:amt};
 }
 function _spotCalc(){
   var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
@@ -13272,7 +13273,7 @@ function openSpotM(id){
     body.appendChild(hint);
     function addSpotRow(c){
       var tb=clrBody;if(!tb)return;var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
-      tr._ret=(c.ret&&(parseFloat(c.ret.qty)>0))?{qty:c.ret.qty,date:c.ret.date||'',handFee:(c.ret.handFee==null?1:c.ret.handFee),packFee:(c.ret.packFee==null?0:c.ret.packFee),reason:c.ret.reason||''}:null;
+      tr._ret=(c.ret&&(parseFloat(c.ret.qty)>0))?{qty:c.ret.qty,date:c.ret.date||'',feeRate:_retFeeRate(c.ret),reason:c.ret.reason||''}:null;
       function inp(cls,val,w,ph,extra){var i=document.createElement('input');i.className=cls;i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:'+(w||'70px')+';padding:5px 7px;border:1px solid var(--bd);border-radius:5px;font-size:12px'+(extra||'');i.addEventListener('input',_spotCalc);return i;}
       function tdwrap(el){var td=document.createElement('td');td.style.padding='4px 6px';td.appendChild(el);return td;}
       tr.appendChild(tdwrap(inp('sp-nm',c.nm,'100px','颜色')));
@@ -13331,7 +13332,7 @@ function openSpotM(id){
       if(!nm&&!buy&&!act)return;
       var n=_spotRowNet(row,base); // 退货红冲后的净成本/退款/费用
       var co={nm:nm,code:code,buyQty:buy||'',actQty:act||'',extraPr:extra||'',amt:Number(n.amt.toFixed(2))};
-      if(row._ret&&n.retQty>0){co.ret={qty:n.retQty,date:row._ret.date||'',handFee:row._ret.handFee||0,packFee:row._ret.packFee||0,reason:row._ret.reason||'',refund:Number(n.refund.toFixed(2)),fee:Number(n.fee.toFixed(2))};}
+      if(row._ret&&n.retQty>0){co.ret={qty:n.retQty,date:row._ret.date||'',feeRate:n.feeRate,reason:row._ret.reason||'',refund:Number(n.refund.toFixed(2)),fee:Number(n.fee.toFixed(2))};}
       colors.push(co);
       totAmt+=n.amt;totBuy+=buy;totAct+=act;
     });
@@ -13376,7 +13377,7 @@ function prtSpot(id){
       return '<tr><td style="border:1px solid #ccc;padding:5px 8px">'+esc(c.nm||'')+'</td>'
         +'<td style="border:1px solid #ccc;padding:5px 8px;color:#555">'+esc(c.code||'')+'</td>'
         +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right">'+rq.toFixed(1)+u+'</td>'
-        +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right">搬运¥'+(parseFloat(c.ret.handFee)||0)+(parseFloat(c.ret.packFee)>0?' 包装¥'+c.ret.packFee:'')+'/KG</td>'
+        +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right">扣¥'+(_retFeeRate(c.ret))+'/KG</td>'
         +'<td style="border:1px solid #ccc;padding:5px 8px;text-align:right;color:#16A34A;font-weight:600">¥'+rf.toFixed(2)+'</td>'
         +'<td style="border:1px solid #ccc;padding:5px 8px;color:#888">'+esc(c.ret.reason||'')+'</td></tr>';
     }).join('');

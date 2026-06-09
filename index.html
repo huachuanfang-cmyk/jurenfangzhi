@@ -7362,6 +7362,24 @@ function fTrk(){
   var s=(document.getElementById('ts').value||'');
   renderTrks(DB.trks.filter(function(t){return(!q||t.ordNo.toLowerCase().includes(q)||(t.vatNo||'').toLowerCase().includes(q)||(t.clrNm||'').toLowerCase().includes(q))&&(!p||t.proc===p)&&(!s||t.status===s);}));
 }
+// ── 工序物料勾稽：上游可用布量 / 本工序累计发出（防虚报）──
+function _trkMatchOrd(rec,ordId,ordNo){return rec&&(rec.ordId===ordId||(ordNo&&rec.ordNo===ordNo));}
+function upstreamQty(ordId,ordNo,proc){
+  // 织布/原料工序：上游=投入的纱线(实收优先)
+  if(proc==='织布厂'||proc==='原料厂'){
+    var y=0;(DB.yarns||[]).forEach(function(x){if(x&&!x.voided&&_trkMatchOrd(x,ordId,ordNo))y+=(parseFloat(x.actKg)||parseFloat(x.ordKg)||0);});
+    return y;
+  }
+  // 染/印/后整理工序：上游=织布厂收回(胚布)；无织布记录则用胚布采购实收
+  var w=0,hasW=false;(DB.trks||[]).forEach(function(t){if(t&&!t.voided&&_trkMatchOrd(t,ordId,ordNo)&&t.proc==='织布厂'){w+=(parseFloat(t.actW)||parseFloat(t.retQ)||0);hasW=true;}});
+  if(hasW&&w>0)return w;
+  var g=0;(DB.greyfabs||[]).forEach(function(x){if(x&&!x.voided&&_trkMatchOrd(x,ordId,ordNo))g+=(parseFloat(x.totalKg)||0);});
+  return g;
+}
+function procSentTotal(ordId,ordNo,proc,exceptId){
+  var s=0;(DB.trks||[]).forEach(function(t){if(!t||t.voided)return;if(exceptId&&t.id===exceptId)return;if(t.proc!==proc)return;if(!_trkMatchOrd(t,ordId,ordNo))return;s+=parseFloat(t.sentQ)||0;});
+  return s;
+}
 function openTM(id){
   var t=(id&&DB.trks.find(function(x){return x.id===id;}))||{};
   noteEditOpen('t',t);
@@ -7440,6 +7458,33 @@ function openTM(id){
     var _tRelabel=function(){var u=unSel.value;fvSq.querySelector('.fl').textContent='发出数量('+u+')';fvRq.querySelector('.fl').textContent='收回数量('+u+')';fvAw.querySelector('.fl').textContent='实际入库('+u+')';fvUp.querySelector('.fl').textContent='加工单价(元/'+u+')';};
     unSel.onchange=_tRelabel;_tRelabel();
     body.appendChild(g3);
+    // 工序物料勾稽 + 损耗预警条（防虚报）
+    var tBalEl=document.createElement('div');tBalEl.style.cssText='font-size:11px;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:6px;padding:7px 12px;margin-top:8px;line-height:1.7';
+    body.appendChild(tBalEl);
+    function _tBalance(){
+      if(!tBalEl)return;
+      var oid=(document.getElementById('t-ord')||{value:''}).value;
+      var ord=DB.orders.find(function(x){return x.id===oid;});var ordNo=ord?ord.no:'';
+      var proc=(document.getElementById('t-pc')||{value:''}).value;
+      var sent=parseFloat((document.getElementById('t-sq')||{value:0}).value)||0;
+      var ret=parseFloat((document.getElementById('t-rq')||{value:0}).value)||0;
+      if(!oid||!proc){tBalEl.innerHTML='<span style="color:#94A3B8">选订单 + 工序后显示「物料勾稽」（上游可用布量 vs 本工序发出，防虚报）</span>';return;}
+      var up=upstreamQty(oid,ordNo,proc);var used=procSentTotal(oid,ordNo,proc,id);var total=used+sent;
+      var html='';
+      if(up>0){
+        var remain=up-total;var over=total>up*1.06; // 6% 容差
+        html+='📦 上游可用布量 <b>'+up.toFixed(1)+'</b>　｜　本工序累计发出 <b>'+total.toFixed(1)+'</b>　｜　剩余 <b style="color:'+(remain<-0.5?'#DC2626':'#16A34A')+'">'+remain.toFixed(1)+'</b>';
+        if(over)html+='<br><span style="color:#DC2626;font-weight:700">⚠ 本工序发出量超过上游可用量（超6%容差）——请核对，谨防虚报加工量</span>';
+      }else{
+        html+='<span style="color:#94A3B8">上游暂无可对量（纱线/胚布/织布未录），无法勾稽</span>';
+      }
+      if(sent>0&&ret>0){var lossPct=(sent-ret)/sent*100;if(lossPct>10)html+='<br><span style="color:#DC2626;font-weight:700">⚠ 损耗 '+lossPct.toFixed(1)+'%（>10%）偏高，请核实是否虚报或质量异常</span>';}
+      tBalEl.innerHTML=html;
+    }
+    sqi.addEventListener('input',_tBalance);rqi.addEventListener('input',_tBalance);
+    if(pcSel)pcSel.addEventListener('change',_tBalance);
+    var _origOrdChg=ordSel.onchange;ordSel.onchange=function(){if(_origOrdChg)_origOrdChg.call(this);_tBalance();};
+    setTimeout(_tBalance,0); // 挂载后算一次
     var _tHint=document.createElement('div');_tHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:4px 2px 0';
     _tHint.textContent='💡 加工费按实付金额录入即可（无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗（开票订单×综合税耗率）。';
     body.appendChild(_tHint);

@@ -477,6 +477,41 @@ CREATE TABLE audit_logs (
   detail TEXT DEFAULT ''
 );
 
+-- 布行档案（中大/轻纺城供货档口）
+CREATE TABLE fabric_stalls (
+  id TEXT PRIMARY KEY,
+  nm TEXT DEFAULT '',
+  loc TEXT DEFAULT '',
+  ct TEXT DEFAULT '',
+  ph TEXT DEFAULT '',
+  rm TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 现货采购单（调货倒卖，按毛重付款，纸筒+空差算实际成本）
+CREATE TABLE spot_purchases (
+  id TEXT PRIMARY KEY,
+  no TEXT DEFAULT '',
+  date TEXT DEFAULT '',
+  stall_id TEXT DEFAULT '',
+  stall_nm TEXT DEFAULT '',
+  ord_id TEXT DEFAULT '',
+  ord_no TEXT DEFAULT '',
+  mat_id TEXT DEFAULT '',
+  fab TEXT DEFAULT '',
+  unit TEXT DEFAULT 'kg',
+  base_pr TEXT DEFAULT '',
+  tube TEXT DEFAULT '',
+  empty TEXT DEFAULT '',
+  tax_incl BOOLEAN DEFAULT FALSE,
+  paid BOOLEAN DEFAULT FALSE,
+  colors JSONB DEFAULT '[]',
+  total_amt NUMERIC DEFAULT 0,
+  total_net NUMERIC DEFAULT 0,
+  rm TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- 启用行级安全（RLS）
 -- ============================================================
@@ -501,6 +536,8 @@ ALTER TABLE dyeing_docs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tombstones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fabric_stalls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE spot_purchases ENABLE ROW LEVEL SECURITY;
 
 -- 允许已登录用户读写所有表
 CREATE POLICY "允许已登录用户所有操作" ON customers FOR ALL USING (auth.role() = 'authenticated');
@@ -524,6 +561,8 @@ CREATE POLICY "允许已登录用户所有操作" ON dyeing_docs FOR ALL USING (
 CREATE POLICY "允许已登录用户所有操作" ON tombstones FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON app_users FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "允许已登录用户所有操作" ON audit_logs FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON fabric_stalls FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "允许已登录用户所有操作" ON spot_purchases FOR ALL USING (auth.role() = 'authenticated');
 
 -- Supabase Data API 表权限（RLS 控制行权限，GRANT 控制表是否可访问）
 GRANT USAGE ON SCHEMA public TO authenticated;

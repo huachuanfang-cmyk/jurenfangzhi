@@ -173,6 +173,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="nl">原料管理</div>
   <div class="ni" data-page="yarn"><span class="nic">&#127981;</span>纱线采购</div>
   <div class="ni" data-page="greyfab"><span class="nic">&#129525;</span>胚布采购</div>
+  <div class="ni" data-page="spot"><span class="nic">&#128722;</span>现货采购</div>
   <div class="ni" data-page="yarnout"><span class="nic">&#128666;</span>发料 / 回仓</div>
   <div class="ni" data-page="ystock"><span class="nic">&#128230;</span>库存总览</div>
   <div class="nl">加工厂管理</div>
@@ -192,6 +193,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="nl">基础档案</div>
   <div class="ni" data-page="custs"><span class="nic">&#128101;</span>客户档案</div>
   <div class="ni" data-page="facts"><span class="nic">&#127981;</span>加工厂档案</div>
+  <div class="ni" data-page="fabstall"><span class="nic">&#127978;</span>布行档案</div>
   <div class="ni" data-page="mat"><span class="nic">&#129529;</span>物料档案</div>
   <div class="ni" data-page="cnotice"><span class="nic">&#127881;</span>打办通知单</div>
   <div class="nl">系统</div>
@@ -891,6 +893,8 @@ var DB={
   get greyfabs(){return this.load('gfy')||[];}, set greyfabs(v){this.save('gfy',v);},
   get fgouts(){return this.load('fgo')||[];}, set fgouts(v){this.save('fgo',v);},
   get fgreturns(){return this.load('ret')||[];}, set fgreturns(v){this.save('ret',v);},
+  get fabstalls(){return this.load('fh')||[];}, set fabstalls(v){this.save('fh',v);},
+  get spots(){return this.load('sp')||[];}, set spots(v){this.save('sp',v);},
   // ── 统一删除：本地过滤 + 云端同步 ──
   remove:function(key,id){
     var list=this.load(key);
@@ -936,6 +940,7 @@ var DB={
       quots:this.quots,arecs:this.arecs,recons:this.recons,
       wdocs:this.wdocs,ddocs:this.ddocs,
       cnotices:this.load('cnotices')||[],
+      fabstalls:this.fabstalls,spots:this.spots,
       timestamp:new Date().toISOString()
     };
   },
@@ -995,7 +1000,7 @@ var TABLE_MAP = {
   ar:'ar_records', rc:'ap_records', dd:'dyeing_docs', yn:'yarns',
   yo:'yarn_issues', fgi:'fg_ins', gfy:'grey_fabrics', fgo:'fg_outs',
   fgr:'fg_rolls', cnotices:'color_notices', ret:'fg_returns', tmb:'tombstones',
-  users:'app_users'
+  users:'app_users', fh:'fabric_stalls', sp:'spot_purchases'
 };
 
 function textVal(v){return v===null||v===undefined?'':String(v).trim();}
@@ -2903,8 +2908,8 @@ function logAction(action,entity,entityId,detail){
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
   finance:  ['dash','recon','apaging','arec','araging','profit','quot','custs','settings'],
-  sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice'],
-  purchase: ['dash','yarn','greyfab','yarnout','ystock','dw','dd','facts','mat'],
+  sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice','spot'],
+  purchase: ['dash','yarn','greyfab','spot','yarnout','ystock','dw','dd','facts','fabstall','mat'],
   warehouse:['dash','fgstock','ystock']
 };
 function canAccessPage(page){
@@ -3166,7 +3171,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
 // 染整加工单/打办可选的工厂：染厂 + 印花厂 + 后整理厂（这些都属于染整阶段加工）
 function isDyeFinishFactory(f){var ps=(f&&f.prcs)||[];return ps.indexOf('染厂')>=0||ps.indexOf('印花厂')>=0||ps.indexOf('后整理厂')>=0||ps.indexOf('后整理')>=0||ps.indexOf('定型厂')>=0;}
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],spot:['现货采购','中大/轻纺城调货倒卖 · 按毛重付款、纸筒+空差算真实成本'],fabstall:['布行档案','中大/轻纺城供货档口'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3197,7 +3202,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit,apaging:pgApAging};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,spot:pgSpot,fabstall:pgFabStall,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit,apaging:pgApAging};
   if(fn[p])fn[p]();
 }
 
@@ -4944,8 +4949,8 @@ function pgGrossProfit(){
   });
   // 其它成本（运费/杂费，订单级手填）
   orders.forEach(function(o){var mcRaw=parseFloat(o.miscCost)||0;if(mcRaw>0)getOS(o).miscCost+=mcRaw;});
-  // 现货进货成本（调货倒卖的纯贸易单）
-  orders.forEach(function(o){var scRaw=parseFloat(o.stockCost)||0;if(scRaw>0)getOS(o).stockCost+=scRaw;});
+  // 现货进货成本（现货采购单·调货倒卖，按毛重付款的实付金额，挂到关联订单）
+  (DB.spots||[]).forEach(function(sp){if(!sp||sp.voided)return;var amt=parseFloat(sp.totalAmt)||0;if(!amt)return;var ord=ordOf(sp);if(!ord)return;getOS(ord).stockCost+=amt;});
   var osList=Object.keys(OS).map(function(k){
     var s=OS[k];s.cost=s.feeCost+s.matCost+(s.gfCost||0)+(s.miscCost||0)+(s.stockCost||0);
     s.taxed=!(s.ord&&s.ord.taxType==='excl');           // 开票订单才有综合税耗；现金不开票=0
@@ -6809,9 +6814,6 @@ function openOM(id){
     // 其它成本（运费/杂费等隐形成本，计入毛利）
     var miscI=dInp('o-misc',o.miscCost||'','如：运费/杂费 800');miscI.style.borderColor='#FDE68A';
     g3.appendChild(dFld('其它成本（运费/杂费·元）',miscI,1,'#D97706'));
-    // 现货进货成本：从市场/同行调现货倒卖时填（无加工/原料的纯贸易单），计入毛利
-    var stockI=dInp('o-stock',o.stockCost||'','调货/现货进货价，如 9000');stockI.style.borderColor='#FDE68A';
-    g3.appendChild(dFld('现货进货成本（调货/倒卖·元）',stockI,1,'#D97706'));
     mf.appendChild(dSec('💰','销售信息','#F0FDF4','#BBF7D0','#16A34A',g3));
 
     body.appendChild(mf);
@@ -6995,7 +6997,7 @@ function saveO(id){
     var d={id:id||uid(),no:no,prodNo:document.getElementById('o-pno').value,custNo:document.getElementById('o-cno').value,sty:document.getElementById('o-sty').value,follower:(document.getElementById('o-cky')||{value:''}).value,ordDate:document.getElementById('o-date').value,custNm:cust,fab:fab,fabB:document.getElementById('o-fabB').value||'',comps:comps,gaugeN:gn,gaugeS:gs,width:wd,widthUnit:wu,weight:wt,shrink:document.getElementById('o-sh').value,delDate:document.getElementById('o-del').value,unitPr:document.getElementById('o-pr').value,prUnit:(function(){var b=document.getElementById('o-pu-btn');return b?b.dataset.unit:'元/KG';})(),procUnit:(document.getElementById('cwp')||{dataset:{}}).dataset.procUnit||'KG',
       taxType:(function(){var b=document.querySelector('button[data-tax]');return b?b.dataset.tax:'incl';})(),
       payTm:(function(){var sel=document.getElementById('o-pt-sel');var inp=document.getElementById('o-pt');if(!sel)return inp?inp.value:'';return sel.value==='其它'?(inp?inp.value:''):sel.value;})(),
-      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),stockCost:(document.getElementById('o-stock')||{value:''}).value.trim(),colors:colors};
+      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),colors:colors};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     var oldOrder=id?(l[i]||{}):{};
     var oldColors=oldOrder.colors||[];
@@ -12984,6 +12986,242 @@ function saveYarn(id){
     showToast('原料采购保存成功 ✓','success');
   }catch(err){alert('保存失败: '+err.message);}
 }
+
+// ══════════════════════════════════════════
+//  布行档案（中大/轻纺城供货档口）
+// ══════════════════════════════════════════
+function pgFabStall(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  if(!Array.isArray(DB.fabstalls))DB.fabstalls=[];
+  var bar=document.createElement('div');bar.className='sb2';
+  var inp=mkInput('fh-q','','搜索布行名/位置/联系人...');inp.style.maxWidth='240px';inp.oninput=function(){renderFH();};
+  bar.appendChild(inp);
+  bar.appendChild(mkBtn('&#43; 新增布行','btn bp',function(){openFabStallM();}));
+  pg.appendChild(bar);
+  var card=document.createElement('div');card.className='card';var cb=document.createElement('div');cb.id='fh-body';cb.className='cb';cb.style.padding='0';card.appendChild(cb);pg.appendChild(card);
+  renderFH();
+}
+function renderFH(){
+  var cb=document.getElementById('fh-body');if(!cb)return;cb.innerHTML='';
+  var q=((document.getElementById('fh-q')||{value:''}).value||'').trim().toLowerCase();
+  var list=(DB.fabstalls||[]).filter(function(r){if(!q)return true;return((r.nm||'')+(r.loc||'')+(r.ct||'')).toLowerCase().indexOf(q)>=0;});
+  if(!list.length){cb.innerHTML='<div style="padding:28px;text-align:center;color:var(--t3)">暂无布行，点「新增布行」开始</div>';return;}
+  var rows=list.map(function(r){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td><strong>'+esc(r.nm||'')+'</strong></td><td class="cd">'+esc(r.loc||'')+'</td><td class="cd">'+esc(r.ct||'')+'</td><td class="cd">'+esc(r.ph||'')+'</td><td class="cd" style="font-size:11px;color:var(--t3)">'+esc(r.rm||'')+'</td>';
+    var td=document.createElement('td');td.className='bg2';
+    td.appendChild(mkBtn('编辑','btn bsm bs',function(id){return function(){openFabStallM(id);};}(r.id)));
+    td.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){if(confirm('删除该布行档案？')){DB.remove('fh',id);renderFH();}};}(r.id)));
+    tr.appendChild(td);return tr;
+  });
+  cb.appendChild(buildTable(['布行名','档口位置','联系人','电话','备注','操作'],rows));
+}
+function openFabStallM(id){
+  if(!Array.isArray(DB.fabstalls))DB.fabstalls=[];
+  var r=(id&&DB.fabstalls.find(function(x){return x.id===id;}))||{};
+  var modal=buildModal((id?'编辑':'新增')+'布行档案','ml',function(body){
+    var g=document.createElement('div');g.className='fg';
+    g.appendChild(fv('布行名称',mkInput('fh-nm',r.nm,'如：中大ABC布行'),true));
+    g.appendChild(fv('档口位置',mkInput('fh-loc',r.loc,'如：中大轻纺城 5楼 A123')));
+    g.appendChild(fv('联系人',mkInput('fh-ct',r.ct,'')));
+    g.appendChild(fv('电话',mkInput('fh-ph',r.ph,'')));
+    g.appendChild(fvFull('备注',mkTA('fh-rm',r.rm)));
+    body.appendChild(g);
+  },function(){
+    var nm=(document.getElementById('fh-nm')||{value:''}).value.trim();
+    if(!nm)return alert('请填写布行名称');
+    var l=DB.fabstalls;if(!Array.isArray(l))l=[];
+    var d={id:id||uid(),nm:nm,loc:(document.getElementById('fh-loc')||{value:''}).value.trim(),ct:(document.getElementById('fh-ct')||{value:''}).value.trim(),ph:(document.getElementById('fh-ph')||{value:''}).value.trim(),rm:(document.getElementById('fh-rm')||{value:''}).value.trim()};
+    var i=id?l.findIndex(function(x){return x.id===id;}):-1;if(i>=0)l[i]=d;else l.push(d);
+    DB.fabstalls=l;cm();pgFabStall();showToast('布行档案已保存 ✓','success');
+  });
+  om(modal);
+}
+
+// ══════════════════════════════════════════
+//  现货采购（中大/轻纺城调货倒卖；按毛重付款，纸筒+空差算实际成本）
+// ══════════════════════════════════════════
+function spotNo(){
+  var y=new Date().getFullYear(),max=0;
+  (DB.spots||[]).forEach(function(r){if(r.no&&r.no.indexOf('SP'+y)===0){var n=parseInt(r.no.slice(6))||0;if(n>max)max=n;}});
+  return 'SP'+y+String(max+1).padStart(3,'0');
+}
+function pgSpot(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  if(!Array.isArray(DB.spots))DB.spots=[];
+  var bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+  var inp=mkInput('sp-q','','搜索布行/布料/订单...');inp.style.maxWidth='240px';inp.oninput=function(){renderSpot();};
+  bar.appendChild(inp);
+  bar.appendChild(mkBtn('&#43; 新增现货采购','btn bp',function(){openSpotM();}));
+  var hint=document.createElement('span');hint.style.cssText='font-size:10.5px;color:var(--t3)';hint.textContent='调货倒卖单 · 按毛重付款 · 纸筒+空差算真实成本';
+  bar.appendChild(hint);
+  pg.appendChild(bar);
+  var card=document.createElement('div');card.className='card';var cb=document.createElement('div');cb.id='sp-body';cb.className='cb';cb.style.padding='0';card.appendChild(cb);pg.appendChild(card);
+  renderSpot();
+}
+function renderSpot(){
+  var cb=document.getElementById('sp-body');if(!cb)return;cb.innerHTML='';
+  var q=((document.getElementById('sp-q')||{value:''}).value||'').trim().toLowerCase();
+  var list=(DB.spots||[]).slice().reverse().filter(function(r){if(!q)return true;return((r.stallNm||'')+(r.fab||'')+(r.ordNo||'')).toLowerCase().indexOf(q)>=0;});
+  if(!list.length){cb.innerHTML='<div style="padding:28px;text-align:center;color:var(--t3)">暂无现货采购单</div>';return;}
+  var rows=list.map(function(r){
+    var tr=document.createElement('tr');var u=r.unit==='米'?'米':'KG';
+    tr.innerHTML='<td class="tc">'+esc(r.no||'')+'</td><td class="cd">'+esc(r.date||'')+'</td><td>'+esc(r.stallNm||'')+'</td><td class="cd" style="font-family:monospace;color:var(--p)">'+esc(r.ordNo||'')+'</td><td class="cd" style="font-size:11px">'+esc((r.fab||'').slice(0,18))+'</td><td class="cd">'+(r.totalNet?Number(r.totalNet).toFixed(1)+u:'—')+'</td><td class="cd"><strong style="color:#C41E3A">¥'+(Number(r.totalAmt)||0).toFixed(2)+'</strong></td><td>'+(r.paid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td>';
+    var td=document.createElement('td');td.className='bg2';
+    td.appendChild(mkBtn('编辑','btn bsm bs',function(id){return function(){openSpotM(id);};}(r.id)));
+    td.appendChild(mkBtn('删除','btn bsm br',function(id){return function(){if(confirm('删除该现货采购单？')){DB.remove('sp',id);renderSpot();}};}(r.id)));
+    tr.appendChild(td);return tr;
+  });
+  cb.appendChild(buildTable(['单号','日期','布行','关联订单','布料','合计净量','合计金额','付款','操作'],rows));
+}
+function _spotCalc(){
+  var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
+  var tube=parseFloat((document.getElementById('sp-tube')||{value:0}).value)||0;
+  var empty=parseFloat((document.getElementById('sp-empty')||{value:0}).value)||0;
+  var unit=(document.getElementById('sp-unit')||{value:'kg'}).value;
+  var ded=(unit==='米')?0:(tube+empty);   // 米计价不涉及纸筒空差
+  var totPaid=0,totNet=0;
+  document.querySelectorAll('.sp-row').forEach(function(row){
+    var rolls=parseFloat((row.querySelector('.sp-roll')||{value:0}).value)||0;
+    var gross=parseFloat((row.querySelector('.sp-gross')||{value:0}).value)||0;
+    var extra=parseFloat((row.querySelector('.sp-extra')||{value:0}).value)||0;
+    var pr=base+extra;
+    var paid=pr*gross;                      // 按毛重付款（中大惯例）
+    var net=gross-rolls*ded;if(net<0)net=0; // 净量=毛量−条数×(纸筒+空差)
+    var real=net>0?paid/net:0;              // 实际单价=实付÷净量
+    var nEl=row.querySelector('.sp-net');if(nEl)nEl.textContent=net?net.toFixed(1):'—';
+    var pEl=row.querySelector('.sp-paid');if(pEl)pEl.textContent=paid?'¥'+paid.toFixed(2):'—';
+    var rEl=row.querySelector('.sp-real');if(rEl)rEl.innerHTML=real>0?'<b style="color:#0369A1">¥'+real.toFixed(2)+'</b>':'—';
+    totPaid+=paid;totNet+=net;
+  });
+  var tp=document.getElementById('sp-tot-paid');if(tp)tp.textContent='¥'+totPaid.toFixed(2);
+  var tn=document.getElementById('sp-tot-net');if(tn)tn.textContent=totNet.toFixed(1)+(unit==='米'?' 米':' KG');
+}
+function openSpotM(id){
+  if(!Array.isArray(DB.spots))DB.spots=[];
+  var r=(id&&DB.spots.find(function(x){return x.id===id;}))||{};
+  noteEditOpen('sp',r);
+  var modal=buildModal((id?'编辑':'新增')+'现货采购单','mxl',function(body){
+    // ① 单据头
+    var g=document.createElement('div');g.className='fg';
+    g.appendChild(fv('进货日期',mkInput('sp-date',r.date||tod(),'','date')));
+    g.appendChild(fv('布行',mkSelect('sp-stall',[{v:'',l:'— 选布行 —'}].concat((DB.fabstalls||[]).map(function(f){return{v:f.id,l:f.nm};})),r.stallId||''),true));
+    var ords=(DB.orders||[]).filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+    var ordSel=mkSelect('sp-ord',[{v:'',l:'— 必选：倒卖给哪张订单 —'}].concat(ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab.slice(0,12):'')};})),r.ordId||'');
+    g.appendChild(fv('关联销售订单',ordSel,true));
+    var matSel=mkSelect('sp-mat',[{v:'',l:'— 选物料(可选,自动带入规格) —'}].concat((DB.mats||[]).map(function(m){return{v:m.id,l:(m.mid?m.mid+' ':'')+(m.alias||m.fab||'').slice(0,18)};})),r.matId||'');
+    g.appendChild(fv('选物料(调取规格/纸筒空差)',matSel));
+    body.appendChild(g);
+    var g2=document.createElement('div');g2.className='fg';
+    g2.appendChild(fvFull('布料/品名',mkInput('sp-fab',r.fab||'','从物料带入或手填')));
+    body.appendChild(g2);
+    // ② 价/扣减/税
+    var g3=document.createElement('div');g3.className='fg';
+    g3.appendChild(fv('计量单位',mkSelect('sp-unit',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],r.unit||'kg')));
+    g3.appendChild(fv('基础进货单价(元)',mkInput('sp-basepr',r.basePr||'','如 40','number')));
+    g3.appendChild(fv('纸筒(KG/条)',mkInput('sp-tube',r.tube!=null?r.tube:'','如 1.5','number')));
+    g3.appendChild(fv('空差(KG/条)',mkInput('sp-empty',r.empty!=null?r.empty:'','如 1.5','number')));
+    g3.appendChild(fv('价格类型',mkSelect('sp-inc',[{v:'excl',l:'不含税/现金'},{v:'incl',l:'含税(有票)'}],r.taxIncl?'incl':'excl')));
+    g3.appendChild(fv('付款状态',mkSelect('sp-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
+    body.appendChild(g3);
+    // 头部价/扣减/单位变化时也重算
+    ['sp-basepr','sp-tube','sp-empty'].forEach(function(idd){var el=document.getElementById(idd);if(el)el.addEventListener('input',_spotCalc);});
+    var unitEl=document.getElementById('sp-unit');if(unitEl)unitEl.addEventListener('change',_spotCalc);
+    // ③ 颜色明细
+    var sec=document.createElement('div');sec.style.cssText='margin-top:6px';
+    sec.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">🎨 颜色明细（按毛重付款 · 净量与实际单价自动算）</div>';
+    var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
+    tbl.innerHTML='<thead><tr style="background:var(--b3)">'
+      +['颜色','条数','毛量','加价','净量(自动)','实付金额(自动)','实际单价(自动)',''].map(function(h){return '<th style="padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap">'+h+'</th>';}).join('')
+      +'</tr></thead><tbody id="sp-clr-body"></tbody>'
+      +'<tfoot><tr style="background:#FFFBEB;font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">合计</td><td id="sp-tot-net" style="padding:6px 8px">—</td><td id="sp-tot-paid" style="padding:6px 8px;color:#C41E3A">¥0.00</td><td colspan="2"></td></tr></tfoot>';
+    sec.appendChild(tbl);
+    var addBtn=mkBtn('&#43; 添加颜色','btn bsm bq',function(){addSpotRow({});});
+    addBtn.style.marginTop='6px';sec.appendChild(addBtn);
+    body.appendChild(sec);
+    var hint=document.createElement('div');hint.style.cssText='font-size:10.5px;color:#94A3B8;margin-top:6px';
+    hint.textContent='💡 实付=单价×毛量(中大按毛重收费)；净量=毛量−条数×(纸筒+空差)；实际单价=实付÷净量(你的真实成本/对比布行用)。此单实付金额自动进关联订单的毛利。';
+    body.appendChild(hint);
+
+    function addSpotRow(c){
+      var tb=document.getElementById('sp-clr-body');var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
+      function inp(cls,val,w,ph){var i=document.createElement('input');i.className=cls;i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:'+(w||'70px')+';padding:4px 6px;border:1px solid var(--bd);border-radius:4px;font-size:12px';i.addEventListener('input',_spotCalc);return i;}
+      function tdwrap(el){var td=document.createElement('td');td.style.padding='4px 6px';td.appendChild(el);return td;}
+      tr.appendChild(tdwrap(inp('sp-nm',c.nm,'90px','颜色')));
+      tr.appendChild(tdwrap(inp('sp-roll',c.rolls,'56px','条数')));
+      tr.appendChild(tdwrap(inp('sp-gross',c.gross,'72px','毛量')));
+      tr.appendChild(tdwrap(inp('sp-extra',c.extraPr,'56px','+加价')));
+      var tdN=document.createElement('td');tdN.className='sp-net';tdN.style.cssText='padding:4px 6px;color:#16A34A;font-weight:600';tdN.textContent='—';tr.appendChild(tdN);
+      var tdP=document.createElement('td');tdP.className='sp-paid';tdP.style.cssText='padding:4px 6px;color:#C41E3A;font-weight:600';tdP.textContent='—';tr.appendChild(tdP);
+      var tdR=document.createElement('td');tdR.className='sp-real';tdR.style.cssText='padding:4px 6px';tdR.textContent='—';tr.appendChild(tdR);
+      var tdX=document.createElement('td');tdX.style.padding='4px 6px';tdX.appendChild(mkBtn('×','btn bsm br',function(){tr.remove();_spotCalc();}));tr.appendChild(tdX);
+      tb.appendChild(tr);
+    }
+    // 渲染已有颜色 / 从订单带入
+    function renderSpotColors(fromOrder){
+      var tb=document.getElementById('sp-clr-body');tb.innerHTML='';
+      var src=(r.colors&&r.colors.length)?r.colors:(fromOrder?((fromOrder.colors||[]).map(function(c){return{nm:c.nm,extraPr:c.extraPr||''};})):[]);
+      if(!src.length)src=[{}];
+      src.forEach(function(c){addSpotRow(c);});
+      _spotCalc();
+    }
+    // 物料带入
+    matSel.onchange=function(){
+      var m=(DB.mats||[]).find(function(x){return x.id===this.value;}.bind(this));if(!m)return;
+      var fabEl=document.getElementById('sp-fab');if(fabEl&&!fabEl.value)fabEl.value=m.fab||m.alias||'';
+      var tEl=document.getElementById('sp-tube');if(tEl&&!tEl.value&&m.tubeWt)tEl.value=m.tubeWt;
+      var eEl=document.getElementById('sp-empty');if(eEl&&!eEl.value&&m.emptyDiff)eEl.value=m.emptyDiff;
+      var pEl=document.getElementById('sp-basepr');if(pEl&&!pEl.value&&m.unitPr)pEl.value=m.unitPr;
+      if(m.unitPr)showToast('该物料上次单价 ¥'+m.unitPr+(m.origPr?'（原 ¥'+m.origPr+'）':''),'info');
+      _spotCalc();
+    };
+    ordSel.onchange=function(){
+      var o=(DB.orders||[]).find(function(x){return x.id===this.value;}.bind(this));
+      var fabEl=document.getElementById('sp-fab');if(o&&fabEl&&!fabEl.value)fabEl.value=o.fab||'';
+      var uEl=document.getElementById('sp-unit');if(o&&uEl&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0)uEl.value='米';
+      renderSpotColors(o);
+    };
+    var initOrd=r.ordId?ords.find(function(o){return o.id===r.ordId;}):null;
+    renderSpotColors(initOrd);
+  },function(){
+    if(!checkSaveConflict('sp',id,DB.spots))return;
+    var stallId=(document.getElementById('sp-stall')||{value:''}).value;
+    var ordId=(document.getElementById('sp-ord')||{value:''}).value;
+    if(!ordId)return alert('请选择关联销售订单（不囤货，必须挂单）');
+    var stall=(DB.fabstalls||[]).find(function(x){return x.id===stallId;})||{};
+    var ord=(DB.orders||[]).find(function(x){return x.id===ordId;})||{};
+    var unit=(document.getElementById('sp-unit')||{value:'kg'}).value;
+    var base=parseFloat((document.getElementById('sp-basepr')||{value:0}).value)||0;
+    var tube=parseFloat((document.getElementById('sp-tube')||{value:0}).value)||0;
+    var empty=parseFloat((document.getElementById('sp-empty')||{value:0}).value)||0;
+    var ded=(unit==='米')?0:(tube+empty);
+    var colors=[],totPaid=0,totNet=0;
+    document.querySelectorAll('.sp-row').forEach(function(row){
+      var nm=(row.querySelector('.sp-nm')||{value:''}).value.trim();
+      var rolls=parseFloat((row.querySelector('.sp-roll')||{value:0}).value)||0;
+      var gross=parseFloat((row.querySelector('.sp-gross')||{value:0}).value)||0;
+      var extra=parseFloat((row.querySelector('.sp-extra')||{value:''}).value)||0;
+      if(!nm&&!gross)return;
+      var paid=(base+extra)*gross;var net=gross-rolls*ded;if(net<0)net=0;
+      colors.push({nm:nm,rolls:rolls||'',gross:gross||'',extraPr:extra||'',net:Number(net.toFixed(1)),paid:Number(paid.toFixed(2)),realPr:net>0?Number((paid/net).toFixed(2)):''});
+      totPaid+=paid;totNet+=net;
+    });
+    var d={id:id||uid(),no:r.no||spotNo(),date:(document.getElementById('sp-date')||{value:''}).value,
+      stallId:stallId,stallNm:stall.nm||'',ordId:ordId,ordNo:ord.no||'',
+      matId:(document.getElementById('sp-mat')||{value:''}).value,fab:(document.getElementById('sp-fab')||{value:''}).value.trim(),
+      unit:unit,basePr:base||'',tube:tube||'',empty:empty||'',
+      taxIncl:(document.getElementById('sp-inc')||{value:'excl'}).value==='incl',
+      paid:(document.getElementById('sp-paid')||{value:'0'}).value==='1',
+      colors:colors,totalAmt:Number(totPaid.toFixed(2)),totalNet:Number(totNet.toFixed(1)),
+      rm:''};
+    var l=DB.spots;if(!Array.isArray(l))l=[];var i=id?l.findIndex(function(x){return x.id===id;}):-1;
+    if(i>=0)l[i]=d;else l.push(d);
+    DB.spots=l;cm();pgSpot();showToast('现货采购单已保存 '+d.no,'success');
+  });
+  om(modal);
+  _spotCalc();
+}
+
 // ── 发料/回仓页 pgYarnOut ──
 // ══════════════════════════════════════════
 //  胚布采购模块

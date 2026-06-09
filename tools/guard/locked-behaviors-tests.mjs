@@ -618,11 +618,20 @@ test('侧边栏分组折叠用CSS类(.mcol)，不动角色隐藏的 inline displ
   if (!/el\.style\.display=canAccessPage\(pg\)\?''/.test(html)) throw new Error('角色隐藏逻辑被破坏');
 });
 
-test('现货倒卖：订单进货成本计入毛利（纯贸易单）', () => {
-  if (!/o-stock/.test(html)) throw new Error('订单缺少现货进货成本字段 o-stock');
-  if (!/stockCost:\(document\.getElementById\('o-stock'\)/.test(html)) throw new Error('订单未保存 stockCost');
-  if (!/getOS\(o\)\.stockCost\+=scRaw/.test(html)) throw new Error('毛利未汇总现货进货成本');
+test('现货倒卖：现货采购单(按毛重付款·纸筒空差算实际单价)计入毛利', () => {
+  // 模块存在
+  if (!/function openSpotM\(id\)/.test(html)) throw new Error('缺少现货采购单 openSpotM');
+  if (!/function pgFabStall\(\)/.test(html)) throw new Error('缺少布行档案 pgFabStall');
+  if (!/sp:'spot_purchases'/.test(html)) throw new Error('spot_purchases 未接入 TABLE_MAP(同步)');
+  // 按毛重付款 + 净量 + 实际单价 算法
+  if (!/var paid=pr\*gross;/.test(html)) throw new Error('实付应=单价×毛重(中大按毛重收费)');
+  if (!/var net=gross-rolls\*ded;/.test(html)) throw new Error('净量应=毛量−条数×(纸筒+空差)');
+  if (!/var real=net>0\?paid\/net:0;/.test(html)) throw new Error('实际单价应=实付÷净量');
+  // 现货采购单金额挂到关联订单毛利
+  if (!/getOS\(ord\)\.stockCost\+=amt/.test(html)) throw new Error('现货采购未计入关联订单毛利');
   if (!/现货进货：/.test(html)) throw new Error('成本构成缺少现货进货明细');
+  // 旧的订单单字段 o-stock 已删除(避免两处重复录)
+  if (/getElementById\('o-stock'\)/.test(html)) throw new Error('订单旧 o-stock 字段应已删除');
 });
 
 test('毛利成本必须计入胚布采购（直接购胚模式材料成本）', () => {

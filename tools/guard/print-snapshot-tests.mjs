@@ -353,6 +353,8 @@ function getHelpers() {
       extractFn('docHeader'),
       extractFn('getPayClause'),
       extractFn('metersToKG'),
+      extractFn('orderColorExtra'),
+      extractFn('outBillAmount'),
       extractFn('getARecReturnRows'),
       extractFn('printDoc'),
     ];

@@ -13117,16 +13117,20 @@ function openSpotM(id){
     body.appendChild(g2);
     // ② 价/扣减/税
     var g3=document.createElement('div');g3.className='fg';
-    g3.appendChild(fv('计量单位',mkSelect('sp-unit',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],r.unit||'kg')));
-    g3.appendChild(fv('基础进货单价(元)',mkInput('sp-basepr',r.basePr||'','如 40','number')));
-    g3.appendChild(fv('纸筒(KG/条)',mkInput('sp-tube',r.tube!=null?r.tube:'','如 1.5','number')));
-    g3.appendChild(fv('空差(KG/条)',mkInput('sp-empty',r.empty!=null?r.empty:'','如 1.5','number')));
+    var unitSel=mkSelect('sp-unit',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],r.unit||'kg');
+    var basePrInp=mkInput('sp-basepr',r.basePr||'','如 40','number');
+    var tubeInp=mkInput('sp-tube',r.tube!=null?r.tube:'','如 1.5','number');
+    var emptyInp=mkInput('sp-empty',r.empty!=null?r.empty:'','如 1.5','number');
+    g3.appendChild(fv('计量单位',unitSel));
+    g3.appendChild(fv('基础进货单价(元)',basePrInp));
+    g3.appendChild(fv('纸筒(KG/条)',tubeInp));
+    g3.appendChild(fv('空差(KG/条)',emptyInp));
     g3.appendChild(fv('价格类型',mkSelect('sp-inc',[{v:'excl',l:'不含税/现金'},{v:'incl',l:'含税(有票)'}],r.taxIncl?'incl':'excl')));
     g3.appendChild(fv('付款状态',mkSelect('sp-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
     body.appendChild(g3);
-    // 头部价/扣减/单位变化时也重算
-    ['sp-basepr','sp-tube','sp-empty'].forEach(function(idd){var el=document.getElementById(idd);if(el)el.addEventListener('input',_spotCalc);});
-    var unitEl=document.getElementById('sp-unit');if(unitEl)unitEl.addEventListener('change',_spotCalc);
+    // 头部价/扣减/单位变化时也重算（用本地引用，build 时 DOM 未挂载不能 getElementById）
+    [basePrInp,tubeInp,emptyInp].forEach(function(el){el.addEventListener('input',_spotCalc);});
+    unitSel.addEventListener('change',_spotCalc);
     // ③ 颜色明细
     var sec=document.createElement('div');sec.style.cssText='margin-top:6px';
     sec.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">🎨 颜色明细（按毛重付款 · 净量与实际单价自动算）</div>';
@@ -13136,6 +13140,7 @@ function openSpotM(id){
       +'</tr></thead><tbody id="sp-clr-body"></tbody>'
       +'<tfoot><tr style="background:#FFFBEB;font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">合计</td><td id="sp-tot-net" style="padding:6px 8px">—</td><td id="sp-tot-paid" style="padding:6px 8px;color:#C41E3A">¥0.00</td><td colspan="2"></td></tr></tfoot>';
     sec.appendChild(tbl);
+    var clrBody=tbl.querySelector('#sp-clr-body'); // 本地引用：build 时 modal 未挂载，不能用 getElementById
     var addBtn=mkBtn('&#43; 添加颜色','btn bsm bq',function(){addSpotRow({});});
     addBtn.style.marginTop='6px';sec.appendChild(addBtn);
     body.appendChild(sec);
@@ -13144,7 +13149,7 @@ function openSpotM(id){
     body.appendChild(hint);
 
     function addSpotRow(c){
-      var tb=document.getElementById('sp-clr-body');var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
+      var tb=clrBody;if(!tb)return;var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
       function inp(cls,val,w,ph){var i=document.createElement('input');i.className=cls;i.value=(val==null?'':val);i.placeholder=ph||'';i.style.cssText='width:'+(w||'70px')+';padding:4px 6px;border:1px solid var(--bd);border-radius:4px;font-size:12px';i.addEventListener('input',_spotCalc);return i;}
       function tdwrap(el){var td=document.createElement('td');td.style.padding='4px 6px';td.appendChild(el);return td;}
       tr.appendChild(tdwrap(inp('sp-nm',c.nm,'90px','颜色')));
@@ -13159,7 +13164,7 @@ function openSpotM(id){
     }
     // 渲染已有颜色 / 从订单带入
     function renderSpotColors(fromOrder){
-      var tb=document.getElementById('sp-clr-body');tb.innerHTML='';
+      var tb=clrBody;if(!tb)return;tb.innerHTML='';
       var src=(r.colors&&r.colors.length)?r.colors:(fromOrder?((fromOrder.colors||[]).map(function(c){return{nm:c.nm,extraPr:c.extraPr||''};})):[]);
       if(!src.length)src=[{}];
       src.forEach(function(c){addSpotRow(c);});

@@ -13128,9 +13128,8 @@ function _spotCalc(){
     var buy=parseFloat((row.querySelector('.sp-buy')||{value:0}).value)||0;     // 采购重量(下单给布行)
     var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;     // 实际重量(后填,算成本)
     var extra=parseFloat((row.querySelector('.sp-extra')||{value:0}).value)||0; // 加价
-    var qty=act>0?act:buy;                                                      // 实际优先；未填用采购重量暂估
-    var amt=qty*(base+extra);
-    var aEl=row.querySelector('.sp-amt');if(aEl)aEl.textContent=amt?'¥'+amt.toFixed(2):'—';
+    var amt=act>0?act*(base+extra):0;                                           // 金额只按"实际重量"算；未填则不计(避免误导)
+    var aEl=row.querySelector('.sp-amt');if(aEl)aEl.textContent=(act>0&&amt)?'¥'+amt.toFixed(2):'—';
     totAmt+=amt;totBuy+=buy;totAct+=act;
   });
   var u=(unit==='米'?' 米':' KG');
@@ -13179,7 +13178,7 @@ function openSpotM(id){
     body.appendChild(sec);
     var g4=document.createElement('div');g4.className='fg';g4.appendChild(fvFull('备注/特别约定（打印到采购合同）',mkTA('sp-rm',r.rm)));body.appendChild(g4);
     var hint=document.createElement('div');hint.style.cssText='font-size:10.5px;color:#94A3B8;margin-top:4px';
-    hint.textContent='💡 采购重量=下单给布行的量(打印到合同)；实际重量=布行实际调来的成品量(后填,按它算真实成本)；金额=实际重量(未填则用采购重量)×单价。此单金额自动进关联订单毛利。';
+    hint.textContent='💡 采购重量=下单给布行的量(打印到合同)；实际重量=布行实际调来的成品量(后填)。金额(成本)=实际重量×单价，实际重量没填前不显示金额(避免误导)。此单金额自动进关联订单毛利。';
     body.appendChild(hint);
     function addSpotRow(c){
       var tb=clrBody;if(!tb)return;var tr=document.createElement('tr');tr.className='sp-row';tr.style.borderBottom='1px solid var(--bd)';
@@ -13233,7 +13232,7 @@ function openSpotM(id){
       var act=parseFloat((row.querySelector('.sp-act')||{value:0}).value)||0;
       var extra=parseFloat((row.querySelector('.sp-extra')||{value:''}).value)||0;
       if(!nm&&!buy&&!act)return;
-      var qty=act>0?act:buy;var amt=qty*(base+extra);
+      var amt=act>0?act*(base+extra):0; // 成本只按实际重量；未填则金额=0(尚未计成本)
       colors.push({nm:nm,code:code,buyQty:buy||'',actQty:act||'',extraPr:extra||'',amt:Number(amt.toFixed(2))});
       totAmt+=amt;totBuy+=buy;totAct+=act;
     });

@@ -13227,6 +13227,25 @@ function _spotCalc(){
   var rn=document.getElementById('sp-ret-note');
   if(rn)rn.innerHTML=totFee>0?('🔴 含退货红冲：布行退款合计 <b style="color:#16A34A">¥'+totRefund.toFixed(2)+'</b>，我方承担费用 <b style="color:#DC2626">¥'+totFee.toFixed(2)+'</b>（搬运/包装费，已计入上方成本）'):'';
 }
+// 解析这张现货采购对应的物料档案：优先选中的物料，否则按关联订单的物料编号(prodNo)匹配
+function _spotResolveMat(matId,ordId){
+  if(matId){var m=(DB.mats||[]).find(function(x){return x.id===matId;});if(m)return m;}
+  var o=(DB.orders||[]).find(function(x){return x.id===ordId;});
+  if(o&&o.prodNo){var m2=(DB.mats||[]).find(function(x){return sameCode(matCode(x),o.prodNo);});if(m2)return m2;}
+  return null;
+}
+function _spotMatSpec(m){if(!m)return '';return (m.width?m.width+(m.widthUnit||'cm'):'')+(m.gsm?((m.width?'×':'')+m.gsm+'g/m²'):'');}
+// 在编辑弹窗里显示「对方货号(原编号)/规格/原厂」，让布行能识别(会打印到采购合同)
+function _spotUpdMatInfo(){
+  var el=document.getElementById('sp-mat-info');if(!el)return;
+  var m=_spotResolveMat((document.getElementById('sp-mat')||{value:''}).value,(document.getElementById('sp-ord')||{value:''}).value);
+  if(!m){el.innerHTML='<span style="color:#94A3B8">选择物料或关联订单后，自动带出「对方货号/规格」打印到采购合同</span>';return;}
+  var spec=_spotMatSpec(m);
+  el.innerHTML='🏷 对方货号(原编号)：<b style="color:#7C3AED;font-family:monospace">'+esc(m.origNo||'—')+'</b>'
+    +(spec?'　｜　规格：<b>'+esc(spec)+'</b>':'')
+    +(m.origCo?'　｜　原厂：'+esc(m.origCo):'')
+    +'　<span style="color:#94A3B8">（打印到采购合同，方便布行识别）</span>';
+}
 function openSpotM(id){
   if(!Array.isArray(DB.spots))DB.spots=[];
   var r=(id&&DB.spots.find(function(x){return x.id===id;}))||{};
@@ -13245,6 +13264,7 @@ function openSpotM(id){
     var g2=document.createElement('div');g2.className='fg';
     g2.appendChild(fvFull('布料/品名',mkInput('sp-fab',r.fab||'','从物料带入或手填')));
     body.appendChild(g2);
+    var matInfo=document.createElement('div');matInfo.id='sp-mat-info';matInfo.style.cssText='font-size:11px;background:#F5F3FF;border:1px solid #E9D5FF;border-radius:7px;padding:7px 10px;margin:2px 0 4px;line-height:1.6';body.appendChild(matInfo);
     var g3=document.createElement('div');g3.className='fg';
     var unitSel=mkSelect('sp-unit',[{v:'kg',l:'公斤(kg)'},{v:'米',l:'米(m)'}],r.unit||'kg');
     var basePrInp=mkInput('sp-basepr',r.basePr||'','如 40','number');
@@ -13287,7 +13307,11 @@ function openSpotM(id){
       var tdX=document.createElement('td');tdX.style.cssText='padding:4px 6px;white-space:nowrap';
       var retBtn=mkBtn('退货','btn bsm',function(){openSpotReturn(tr);});retBtn.className='sp-ret-btn btn bsm';retBtn.style.cssText+=';margin-right:3px;background:var(--o);color:#fff';
       tdX.appendChild(retBtn);
-      tdX.appendChild(mkBtn('×','btn bsm br',function(){tr.remove();_spotCalc();}));
+      tdX.appendChild(mkBtn('×','btn bsm br',function(){
+        var hasData=((tr.querySelector('.sp-nm')||{value:''}).value||'').trim()||((tr.querySelector('.sp-buy')||{value:''}).value||'')||((tr.querySelector('.sp-act')||{value:''}).value||'');
+        if(hasData&&!confirm('删除这一行颜色？\n\n× 用于删除「录错的行」。\n如果是货已到、要退货，请点橙色「退货」按钮（保留痕迹+算扣费）。'))return;
+        tr.remove();_spotCalc();
+      }));
       tr.appendChild(tdX);
       tb.appendChild(tr);
     }
@@ -13299,21 +13323,23 @@ function openSpotM(id){
       _spotCalc();
     }
     matSel.onchange=function(){
-      var mid=this.value;var m=(DB.mats||[]).find(function(x){return x.id===mid;});if(!m)return;
+      var mid=this.value;var m=(DB.mats||[]).find(function(x){return x.id===mid;});if(!m){_spotUpdMatInfo();return;}
       var fabEl=document.getElementById('sp-fab');if(fabEl&&!fabEl.value)fabEl.value=m.fab||m.alias||'';
       var pEl=document.getElementById('sp-basepr');if(pEl&&!pEl.value&&m.unitPr)pEl.value=m.unitPr;
       if(m.unitPr)showToast('该物料上次单价 ¥'+m.unitPr+(m.origPr?'（原 ¥'+m.origPr+'）':''),'info');
-      _spotCalc();
+      _spotUpdMatInfo();_spotCalc();
     };
     ordSel.onchange=function(){
       var oid=this.value;var o=(DB.orders||[]).find(function(x){return x.id===oid;});
       var fabEl=document.getElementById('sp-fab');if(o&&fabEl&&!fabEl.value)fabEl.value=o.fab||'';
       var uEl=document.getElementById('sp-unit');if(o&&uEl&&String(o.prUnit||'').toUpperCase().indexOf('M')>=0)uEl.value='米';
-      renderSpotColors(o);
+      renderSpotColors(o);_spotUpdMatInfo();
     };
     var initOrd=r.ordId?ords.find(function(o){return o.id===r.ordId;}):null;
-    renderSpotColors(initOrd);
+    renderSpotColors(initOrd);_spotUpdMatInfo();
   },function(){
+   var savedNo='';
+   try{
     if(!checkSaveConflict('sp',id,DB.spots))return;
     var stallId=(document.getElementById('sp-stall')||{value:''}).value;
     var ordId=(document.getElementById('sp-ord')||{value:''}).value;
@@ -13344,11 +13370,16 @@ function openSpotM(id){
       paid:(document.getElementById('sp-paid')||{value:'0'}).value==='1',
       colors:colors,totalAmt:Number(totAmt.toFixed(2)),totalBuy:Number(totBuy.toFixed(1)),totalNet:Number(totAct.toFixed(1)),
       rm:(document.getElementById('sp-rm')||{value:''}).value};
+    // 快照「对方货号(原编号)/规格/原厂」——优先选中物料，否则按订单物料编号匹配；打印到采购合同方便布行识别
+    var rmat=_spotResolveMat(d.matId,ordId)||{};
+    d.matOrigNo=rmat.origNo||'';d.matOrigCo=rmat.origCo||'';d.spec=_spotMatSpec(rmat);
     var l=DB.spots;if(!Array.isArray(l))l=[];var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
-    DB.spots=l;
+    DB.spots=l;savedNo=d.no;
     logAction(i>=0?'编辑现货采购':'新增现货采购','现货采购',d.no,(d.stallNm||'')+' '+(d.fab||'')+' '+(d.ordNo||'')+' ¥'+(d.totalAmt||0));
-    cm();pgSpot();showToast('现货采购单已保存 '+d.no,'success');
+   }catch(err){alert('保存失败：'+(err&&err.message||err));return;}
+   cm();try{pgSpot();}catch(e){}
+   showToast('现货采购单已保存 '+savedNo,'success');
   });
   om(modal);
   _spotCalc();
@@ -13358,6 +13389,11 @@ function prtSpot(id){
   var r=(DB.spots||[]).find(function(x){return x.id===id;});if(!r)return alert('找不到现货采购单');
   var stall=(DB.fabstalls||[]).find(function(x){return x.id===r.stallId;})||{};
   var u=r.unit==='米'?'米':'KG';
+  // 对方货号(原编号)/规格：优先快照，旧单回退到实时匹配物料
+  var pmat=_spotResolveMat(r.matId,r.ordId)||{};
+  var origNo=r.matOrigNo||pmat.origNo||'';
+  var spec=r.spec||_spotMatSpec(pmat);
+  var origCo=r.matOrigCo||pmat.origCo||'';
   var rows='',tot=0;
   (r.colors||[]).forEach(function(c){
     var buy=parseFloat(c.buyQty)||0;var pr=(parseFloat(r.basePr)||0)+(parseFloat(c.extraPr)||0);var amt=buy*pr;tot+=amt;
@@ -13402,7 +13438,7 @@ function prtSpot(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px">'
     +'<div style="border:1px solid #e5e5e5;border-radius:6px;padding:8px 12px"><div style="font-size:9px;color:#999;font-weight:700">供方（甲方·布行）</div><div style="font-size:13px;font-weight:700;margin-top:3px">'+esc(stall.nm||r.stallNm||'')+'</div><div style="font-size:10px;color:#666;margin-top:4px">'+esc(stall.loc||'')+'　联系人：'+esc(stall.ct||'')+'　电话：'+esc(stall.ph||'')+'</div></div>'
     +'<div style="border:1px solid #e5e5e5;border-radius:6px;padding:8px 12px"><div style="font-size:9px;color:#999;font-weight:700">需方（乙方）</div><div style="font-size:13px;font-weight:700;margin-top:3px">'+esc(CO.nm)+'</div><div style="font-size:10px;color:#666;margin-top:4px">联系人：'+esc(CO.preparer||currentPreparer()||'')+'　电话：'+esc(CO.tel)+'</div></div></div>'
-    +(r.fab?'<div style="background:#F5F3FF;border-left:3px solid #7C3AED;border-radius:6px;padding:8px 12px;margin-bottom:8px"><span style="font-size:9px;color:#7C3AED;font-weight:700">面料规格</span><div style="font-size:13px;font-weight:700;margin-top:2px">'+esc(r.fab)+'</div></div>':'')
+    +((r.fab||origNo||spec)?'<div style="background:#F5F3FF;border-left:3px solid #7C3AED;border-radius:6px;padding:8px 12px;margin-bottom:8px"><span style="font-size:9px;color:#7C3AED;font-weight:700">面料规格</span><div style="font-size:13px;font-weight:700;margin-top:2px">'+esc(r.fab||'')+'</div>'+((origNo||spec)?'<div style="font-size:10.5px;color:#444;margin-top:3px">'+(origNo?'<b>对方货号(贵司编号)：<span style="font-family:monospace;color:#7C3AED">'+esc(origNo)+'</span></b>':'')+(spec?(origNo?'　｜　':'')+'规格：'+esc(spec):'')+(origCo?'　｜　原厂：'+esc(origCo):'')+'</div>':'')+'</div>':'')
     +'<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr style="background:#EFF6FF">'
     +['颜色名称','色号','采购数量('+u+')','单价(元/'+u+')','金额(元)'].map(function(h){return '<th style="border:1px solid #ccc;padding:6px 8px;color:#1e3a8a;text-align:left;font-size:10px">'+h+'</th>';}).join('')
     +'</tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="border:1px solid #ccc;padding:10px;text-align:center;color:#999">无明细</td></tr>')+'</tbody>'

@@ -5727,15 +5727,19 @@ function openMatModal(id){
       // 金额输入框 flex:1 取剩余空间；两个切换框按文字长度固定窄宽，绝不挤压
       inp.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 6px;font-size:11.5px;background:#fff;flex:1 1 auto;min-width:0;box-sizing:border-box';
       if(rec&&rec[idBase]!=null&&rec[idBase]!=='')inp.value=rec[idBase];
-      function mkSel(suffix,opts,defV,w){
-        var s=document.createElement('select');s.id='mf-'+idBase+suffix;
-        s.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 2px;font-size:10.5px;background:#fff;box-sizing:border-box;flex:0 0 '+w+'px;cursor:pointer';
-        opts.forEach(function(o){s.appendChild(new Option(o[1],o[0]));});
-        s.value=(rec&&rec[idBase+suffix])||defV;return s;
+      // 点击切换的小药丸按钮(不用下拉,一点即换)。用 button.value 存值,保存逻辑 g() 照常读取
+      function mkToggle(suffix,opts,defV,w){
+        var b=document.createElement('button');b.type='button';b.id='mf-'+idBase+suffix;b.title='点击切换';
+        var cur=(rec&&rec[idBase+suffix])||defV;b.value=cur;
+        function lbl(v){for(var i=0;i<opts.length;i++)if(opts[i][0]===v)return opts[i][1];return opts[0][1];}
+        b.textContent=lbl(cur);
+        b.style.cssText='border:1px solid #C7D2FE;border-radius:5px;padding:5px 2px;font-size:10.5px;background:#EEF2FF;color:#3730A3;font-weight:600;box-sizing:border-box;flex:0 0 '+w+'px;cursor:pointer;white-space:nowrap';
+        b.onclick=function(){var idx=0;for(var i=0;i<opts.length;i++){if(opts[i][0]===b.value){idx=i;break;}}var nx=opts[(idx+1)%opts.length];b.value=nx[0];b.textContent=nx[1];};
+        return b;
       }
-      var taxSel=mkSel('Tax',[['excl','不含税'],['incl','含税']],defTax,56);
-      var unitSel=mkSel('Unit',[['KG','元/KG'],['米','元/米']],defUnit,60);
-      // 规范顺序：金额 → 单位 → 税状态(读作 "¥60/KG（含税）")
+      var taxSel=mkToggle('Tax',[['excl','不含税'],['incl','含税']],defTax,56);
+      var unitSel=mkToggle('Unit',[['KG','元/KG'],['米','元/米']],defUnit,60);
+      // 规范顺序：金额 → 单位 → 税状态(读作 "¥60/KG（含税）")，两个切换框点一下就换
       row.appendChild(inp);row.appendChild(unitSel);row.appendChild(taxSel);
       g.appendChild(row);return g;
     }

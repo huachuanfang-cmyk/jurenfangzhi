@@ -5735,7 +5735,8 @@ function openMatModal(id){
       }
       var taxSel=mkSel('Tax',[['excl','不含税'],['incl','含税']],defTax,56);
       var unitSel=mkSel('Unit',[['KG','元/KG'],['米','元/米']],defUnit,60);
-      row.appendChild(inp);row.appendChild(taxSel);row.appendChild(unitSel);
+      // 规范顺序：金额 → 单位 → 税状态(读作 "¥60/KG（含税）")
+      row.appendChild(inp);row.appendChild(unitSel);row.appendChild(taxSel);
       g.appendChild(row);return g;
     }
     grid.appendChild(priceGrp('price','单价','120','incl','KG'));        // 我方卖价(通常含税)

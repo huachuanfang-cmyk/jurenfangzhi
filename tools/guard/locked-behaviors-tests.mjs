@@ -818,6 +818,13 @@ test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合
   // 税金 = 综合税耗率 × max(0, 实收 − 有票采购)：含税(有票)采购可抵进项,从计税基数扣
   if (!/s\.taxAmt=s\.taxed\?\(TB\*Math\.max\(0,s\.rev-\(s\.invoicedCost\|\|0\)\)\):0/.test(html)) throw new Error('税金应=综合税耗率×max(0,实收−有票采购)');
   if (!/if\(sp\.taxIncl\)os\.invoicedCost\+=amt/.test(html)) throw new Error('现货含税(有票)未计入进项抵扣 invoicedCost');
+  if (!/if\(t\.taxIncl\)os\.invoicedCost\+=feeRaw/.test(html)) throw new Error('加工费含税(有票)未计入进项抵扣');
+  if (!/if\(y\.taxIncl\)os\.invoicedCost\+=amtRaw/.test(html)) throw new Error('纱线含税(有票)未计入进项抵扣');
+  if (!/if\(g\.taxIncl\)os\.invoicedCost\+=amtRaw/.test(html)) throw new Error('胚布含税(有票)未计入进项抵扣');
+  // 加工/纱线/胚布 表单都有「含税/不含税」开关供标记
+  if (!/mkSelect\('t-tax'/.test(html)) throw new Error('加工跟踪缺少含税/不含税开关');
+  if (!/mkSelect\('y-tax'/.test(html)) throw new Error('纱线采购缺少含税/不含税开关');
+  if (!/mkSelect\('gf-tax'/.test(html)) throw new Error('胚布采购缺少含税/不含税开关');
   if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');
   // 收入(实收)必须走收入唯一口径 outBillAmount(含每色加价)，与对账单/打印一致
   if (!/var b=outBillAmount\(o,ord,rolls\)/.test(html)) throw new Error('毛利收入未走收入唯一口径(与对账单不一致)');

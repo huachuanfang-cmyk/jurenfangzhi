@@ -7489,6 +7489,7 @@ function openTM(id){
     feeInp.readOnly=true;feeInp.style.background='#F3F4F6';feeInp.style.cursor='not-allowed';feeInp.title='= 计费基准数量 × 加工单价（自动计算，不可手改）';
     g3.appendChild(fv('应付加工费(元·自动)',feeInp));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
+    g3.appendChild(fv('加工费税票',mkSelect('t-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],t.taxIncl?'1':'0')));
     fbSel.onchange=function(){_tFee();};
     if(pcSel)pcSel.addEventListener('change',function(){_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
@@ -7523,7 +7524,7 @@ function openTM(id){
     var _origOrdChg=ordSel.onchange;ordSel.onchange=function(){if(_origOrdChg)_origOrdChg.call(this);_tBalance();};
     setTimeout(_tBalance,0); // 挂载后算一次
     var _tHint=document.createElement('div');_tHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:4px 2px 0';
-    _tHint.textContent='💡 加工费按实付金额录入即可（无论是否开票）。税耗不在这里算——毛利页按订单统一计提综合税耗（开票订单×综合税耗率）。';
+    _tHint.textContent='💡 加工费按实付金额录入。「加工费税票」选含税(有票)的，毛利页会自动当进项抵扣、少计税；选不含税/现金则照常。你只管按实际标，系统算税。';
     body.appendChild(_tHint);
     body.appendChild(secHdr('日期'));
     var g4=document.createElement('div');g4.className='fg2';
@@ -7553,7 +7554,7 @@ function saveT(id){
     var fee=(baseQ&&up)?(baseQ*up).toFixed(2):'';
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
-    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
+    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',taxIncl:(document.getElementById('t-tax')||{value:'0'}).value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
     DB.trks=l;
@@ -13057,6 +13058,7 @@ function openYarnM(id){
     amtInp.style.cssText='font-weight:700;font-size:13px;color:#c0392b';
     g.appendChild(fv('金额（元）',amtInp));
     g.appendChild(fv('付款状态',mkSelect('y-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
+    g.appendChild(fv('税票',mkSelect('y-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],r.taxIncl?'1':'0')));
     body.appendChild(g);
 
     // ══ 到货确认 ══
@@ -13268,6 +13270,7 @@ function saveYarn(id){
       arrDate:(document.getElementById('y-arrDate')||{value:''}).value,
       actKg:(document.getElementById('y-actKg')||{value:''}).value,
       paid:(document.getElementById('y-paid')||{value:'0'}).value==='1',
+      taxIncl:(document.getElementById('y-tax')||{value:'0'}).value==='1',
       rm:(document.getElementById('y-rm')||{value:''}).value,
       delFacId:(document.getElementById('y-delFac')||{value:''}).value
     };
@@ -17458,7 +17461,9 @@ function openGreyFabM(id,readonly){
     payDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
     var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
     paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
-    payDiv.appendChild(paySel);body.appendChild(payDiv);
+    var gfTaxSel=mkSelect('gf-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],r.taxIncl?'1':'0');
+    gfTaxSel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:160px;margin-left:8px';
+    payDiv.appendChild(paySel);payDiv.appendChild(gfTaxSel);body.appendChild(payDiv);
 
     // Remarks
     var rmDiv=document.createElement('div');rmDiv.style.cssText='margin-bottom:14px';
@@ -17505,6 +17510,7 @@ function openGreyFabM(id,readonly){
       delDate:(document.getElementById('gf-delDate')||{value:''}).value,
       colors:colors,totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
       paid:(document.getElementById('gf-paid')||{value:'0'}).value==='1',
+      taxIncl:(document.getElementById('gf-tax')||{value:'0'}).value==='1',
       rm:(document.getElementById('gf-rm')||{value:''}).value
     };
     var l=DB.greyfabs||[];var i2=id?l.findIndex(function(x){return x.id===id;}):-1;

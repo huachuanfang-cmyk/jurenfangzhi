@@ -3248,6 +3248,18 @@ function mkBtn(label,cls,fn){
   return b;
 }
 function mkInput(id,val,ph,type){var i=document.createElement('input');if(id)i.id=id;if(val!==undefined)i.value=val||'';if(ph)i.placeholder=ph;if(type)i.type=type;return i;}
+// 全系统统一的「含税/不含税」一键切换药丸(button.value '1'=含税/'0'=不含税；保存照旧读 .value==='1')
+// 色差分明：含税=绿、不含税=灰；宽度按内容、对称
+function taxPill(id,isIncl,vals){
+  vals=vals||['0','1']; // [不含税值, 含税值]，默认 '0'/'1'；现货用 ['excl','incl']
+  var b=document.createElement('button');b.type='button';if(id)b.id=id;b.title='点击切换 含税/不含税';
+  b.value=isIncl?vals[1]:vals[0];
+  b.style.cssText='border:1px solid;border-radius:999px;padding:6px 14px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .12s;box-sizing:border-box';
+  function paint(){if(b.value===vals[1]){b.textContent='含税(有票)';b.style.background='#DCFCE7';b.style.borderColor='#86EFAC';b.style.color='#15803D';}else{b.textContent='不含税/现金';b.style.background='#F1F5F9';b.style.borderColor='#CBD5E1';b.style.color='#475569';}}
+  paint();
+  b.onclick=function(){b.value=(b.value===vals[1])?vals[0]:vals[1];paint();};
+  return b;
+}
 function mkSelect(id,opts,val){
   var s=document.createElement('select');if(id)s.id=id;
   (opts||[]).forEach(function(o){
@@ -5733,17 +5745,19 @@ function openMatModal(id){
       inp.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 6px;font-size:11.5px;background:#fff;flex:1 1 auto;min-width:0;box-sizing:border-box';
       if(rec&&rec[idBase]!=null&&rec[idBase]!=='')inp.value=rec[idBase];
       // 点击切换的小药丸按钮(不用下拉,一点即换)。用 button.value 存值,保存逻辑 g() 照常读取
-      function mkToggle(suffix,opts,defV,w){
+      // 点击切换的药丸：①宽度按内容(对称) ②不同状态不同颜色(一眼看清)
+      function mkToggle(suffix,opts,defV){
         var b=document.createElement('button');b.type='button';b.id='mf-'+idBase+suffix;b.title='点击切换';
-        var cur=(rec&&rec[idBase+suffix])||defV;b.value=cur;
-        function lbl(v){for(var i=0;i<opts.length;i++)if(opts[i][0]===v)return opts[i][1];return opts[0][1];}
-        b.textContent=lbl(cur);
-        b.style.cssText='border:1px solid #C7D2FE;border-radius:5px;padding:5px 2px;font-size:10.5px;background:#EEF2FF;color:#3730A3;font-weight:600;box-sizing:border-box;flex:0 0 '+w+'px;cursor:pointer;white-space:nowrap';
-        b.onclick=function(){var idx=0;for(var i=0;i<opts.length;i++){if(opts[i][0]===b.value){idx=i;break;}}var nx=opts[(idx+1)%opts.length];b.value=nx[0];b.textContent=nx[1];};
+        b.value=(rec&&rec[idBase+suffix])||defV;
+        b.style.cssText='border:1px solid;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex:0 0 auto;transition:all .12s;box-sizing:border-box';
+        function paint(){var o=opts[0];for(var i=0;i<opts.length;i++)if(opts[i][0]===b.value){o=opts[i];break;}b.textContent=o[1];var c=o[2];b.style.background=c[0];b.style.borderColor=c[1];b.style.color=c[2];}
+        paint();
+        b.onclick=function(){var idx=0;for(var i=0;i<opts.length;i++){if(opts[i][0]===b.value){idx=i;break;}}var nx=opts[(idx+1)%opts.length];b.value=nx[0];paint();};
         return b;
       }
-      var taxSel=mkToggle('Tax',[['excl','不含税'],['incl','含税']],defTax,56);
-      var unitSel=mkToggle('Unit',[['KG','元/KG'],['米','元/米']],defUnit,60);
+      // [值,文字,[背景,边框,字色]] —— 不含税=灰、含税=绿；元/KG=蓝、元/米=紫
+      var taxSel=mkToggle('Tax',[['excl','不含税',['#F1F5F9','#CBD5E1','#475569']],['incl','含税',['#DCFCE7','#86EFAC','#15803D']]],defTax);
+      var unitSel=mkToggle('Unit',[['KG','元/KG',['#EFF6FF','#BFDBFE','#1D4ED8']],['米','元/米',['#F5F3FF','#DDD6FE','#6D28D9']]],defUnit);
       // 规范顺序：金额 → 单位 → 税状态(读作 "¥60/KG（含税）")，两个切换框点一下就换
       row.appendChild(inp);row.appendChild(unitSel);row.appendChild(taxSel);
       g.appendChild(row);return g;
@@ -6850,8 +6864,8 @@ function openOM(id){
     g3.appendChild(stContainer);
     // 其它成本（运费/杂费等隐形成本，计入毛利）+ 含税/不含税(有票可抵进项)
     var miscI=dInp('o-misc',o.miscCost||'','如：运费/杂费 800');miscI.style.cssText+=';flex:1;width:auto;min-width:0';miscI.style.borderColor='#FDE68A';
-    var miscTax=dSel('o-misc-tax',[{v:'0',l:'不含税'},{v:'1',l:'含税(有票)'}],o.miscCostTaxIncl?'1':'0');miscTax.style.cssText+=';flex:0 0 96px;width:auto';
-    var miscWrap=document.createElement('div');miscWrap.style.cssText='display:flex;gap:6px';miscWrap.appendChild(miscI);miscWrap.appendChild(miscTax);
+    var miscTax=taxPill('o-misc-tax',o.miscCostTaxIncl);miscTax.style.flexShrink='0';
+    var miscWrap=document.createElement('div');miscWrap.style.cssText='display:flex;gap:6px;align-items:center';miscWrap.appendChild(miscI);miscWrap.appendChild(miscTax);
     g3.appendChild(dFld('其它成本（运费/杂费·元）',miscWrap,1,'#D97706'));
     mf.appendChild(dSec('💰','销售信息','#F0FDF4','#BBF7D0','#16A34A',g3));
 
@@ -7491,7 +7505,7 @@ function openTM(id){
     feeInp.readOnly=true;feeInp.style.background='#F3F4F6';feeInp.style.cursor='not-allowed';feeInp.title='= 计费基准数量 × 加工单价（自动计算，不可手改）';
     g3.appendChild(fv('应付加工费(元·自动)',feeInp));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
-    g3.appendChild(fv('加工费税票',mkSelect('t-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],t.taxIncl?'1':'0')));
+    g3.appendChild(fv('加工费税票',taxPill('t-tax',t.taxIncl)));
     fbSel.onchange=function(){_tFee();};
     if(pcSel)pcSel.addEventListener('change',function(){_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
@@ -13060,7 +13074,7 @@ function openYarnM(id){
     amtInp.style.cssText='font-weight:700;font-size:13px;color:#c0392b';
     g.appendChild(fv('金额（元）',amtInp));
     g.appendChild(fv('付款状态',mkSelect('y-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
-    g.appendChild(fv('税票',mkSelect('y-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],r.taxIncl?'1':'0')));
+    g.appendChild(fv('税票',taxPill('y-tax',r.taxIncl)));
     body.appendChild(g);
 
     // ══ 到货确认 ══
@@ -13567,7 +13581,7 @@ function openSpotM(id){
     var basePrInp=mkInput('sp-basepr',r.basePr||'','如 40','number');
     g3.appendChild(fv('计量单位',unitSel));
     g3.appendChild(fv('基础进货单价(元)',basePrInp));
-    g3.appendChild(fv('价格类型',mkSelect('sp-inc',[{v:'excl',l:'不含税/现金'},{v:'incl',l:'含税(有票)'}],r.taxIncl?'incl':'excl')));
+    g3.appendChild(fv('价格类型',taxPill('sp-inc',r.taxIncl,['excl','incl'])));
     g3.appendChild(fv('付款状态',mkSelect('sp-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
     body.appendChild(g3);
     basePrInp.addEventListener('input',_spotCalc);unitSel.addEventListener('change',_spotCalc);
@@ -17463,8 +17477,7 @@ function openGreyFabM(id,readonly){
     payDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
     var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
     paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
-    var gfTaxSel=mkSelect('gf-tax',[{v:'0',l:'不含税/现金'},{v:'1',l:'含税(有票·可抵进项)'}],r.taxIncl?'1':'0');
-    gfTaxSel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:160px;margin-left:8px';
+    var gfTaxSel=taxPill('gf-tax',r.taxIncl);gfTaxSel.style.marginLeft='8px';
     payDiv.appendChild(paySel);payDiv.appendChild(gfTaxSel);body.appendChild(payDiv);
 
     // Remarks

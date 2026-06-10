@@ -823,10 +823,11 @@ test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合
   if (!/if\(g\.taxIncl\)os\.invoicedCost\+=amtRaw/.test(html)) throw new Error('胚布含税(有票)未计入进项抵扣');
   if (!/if\(o\.miscCostTaxIncl\)os\.invoicedCost\+=mcRaw/.test(html)) throw new Error('其它成本含税(有票)未计入进项抵扣');
   if (!/o-misc-tax/.test(html)) throw new Error('其它成本缺少含税/不含税开关');
-  // 加工/纱线/胚布 表单都有「含税/不含税」开关供标记
-  if (!/mkSelect\('t-tax'/.test(html)) throw new Error('加工跟踪缺少含税/不含税开关');
-  if (!/mkSelect\('y-tax'/.test(html)) throw new Error('纱线采购缺少含税/不含税开关');
-  if (!/mkSelect\('gf-tax'/.test(html)) throw new Error('胚布采购缺少含税/不含税开关');
+  // 加工/纱线/胚布 表单都有「含税/不含税」开关供标记(统一为彩色 taxPill 药丸)
+  if (!/taxPill\('t-tax'/.test(html)) throw new Error('加工跟踪缺少含税/不含税开关');
+  if (!/taxPill\('y-tax'/.test(html)) throw new Error('纱线采购缺少含税/不含税开关');
+  if (!/taxPill\('gf-tax'/.test(html)) throw new Error('胚布采购缺少含税/不含税开关');
+  if (!/function taxPill\(id,isIncl,vals\)/.test(html)) throw new Error('缺少统一含税药丸 taxPill(色差分明·内容自适应)');
   if (!/s\.profit=s\.rev-s\.cost-s\.taxAmt/.test(html)) throw new Error('落袋利润应=实收−实付成本−税金');
   // 收入(实收)必须走收入唯一口径 outBillAmount(含每色加价)，与对账单/打印一致
   if (!/var b=outBillAmount\(o,ord,rolls\)/.test(html)) throw new Error('毛利收入未走收入唯一口径(与对账单不一致)');

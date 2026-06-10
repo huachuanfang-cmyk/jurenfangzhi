@@ -5448,7 +5448,7 @@ function pgMat(){
     // ── 可拖拽列宽表格 ──
     var tableWrap=document.createElement('div');tableWrap.className='qt-wrap';tableWrap.style.overflow='auto';
     var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed';
-    var COLS=[['物料编号',80],['布类全称',180],['品名',90],['幅宽',60],['克重',60],['成份',160],['单价',70],['原单价',70],['来源',76],['原公司',90],['原编号',76],['纸筒KG',58],['空差KG',58],['织厂',80],['染厂',80],['联系方式',84],['地址',90],['备注',84],['操作',100]];
+    var COLS=[['物料编号',80],['布类全称',180],['品名',90],['幅宽',60],['克重',60],['成份',160],['单价',78],['布行单价',80],['来源',76],['原公司',90],['原编号',76],['纸筒KG',58],['空差KG',58],['织厂',80],['染厂',80],['联系方式',84],['地址',90],['备注',84],['操作',100]];
     var thead=document.createElement('thead');
     var thRow=document.createElement('tr');
     COLS.forEach(function(col,ci){
@@ -5558,8 +5558,8 @@ function pgMat(){
       tr.appendChild(mkTd(widthDisp,'','text-align:center;color:#555;white-space:nowrap'));
       tr.appendChild(mkTd(gsmDisp,'','text-align:center;color:#555;white-space:nowrap'));
       tr.appendChild(mkTd(compDisp,'qt-comp'));
-      tr.appendChild(mkTd(m.price?'¥'+m.price+'/KG':'—','qt-price'));
-      tr.appendChild(mkTd(m.origPrice?'¥'+m.origPrice:'—','','color:#888;font-size:10.5px'));
+      tr.appendChild(mkTd(m.price?('¥'+m.price+'/'+(m.priceUnit==='米'?'米':'KG')+(m.priceTax==='excl'?'·不含':'·含')):'—','qt-price'));
+      tr.appendChild(mkTd(m.origPrice?('¥'+m.origPrice+'/'+(m.origPriceUnit==='米'?'米':'KG')+(m.origPriceTax==='incl'?'·含':'·不含')):'—','','color:#888;font-size:10.5px'));
       tr.appendChild(srcTd);
       tr.appendChild(mkTd(m.origCo,'','color:#555'));
       tr.appendChild(mkTd(m.origNo,'','font-family:monospace;color:#888'));
@@ -5712,8 +5712,25 @@ function openMatModal(id){
 
     // ── 价格信息 ──
     secLabel('价格信息');
-    var gp1=mkGrp(1);gp1.appendChild(mkLbl('单价 (元/KG)'));gp1.appendChild(mkInp('price','120','number'));grid.appendChild(gp1);
-    var gp2=mkGrp(1);gp2.appendChild(mkLbl('原单价 (元/KG)'));gp2.appendChild(mkInp('origPrice','108','number'));grid.appendChild(gp2);
+    // 复合价格：金额 + 含税/不含税 + 元KG/元米（有些布行按米计价）
+    function priceGrp(idBase,label,ph,defTax,defUnit){
+      var g=mkGrp(1);g.appendChild(mkLbl(label));
+      var row=document.createElement('div');row.style.cssText='display:flex;gap:3px';
+      var inp=document.createElement('input');inp.id='mf-'+idBase;inp.type='number';inp.placeholder=ph||'';
+      inp.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font-size:11.5px;background:#fff;width:100%;min-width:0';
+      if(rec&&rec[idBase]!=null&&rec[idBase]!=='')inp.value=rec[idBase];
+      var ss='border:1px solid var(--bd);border-radius:5px;padding:5px 2px;font-size:10px;background:#fff;flex-shrink:0';
+      var taxSel=document.createElement('select');taxSel.id='mf-'+idBase+'Tax';taxSel.style.cssText=ss;
+      [['excl','不含税'],['incl','含税']].forEach(function(o){taxSel.appendChild(new Option(o[1],o[0]));});
+      taxSel.value=(rec&&rec[idBase+'Tax'])||defTax;
+      var unitSel=document.createElement('select');unitSel.id='mf-'+idBase+'Unit';unitSel.style.cssText=ss;
+      [['KG','元/KG'],['米','元/米']].forEach(function(o){unitSel.appendChild(new Option(o[1],o[0]));});
+      unitSel.value=(rec&&rec[idBase+'Unit'])||defUnit;
+      row.appendChild(inp);row.appendChild(taxSel);row.appendChild(unitSel);
+      g.appendChild(row);return g;
+    }
+    grid.appendChild(priceGrp('price','单价','120','incl','KG'));        // 我方卖价(通常含税)
+    grid.appendChild(priceGrp('origPrice','布行单价','108','excl','KG')); // 布行/同行进货价(通常现金不含税)
     var gp3=mkGrp(1);gp3.appendChild(mkLbl('来源类型'));
     var srcSel=document.createElement('select');srcSel.id='mf-src';
     srcSel.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font-size:11.5px;background:#fff;font-family:inherit;width:100%';
@@ -5751,7 +5768,9 @@ function openMatModal(id){
       id:rec?rec.id:'mt_'+Date.now(),
       mid:(document.getElementById('mf-mid')||{value:''}).value||g('mid'),fab:g('fab'),alias:g('alias'),
       width:g('width'),widthUnit:widthUnit,gsm:g('gsm'),comps:comps,
-      price:g('price'),origPrice:g('origPrice'),src:g('src')||'自产',
+      price:g('price'),priceTax:g('priceTax')||'incl',priceUnit:g('priceUnit')||'KG',
+      origPrice:g('origPrice'),origPriceTax:g('origPriceTax')||'excl',origPriceUnit:g('origPriceUnit')||'KG',
+      src:g('src')||'自产',
       origCo:g('origCo'),origNo:g('origNo'),contact:g('contact'),addr:g('addr'),tubeWt:g('tubeWt'),
       weaver:g('weaver'),dyer:g('dyer'),emptyDiff:g('emptyDiff'),remark:g('remark'),
       createdAt:rec?rec.createdAt:new Date().toISOString()
@@ -5765,7 +5784,7 @@ function openMatModal(id){
     var idx=list.findIndex(function(x){return x.id===data.id;});
     if(idx>=0)list[idx]=data;else list.push(data);
     DB.mats=list;
-    logAction(idx>=0?'编辑物料档案':'新增物料档案','物料档案',data.mid||'',(data.fab||'')+(data.price?' 单价'+data.price:'')+(data.origPrice?' 原价'+data.origPrice:''));
+    logAction(idx>=0?'编辑物料档案':'新增物料档案','物料档案',data.mid||'',(data.fab||'')+(data.price?' 单价'+data.price:'')+(data.origPrice?' 布行价'+data.origPrice:''));
     cm();pgMat();showToast('物料档案已保存 '+data.mid,'success');
   },'保存物料');
   om(modal);

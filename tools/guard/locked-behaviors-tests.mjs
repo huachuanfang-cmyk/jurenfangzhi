@@ -712,6 +712,15 @@ test('成品入库：支持多色合并入库(一次多色·每色逐卷重量)'
   if (!/tgtByClr\[c\.nm\]=\(tgtByClr\[c\.nm\]\|\|0\)\+\(parseFloat\(c\.actQty\)/.test(html)) throw new Error('多色入库未核对现货采购实际重量');
 });
 
+test('物料档案：单价/布行单价支持 含税切换 + 元KG/元米切换', () => {
+  if (!/function priceGrp\(idBase,label/.test(html)) throw new Error('缺少复合价格控件 priceGrp');
+  // 含税/不含税 + 元KG/元米 两个切换都要存
+  if (!/priceTax:g\('priceTax'\)/.test(html) || !/priceUnit:g\('priceUnit'\)/.test(html)) throw new Error('单价缺少 含税/单位 字段');
+  if (!/origPriceTax:g\('origPriceTax'\)/.test(html) || !/origPriceUnit:g\('origPriceUnit'\)/.test(html)) throw new Error('布行单价缺少 含税/单位 字段');
+  // 原单价 已更名为 布行单价
+  if (!/'布行单价'/.test(html)) throw new Error('原单价应更名为 布行单价');
+});
+
 test('报价单：录入物料编号自动带入规格/单价(全部可编辑)', () => {
   // 用 matCode(m) 做匹配(兼容 mid/prodNo/code 等)，不再只看 m.mid
   if (!/sameCode\(matCode\(m\),mid\)/.test(html)) throw new Error('报价单编号联动应用 matCode 匹配');

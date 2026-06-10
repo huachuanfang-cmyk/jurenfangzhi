@@ -2811,11 +2811,12 @@ function refreshCO(){
   Object.assign(CO,CO_DEFAULT,saved);
   applyCustomLogo();
 }
-// 把公司名应用到全局品牌位置：浏览器标题、登录页副标题、顶栏
+// 把公司名应用到全局品牌位置：浏览器标题、登录页副标题、侧边栏、顶栏
 function applyCompanyBranding(){
   try{
     if(document&&document.title!==undefined)document.title=CO.nm+' ERP';
     var loginSub=document.querySelector('.sub');if(loginSub)loginSub.textContent=CO.nm;
+    var sbName=document.querySelector('.la .ln');if(sbName)sbName.textContent=CO.shortNm||CO.nm; // 侧边栏公司名(简称优先,空间窄)
     var ps=document.getElementById('ps');
     // 顶栏副标题仅当前是公司名（工作台）时才更新，避免覆盖页面描述
     if(ps&&(ps.textContent===CO_DEFAULT.nm||ps.textContent===CO.nm))ps.textContent=CO.nm;
@@ -17743,6 +17744,7 @@ function runRegressionTests(){
 
 // ═══ INIT ═══
 (async function(){
+  applyCompanyBranding(); // 起动即把公司名应用到标题/登录页/侧边栏(自定义社名也立即生效)
   if(_testMode){
     showTestMode();
     return;

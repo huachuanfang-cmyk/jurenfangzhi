@@ -665,7 +665,7 @@ function sBx(s){
 }
 // ── 自动计算出货进度（纯读取，不改任何数据）──
 function isInactiveFgRoll(r){
-  return r&&['returned','voided','repaired','written_off'].indexOf(r.status)>=0;
+  return r&&['returned','voided','repaired','written_off','returned_to_supplier'].indexOf(r.status)>=0;
 }
 function orderShipmentRecords(o){
   if(!o)return[];
@@ -14261,7 +14261,7 @@ function pgFGStock(){
     // ── 按订单分组 ──
     var ordMap={};
     rolls.forEach(function(r){
-      if(r.status==='returned'||r.status==='voided'||r.status==='repaired'||r.status==='written_off')return;
+      if(r.status==='returned'||r.status==='voided'||r.status==='repaired'||r.status==='written_off'||r.status==='returned_to_supplier')return; // 退回布行的疋已离开本仓,不计入库存台账
       var oid=r.ordId||'__none__';
       if(!ordMap[oid]){
         var ord=orders.find(function(x){return x.id===r.ordId;})||{};
@@ -14427,7 +14427,7 @@ function pgFGStock(){
             e.stopPropagation();
             // 收集该订单所有疋料
             var allR=fgRolls();
-            var ordRolls=allR.filter(function(r){return r.ordId===og2.ordId&&r.status!=='returned'&&r.status!=='voided'&&r.status!=='repaired'&&r.status!=='written_off';});
+            var ordRolls=allR.filter(function(r){return r.ordId===og2.ordId&&r.status!=='returned'&&r.status!=='voided'&&r.status!=='repaired'&&r.status!=='written_off'&&r.status!=='returned_to_supplier';});
             if(!ordRolls.length){showToast('暂无疋料记录','info');return;}
             // 若只有一个颜色/缸号组，直接打开；否则展示所有
             var colorKeys=[...new Set(ordRolls.map(function(r){return (r.ordId||'')+'|'+(r.colorNm||'')+'|'+(r.vatNo||'');}))];

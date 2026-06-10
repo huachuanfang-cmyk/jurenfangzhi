@@ -10188,6 +10188,27 @@ function printQuot(id){
 function openMultiColorSheet(){
   var orders=(DB.orders||[]).filter(function(o){return o.status!=='cancelled';});
   var rolls=fgRolls();
+  var _mcPrint=null; // bodyFn 内的打印函数引用(供保存回调跨作用域调用,修复青色按钮无反应)
+  // 出库：把勾选颜色的在库疋全部出库 + 生成出货记录(fgout)，与登记出货同口径
+  function shipMultiColor(o){
+    var ordId=o.id;var allR=fgRolls();var rollIds=[];
+    document.querySelectorAll('.mc-clr-cb:checked').forEach(function(cb){
+      var clrNm=cb.dataset.clr;
+      allR.forEach(function(r){if(r.ordId===ordId&&r.colorNm===clrNm&&r.status==='in')rollIds.push(r.id);});
+    });
+    if(!rollIds.length){alert('没有可出货的在库疋（可能已全部出货）');return null;}
+    var dup=(typeof findDuplicateShipmentByRollIds==='function')?findDuplicateShipmentByRollIds(rollIds,DB.fgouts||[]):null;
+    if(dup){alert('这批疋料已生成送货单 '+(dup.no||'')+'，不能重复出货。');return null;}
+    var date=(document.getElementById('mc-date')||{value:''}).value||tod();
+    var outNo=fgOutNo();
+    var outRec={id:'fgo_'+Date.now(),no:outNo,date:date,ordId:ordId,ordNo:o.no,custNm:o.custNm||'',dlvNo:'',custOrdNo:'',approxM:'',feeNm:'',feeAmt:'',rm:'多色合并送货单',rollIds:rollIds};
+    var list=DB.fgouts||[];list.push(outRec);DB.fgouts=list;
+    rollIds.forEach(function(rid){var r=allR.find(function(x){return x.id===rid;});if(r){r.status='out';r.outId=outRec.id;}});
+    saveFgRolls(allR);
+    window._fgLastAction={type:'out',ordId:ordId,ordNo:o.no,custNm:o.custNm||'',ts:Date.now()};window._fgTab='out';
+    logAction('登记出货','送货单',outNo,(o.custNm||'')+' 多色合并 '+rollIds.length+'疋');
+    return outRec;
+  }
 
   var modal=buildModal('📋 多色合并送货单','mxl',function(body){
     body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:75vh';
@@ -10212,9 +10233,9 @@ function openMultiColorSheet(){
     colorWrap.style.cssText='border:1.5px solid #DDD6FE;border-radius:6px;padding:10px;background:#F5F3FF;display:none';
     body.appendChild(colorWrap);
 
-    // 打印按钮放在颜色区下方
+    // 预览按钮(仅预览,不出库)
     var printBtn=document.createElement('button');printBtn.type='button';
-    printBtn.textContent='🖨 预览 / 打印送货单';
+    printBtn.textContent='👁 仅预览（不出库）';
     printBtn.style.cssText='padding:10px;background:#EA580C;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;width:100%;margin-top:4px';
     printBtn.onclick=function(){
       var ordId=(document.getElementById('mc-ord')||{value:''}).value;
@@ -10280,14 +10301,14 @@ function openMultiColorSheet(){
       colorWrap.appendChild(grid);
     };
 
-    function printMultiColorSheet(o){
+    function printMultiColorSheet(o,noOverride){
       var ordId=o.id;
       var date=(document.getElementById('mc-date')||{value:''}).value||new Date().toISOString().slice(0,10);
       var unitPr=parseFloat((document.getElementById('mc-unitPr')||{value:''}).value)||0;
-      // 生成送货单号
+      // 送货单号：出货时用实际出货记录号(noOverride)，仅预览时临时生成
       var maxNo=0;(DB.fgouts||[]).forEach(function(x){var n=parseInt((x.no||'').replace(/^[A-Z]*/,''))||0;if(n>maxNo)maxNo=n;});
       var y2=new Date().getFullYear();
-      var shNo=String(y2)+String((maxNo%10000)+1).padStart(4,'0');
+      var shNo=noOverride||(String(y2)+String((maxNo%10000)+1).padStart(4,'0'));
       // 收集勾选颜色
       var rows=[];var totalKG=0;var totalAmt=0;var totalRolls=0;
       document.querySelectorAll('.mc-clr-cb:checked').forEach(function(cb){
@@ -10372,16 +10393,20 @@ function openMultiColorSheet(){
 
       printHTML(html); return;
     }
+    _mcPrint=printMultiColorSheet; // 暴露给保存回调(跨作用域)
 
-  // 保存按钮绑定
+  // 保存按钮 = 出货并打印：先出库(记入出货记录)，再打印送货单
   },function(){
-    // 多色合并送货单只打印，不存入fgouts（因为没有按颜色分别选疋）
-    // 直接触发打印
     var ordId=(document.getElementById('mc-ord')||{value:''}).value;
     var o=orders.find(function(x){return x.id===ordId;});
     if(!o)return alert('请先选择订单');
-    printMultiColorSheet(o);
-  },'🖨 打印送货单');
+    if(document.querySelectorAll('.mc-clr-cb:checked').length===0)return alert('请至少勾选一个颜色');
+    if(!confirm('确认出货？\n\n勾选颜色的在库疋将全部出库、记入「出货记录」，然后打印送货单。\n（仅预览不出库请用上方橙色按钮）'))return;
+    var rec=shipMultiColor(o);    // 先出库(标记疋out+生成fgout,拿到正式单号)
+    if(!rec)return;
+    if(_mcPrint)_mcPrint(o,rec.no); // 再打印,用正式出货记录号(读本地rolls快照仍为在库,展开每卷正常)
+    cm();pgFGStock();showToast('已出货并生成送货单 '+rec.no+'，已记入出货记录','success');
+  },'✅ 出货并打印');
   om(modal);
 }
 

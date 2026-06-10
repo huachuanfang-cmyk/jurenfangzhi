@@ -5715,17 +5715,19 @@ function openMatModal(id){
     // 复合价格：金额 + 含税/不含税 + 元KG/元米（有些布行按米计价）
     function priceGrp(idBase,label,ph,defTax,defUnit){
       var g=mkGrp(1);g.appendChild(mkLbl(label));
-      var row=document.createElement('div');row.style.cssText='display:flex;gap:3px';
+      var row=document.createElement('div');row.style.cssText='display:flex;gap:4px;align-items:center;width:100%';
       var inp=document.createElement('input');inp.id='mf-'+idBase;inp.type='number';inp.placeholder=ph||'';
-      inp.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font-size:11.5px;background:#fff;width:100%;min-width:0';
+      // 金额输入框 flex:1 取剩余空间；两个切换框按文字长度固定窄宽，绝不挤压
+      inp.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 6px;font-size:11.5px;background:#fff;flex:1 1 auto;min-width:0;box-sizing:border-box';
       if(rec&&rec[idBase]!=null&&rec[idBase]!=='')inp.value=rec[idBase];
-      var ss='border:1px solid var(--bd);border-radius:5px;padding:5px 2px;font-size:10px;background:#fff;flex-shrink:0';
-      var taxSel=document.createElement('select');taxSel.id='mf-'+idBase+'Tax';taxSel.style.cssText=ss;
-      [['excl','不含税'],['incl','含税']].forEach(function(o){taxSel.appendChild(new Option(o[1],o[0]));});
-      taxSel.value=(rec&&rec[idBase+'Tax'])||defTax;
-      var unitSel=document.createElement('select');unitSel.id='mf-'+idBase+'Unit';unitSel.style.cssText=ss;
-      [['KG','元/KG'],['米','元/米']].forEach(function(o){unitSel.appendChild(new Option(o[1],o[0]));});
-      unitSel.value=(rec&&rec[idBase+'Unit'])||defUnit;
+      function mkSel(suffix,opts,defV,w){
+        var s=document.createElement('select');s.id='mf-'+idBase+suffix;
+        s.style.cssText='border:1px solid var(--bd);border-radius:5px;padding:5px 2px;font-size:10.5px;background:#fff;box-sizing:border-box;flex:0 0 '+w+'px;cursor:pointer';
+        opts.forEach(function(o){s.appendChild(new Option(o[1],o[0]));});
+        s.value=(rec&&rec[idBase+suffix])||defV;return s;
+      }
+      var taxSel=mkSel('Tax',[['excl','不含税'],['incl','含税']],defTax,56);
+      var unitSel=mkSel('Unit',[['KG','元/KG'],['米','元/米']],defUnit,60);
       row.appendChild(inp);row.appendChild(taxSel);row.appendChild(unitSel);
       g.appendChild(row);return g;
     }

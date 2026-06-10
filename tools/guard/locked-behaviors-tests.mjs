@@ -712,6 +712,14 @@ test('成品入库：支持多色合并入库(一次多色·每色逐卷重量)'
   if (!/tgtByClr\[c\.nm\]=\(tgtByClr\[c\.nm\]\|\|0\)\+\(parseFloat\(c\.actQty\)/.test(html)) throw new Error('多色入库未核对现货采购实际重量');
 });
 
+test('物料档案：列表按编号排序 + 中文搜索不闪退(异步竞态防护)', () => {
+  // 列表必须按编号数值倒序(不再混乱)
+  if (!/filtered\.sort\(function\(a,b\)\{var d=_matNum/.test(html)) throw new Error('物料列表未按编号排序');
+  // 云端异步搜索必须有序号守卫,过期结果不得覆盖新结果(中文输入法连续触发会闪退)
+  if (!/var _matRenderSeq=0/.test(html)) throw new Error('物料搜索缺少异步序号守卫(中文搜索会闪退)');
+  if ((html.match(/if\(_seq!==_matRenderSeq\)return;/g)||[]).length < 2) throw new Error('物料搜索异步守卫不足(await后与渲染前都要核对)');
+});
+
 test('物料档案：单价/布行单价支持 含税切换 + 元KG/元米切换', () => {
   if (!/function priceGrp\(idBase,label/.test(html)) throw new Error('缺少复合价格控件 priceGrp');
   // 含税/不含税 + 元KG/元米 两个切换都要存

@@ -4947,8 +4947,8 @@ function pgGrossProfit(){
     if(!g||g.voided)return;var amtRaw=parseFloat(g.totalAmt)||0;if(!amtRaw)return;
     var ord=ordOf(g);if(!ord)return;var os=getOS(ord);os.gfCost+=amtRaw;if(g.taxIncl)os.invoicedCost+=amtRaw;
   });
-  // 其它成本（运费/杂费，订单级手填）
-  orders.forEach(function(o){var mcRaw=parseFloat(o.miscCost)||0;if(mcRaw>0)getOS(o).miscCost+=mcRaw;});
+  // 其它成本（运费/杂费，订单级手填）；标了含税(有票)→计入进项抵扣
+  orders.forEach(function(o){var mcRaw=parseFloat(o.miscCost)||0;if(mcRaw>0){var os=getOS(o);os.miscCost+=mcRaw;if(o.miscCostTaxIncl)os.invoicedCost+=mcRaw;}});
   // 现货进货成本（现货采购单·调货倒卖，按毛重付款的实付金额，挂到关联订单）
   (DB.spots||[]).forEach(function(sp){if(!sp||sp.voided)return;var amt=parseFloat(sp.totalAmt)||0;if(!amt)return;var ord=ordOf(sp);if(!ord)return;var os=getOS(ord);os.stockCost+=amt;if(sp.taxIncl)os.invoicedCost+=amt;});
   var osList=Object.keys(OS).map(function(k){
@@ -6848,9 +6848,11 @@ function openOM(id){
     stRow.appendChild(stSel);stRow.appendChild(divider);stRow.appendChild(paidSel);
     stContainer.appendChild(stLbl);stContainer.appendChild(stRow);
     g3.appendChild(stContainer);
-    // 其它成本（运费/杂费等隐形成本，计入毛利）
-    var miscI=dInp('o-misc',o.miscCost||'','如：运费/杂费 800');miscI.style.borderColor='#FDE68A';
-    g3.appendChild(dFld('其它成本（运费/杂费·元）',miscI,1,'#D97706'));
+    // 其它成本（运费/杂费等隐形成本，计入毛利）+ 含税/不含税(有票可抵进项)
+    var miscI=dInp('o-misc',o.miscCost||'','如：运费/杂费 800');miscI.style.cssText+=';flex:1;width:auto;min-width:0';miscI.style.borderColor='#FDE68A';
+    var miscTax=dSel('o-misc-tax',[{v:'0',l:'不含税'},{v:'1',l:'含税(有票)'}],o.miscCostTaxIncl?'1':'0');miscTax.style.cssText+=';flex:0 0 96px;width:auto';
+    var miscWrap=document.createElement('div');miscWrap.style.cssText='display:flex;gap:6px';miscWrap.appendChild(miscI);miscWrap.appendChild(miscTax);
+    g3.appendChild(dFld('其它成本（运费/杂费·元）',miscWrap,1,'#D97706'));
     mf.appendChild(dSec('💰','销售信息','#F0FDF4','#BBF7D0','#16A34A',g3));
 
     body.appendChild(mf);
@@ -7034,7 +7036,7 @@ function saveO(id){
     var d={id:id||uid(),no:no,prodNo:document.getElementById('o-pno').value,custNo:document.getElementById('o-cno').value,sty:document.getElementById('o-sty').value,follower:(document.getElementById('o-cky')||{value:''}).value,ordDate:document.getElementById('o-date').value,custNm:cust,fab:fab,fabB:document.getElementById('o-fabB').value||'',comps:comps,gaugeN:gn,gaugeS:gs,width:wd,widthUnit:wu,weight:wt,shrink:document.getElementById('o-sh').value,delDate:document.getElementById('o-del').value,unitPr:document.getElementById('o-pr').value,prUnit:(function(){var b=document.getElementById('o-pu-btn');return b?b.dataset.unit:'元/KG';})(),procUnit:(document.getElementById('cwp')||{dataset:{}}).dataset.procUnit||'KG',
       taxType:(function(){var b=document.querySelector('button[data-tax]');return b?b.dataset.tax:'incl';})(),
       payTm:(function(){var sel=document.getElementById('o-pt-sel');var inp=document.getElementById('o-pt');if(!sel)return inp?inp.value:'';return sel.value==='其它'?(inp?inp.value:''):sel.value;})(),
-      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),colors:colors};
+      status:document.getElementById('o-st').value,paid:document.getElementById('o-paid').value==='1',rm:document.getElementById('o-rm').value,cpnm:(document.getElementById('o-cpnm')||{value:''}).value.trim(),miscCost:(document.getElementById('o-misc')||{value:''}).value.trim(),miscCostTaxIncl:(document.getElementById('o-misc-tax')||{value:'0'}).value==='1',colors:colors};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     var oldOrder=id?(l[i]||{}):{};
     var oldColors=oldOrder.colors||[];

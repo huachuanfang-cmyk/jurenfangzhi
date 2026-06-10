@@ -821,6 +821,8 @@ test('毛利用「落袋口径·综合税耗」：实收−实付成本−综合
   if (!/if\(t\.taxIncl\)os\.invoicedCost\+=feeRaw/.test(html)) throw new Error('加工费含税(有票)未计入进项抵扣');
   if (!/if\(y\.taxIncl\)os\.invoicedCost\+=amtRaw/.test(html)) throw new Error('纱线含税(有票)未计入进项抵扣');
   if (!/if\(g\.taxIncl\)os\.invoicedCost\+=amtRaw/.test(html)) throw new Error('胚布含税(有票)未计入进项抵扣');
+  if (!/if\(o\.miscCostTaxIncl\)os\.invoicedCost\+=mcRaw/.test(html)) throw new Error('其它成本含税(有票)未计入进项抵扣');
+  if (!/o-misc-tax/.test(html)) throw new Error('其它成本缺少含税/不含税开关');
   // 加工/纱线/胚布 表单都有「含税/不含税」开关供标记
   if (!/mkSelect\('t-tax'/.test(html)) throw new Error('加工跟踪缺少含税/不含税开关');
   if (!/mkSelect\('y-tax'/.test(html)) throw new Error('纱线采购缺少含税/不含税开关');

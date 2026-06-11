@@ -777,6 +777,10 @@ test('原料管理四页：搜索/筛选/量大保护 + 发料单号编辑保留
   // 库存总览：搜索+只看有余量(默认勾选)
   if (!/mkInput\('ys-q'/.test(html)) throw new Error('库存总览缺少搜索');
   if (!/onlyCk\.checked=true/.test(html)) throw new Error('库存总览「只看有余量」应默认勾选');
+  // 工具栏下拉必须压住全局 select{width:100%}，否则在flex工具栏被顶成整页巨条(胶囊严重不协调)
+  if ((html.match(/cursor:pointer;width:auto;flex:0 0 auto/g)||[]).length < 4) throw new Error('工具栏筛选下拉(y-pf/sp-pf/yo-tf/gf-pf)缺少 width:auto 压制,会被全局select{width:100%}顶成整页宽');
+  if (!/全部操作人[\s\S]{0,300}width:auto|width:auto;flex:0 0 auto';\/\* 压住全局/.test(html)) throw new Error('操作日志「全部操作人」下拉未压宽度');
+  if (!/max-width:170px[^']*'.{0,60}原flex:1无上限/.test(html)) throw new Error('物料档案「所有来源」下拉缺少 max-width 上限');
 });
 
 test('物料档案：列表按编号排序 + 中文搜索不闪退(异步竞态防护)', () => {

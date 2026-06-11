@@ -4650,7 +4650,7 @@ function pgAuditLog(){
   var cb=document.createElement('div');cb.className='cb';cb.style.cssText='padding:14px 16px';
   // 筛选栏
   var bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px';
-  var userSel=document.createElement('select');userSel.style.cssText='padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12px;background:#fff';
+  var userSel=document.createElement('select');userSel.style.cssText='padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12px;background:#fff;width:auto;flex:0 0 auto';/* 压住全局select{width:100%} */
   userSel.innerHTML='<option value="">全部操作人</option>';
   var kw=document.createElement('input');kw.placeholder='搜索单号 / 客户 / 内容...';kw.style.cssText='flex:1;min-width:180px;padding:6px 10px;border:1.5px solid #E2E8F0;border-radius:6px;font-size:12px;outline:none';
   var refreshBtn=document.createElement('button');refreshBtn.type='button';refreshBtn.textContent='🔄 刷新';refreshBtn.className='btn bsm bs';
@@ -5427,7 +5427,7 @@ function pgMat(){
   var si=document.createElement('input');si.id='mat-search';si.placeholder='🔍 搜索物料编号 / 布类 / 品名 / 原公司...';
   si.style.cssText='flex:2;min-width:160px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
   var ss=document.createElement('select');ss.id='mat-src';
-  ss.style.cssText='flex:1;min-width:100px;padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none';
+  ss.style.cssText='flex:0 0 auto;width:auto;min-width:100px;max-width:170px;padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';/* 原flex:1无上限,大屏被拉成巨条 */
   [{v:'',l:'所有来源'},{v:'自产',l:'自产'},{v:'中大调货',l:'中大市场调货'},{v:'其他同行',l:'其他同行'},{v:'pending',l:'⚠ 待确认'}].forEach(function(o){ss.appendChild(new Option(o.l,o.v));});
   ss.id='mat-src';
   var searchFn=function(){renderMatList();};
@@ -12926,7 +12926,7 @@ function pgYarn(){
   qInp.style.cssText='flex:1;max-width:280px;min-width:170px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
   qInp.oninput=function(){renderYarnList();};
   var pfSel=mkSelect('y-pf',[{v:'',l:'全部付款状态'},{v:'unpaid',l:'未付款'},{v:'paid',l:'已付款'},{v:'voided',l:'已作废'}],'');
-  pfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';
+  pfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;width:auto;flex:0 0 auto';/* width:auto压住全局select{width:100%},否则在flex工具栏被顶成整页巨条 */
   pfSel.onchange=function(){renderYarnList();};
   bar.appendChild(qInp);bar.appendChild(pfSel);
   pg.appendChild(bar);
@@ -13432,7 +13432,7 @@ function pgSpot(){
   var inp=mkInput('sp-q','','搜索布行/布料/订单...');inp.style.maxWidth='240px';inp.oninput=function(){renderSpot();};
   bar.appendChild(inp);
   var spPf=mkSelect('sp-pf',[{v:'',l:'全部付款状态'},{v:'unpaid',l:'未付款'},{v:'paid',l:'已付款'}],'');
-  spPf.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';
+  spPf.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;width:auto;flex:0 0 auto';/* width:auto压住全局select{width:100%},否则在flex工具栏被顶成整页巨条 */
   spPf.onchange=function(){renderSpot();};
   bar.appendChild(spPf);
   bar.appendChild(mkBtn('&#43; 新增现货采购','btn bp',function(){openSpotM();}));
@@ -13881,7 +13881,7 @@ function pgYarnOut(){
   qInp.style.cssText='flex:1;max-width:280px;min-width:170px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
   qInp.oninput=function(){renderYarnOutList();};
   var tfSel=mkSelect('yo-tf',[{v:'',l:'全部类型'},{v:'out',l:'发料'},{v:'ret',l:'回仓'}],'');
-  tfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';
+  tfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;width:auto;flex:0 0 auto';/* width:auto压住全局select{width:100%},否则在flex工具栏被顶成整页巨条 */
   tfSel.onchange=function(){renderYarnOutList();};
   bar.appendChild(qInp);bar.appendChild(tfSel);
   pg.appendChild(bar);
@@ -17426,7 +17426,7 @@ function pgGreyFab(){
   qInp.style.cssText='flex:1;max-width:280px;min-width:170px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
   qInp.oninput=function(){renderGreyFabList();};
   var pfSel=mkSelect('gf-pf',[{v:'',l:'全部付款状态'},{v:'unpaid',l:'未付款'},{v:'paid',l:'已付款'},{v:'voided',l:'已作废'}],'');
-  pfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';
+  pfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;width:auto;flex:0 0 auto';/* width:auto压住全局select{width:100%},否则在flex工具栏被顶成整页巨条 */
   pfSel.onchange=function(){renderGreyFabList();};
   bar.appendChild(qInp);bar.appendChild(pfSel);
   pg.appendChild(bar);

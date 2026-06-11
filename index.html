@@ -2371,12 +2371,22 @@ function changeLockPin(){
 }
 
 var _authReady = false;
+// 本地存储用量检查：localStorage 上限约5MB，超4MB提前预警（写满会静默保存失败）
+function checkStorageQuota(){
+  try{
+    var total=0;
+    for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);total+=((k||'').length+(localStorage.getItem(k)||'').length)*2;} // UTF-16≈2字节/字符
+    var mb=total/1048576;
+    if(mb>4)showToast('⚠ 本地存储已用 '+mb.toFixed(1)+'MB（上限约5MB）。请尽快「备份/恢复」页导出备份并清理旧快照，写满后保存会失败！','error');
+  }catch(e){}
+}
 async function onAuthSuccess(){
   _authReady = true;
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   // 登录后用公司档案刷新一次品牌（标题/顶栏），云端同步完成后会再刷一次
   refreshCO();applyCompanyBranding();
+  checkStorageQuota(); // 本地存储接近5MB上限时提前预警(防写满静默丢数)
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) logoutBtn.style.display = 'inline-block';var lkBtn=document.getElementById('lock-btn');if(lkBtn)lkBtn.style.display='inline-block';
   var cpBtn=document.getElementById('chpwd-btn');if(cpBtn)cpBtn.style.display='inline-block';
@@ -3213,9 +3223,18 @@ function om(el){
   o.innerHTML='';
   o.appendChild(el);
   o.classList.remove('hidden');
-  o.onmousedown=function(e){if(e.target===o)cm();};
+  window._modalDirty=false; // 新弹窗打开,重置"未保存改动"标记
+  o.onmousedown=function(e){if(e.target===o)cmSafe();};
 }
-function cm(){var o=document.getElementById('ov');o.classList.add('hidden');o.innerHTML='';}
+function cm(){var o=document.getElementById('ov');o.classList.add('hidden');o.innerHTML='';window._modalDirty=false;}
+// 防丢数关闭：弹窗内有未保存改动时,点 ×/遮罩/ESC/取消 先确认再关(保存成功走 cm() 不弹)
+function cmSafe(){
+  if(window._modalDirty&&!confirm('⚠ 有未保存的内容，确定关闭吗？\n\n点「取消」返回继续编辑，点「确定」放弃改动。'))return;
+  cm();
+}
+// 弹窗内任何输入/选择 → 标记有未保存改动(事件委托,覆盖所有弹窗,零侵入)
+document.addEventListener('input',function(e){var o=document.getElementById('ov');if(o&&!o.classList.contains('hidden')&&o.contains(e.target))window._modalDirty=true;},true);
+document.addEventListener('change',function(e){var o=document.getElementById('ov');if(o&&!o.classList.contains('hidden')&&o.contains(e.target))window._modalDirty=true;},true);
 // 作废单据打印水印（统一）：返回注入到 <body> 开头的 HTML 片段
 function voidPrintStamp(isVoided){
   if(!isVoided)return '';
@@ -3227,14 +3246,16 @@ function voidPrintStamp(isVoided){
     +'<div class="gjs-void-stamp">作 废</div>'
     +'<div class="gjs-void-banner">⚠ 本单据已作废，仅供存档参考，不作为有效凭证</div>';
 }
-// 全局 ESC 关闭标准弹窗（#ov）— 统一交互，输入框内按 ESC 先失焦不关窗
+// 全局 ESC 关闭：①先关最上层轻量浮层(.lite-ov) ②输入框编辑中先失焦 ③再关主弹窗(cmSafe 带未保存确认)
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape')return;
+  var lites=document.querySelectorAll('.lite-ov');
+  if(lites.length){lites[lites.length-1].remove();return;}   // 轻量浮层(退货红冲等)优先关
   var ov=document.getElementById('ov');
   if(!ov||ov.classList.contains('hidden'))return;     // 没有打开的弹窗
   var ae=document.activeElement;
   if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&ov.contains(ae)){ae.blur();return;} // 编辑中先失焦
-  cm();
+  cmSafe();
 });
 
 function mkBtn(label,cls,fn){
@@ -3430,14 +3451,14 @@ function buildModal(title,cls,bodyFn,saveFn,saveLabel){
   // header
   var hdr=document.createElement('div');hdr.className='mh';
   var t=document.createElement('div');t.className='mt';t.textContent=title;
-  var x=document.createElement('button');x.type='button';x.className='mc';x.textContent='×';x.onclick=function(e){if(e)e.preventDefault();cm();};
+  var x=document.createElement('button');x.type='button';x.className='mc';x.textContent='×';x.onclick=function(e){if(e)e.preventDefault();cmSafe();};
   hdr.appendChild(t);hdr.appendChild(x);
   // body
   var body=document.createElement('div');body.className='mb2';
   bodyFn(body);
   // footer
   var ftr=document.createElement('div');ftr.className='mf';
-  var cancel=mkBtn('取消','btn bs',cm);
+  var cancel=mkBtn('取消','btn bs',cmSafe);
   var save=mkBtn(saveLabel||'保存','btn bp',saveFn);
   ftr.appendChild(cancel);ftr.appendChild(save);
   wrap.appendChild(hdr);wrap.appendChild(body);wrap.appendChild(ftr);
@@ -12868,32 +12889,47 @@ function mFPaid(id){if(!confirm('确认已付款？'))return;var l=DB.trks;var i
 // DB.yarnouts= 发料/回仓记录
 
 function yarnPoNo(){
-  var y=new Date().getFullYear();
-  var arr=DB.load('yarnPoSeq');if(!arr||Array.isArray(arr)||arr.y===undefined){arr={y:y,n:0};}
-  if(arr.y!==y){arr={y:y,n:0};}
-  arr.n++;DB.save('yarnPoSeq',arr);
-  return 'PO'+y+String(arr.n).padStart(4,'0');
+  // 扫描已有采购单取最大流水+1（与订单/现货/入库同模式）。
+  // 旧版用本机计数器，多设备各数各的会撞号(P020260001 两台都发) — 已修
+  var y=new Date().getFullYear();var prefix='PO'+y;var max=0;var nos={};
+  (DB.yarns||[]).forEach(function(r){var no=r.poNo||'';nos[no]=1;if(no.indexOf(prefix)===0){var n=parseInt(no.slice(prefix.length),10)||0;if(n>max)max=n;}});
+  var n=max+1,cand=prefix+String(n).padStart(4,'0');
+  while(nos[cand]){n++;cand=prefix+String(n).padStart(4,'0');} // 兜底防撞(含历史重号)
+  return cand;
 }
 // ── 采购页 pgYarn ──
 function pgYarn(){
   if(!Array.isArray(DB.yarns))DB.yarns=[];
   var pg=document.getElementById('pg');pg.innerHTML='';
+  window._yarnShowAll=false; // 量大保护：进入页面默认只渲染最近100条
 
-  // 统计卡片
+  // 统计卡片（待付款可点击 → 直接筛出未付款）
   var totKg=DB.yarns.reduce(function(s,r){return s+(parseFloat(r.ordKg)||0);},0);
   var totAmt=DB.yarns.reduce(function(s,r){return s+(parseFloat(r.amt)||0);},0);
-  var unpaid=DB.yarns.filter(function(r){return !r.paid;}).length;
+  var unpaid=DB.yarns.filter(function(r){return !r.paid&&!r.voided;}).length; // 作废不算待付
   var sr=document.createElement('div');sr.className='sr';sr.style.gridTemplateColumns='repeat(3,1fr)';
   [
     ['采购总量','sr2',fmtN(totKg)+' KG',DB.yarns.length+'笔入库'],
     ['采购总额','sb','¥'+fmtN(totAmt),'含税合计'],
-    ['待付款','sr2',unpaid+'笔','未结清']
+    ['待付款','sr2',unpaid+'笔','未结清 · 点击筛选']
   ].forEach(function(s){
     var st=document.createElement('div');st.className='st '+s[1];
     st.innerHTML='<div class="sl">'+s[0]+'</div><div class="sv">'+s[2]+'</div><div class="ss">'+s[3]+'</div>';
+    if(s[0]==='待付款'){st.style.cursor='pointer';st.title='点击只看未付款';st.onclick=function(){var pf=document.getElementById('y-pf');if(pf){pf.value='unpaid';renderYarnList();}};}
     sr.appendChild(st);
   });
   pg.appendChild(sr);
+
+  // 工具栏：搜索 + 付款状态筛选（对齐订单/现货/物料页的标准做法）
+  var bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+  var qInp=mkInput('y-q','','🔍 搜索单号/供应商/规格/订单/批号...');
+  qInp.style.cssText='flex:1;max-width:280px;min-width:170px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
+  qInp.oninput=function(){renderYarnList();};
+  var pfSel=mkSelect('y-pf',[{v:'',l:'全部付款状态'},{v:'unpaid',l:'未付款'},{v:'paid',l:'已付款'},{v:'voided',l:'已作废'}],'');
+  pfSel.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer';
+  pfSel.onchange=function(){renderYarnList();};
+  bar.appendChild(qInp);bar.appendChild(pfSel);
+  pg.appendChild(bar);
 
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
@@ -12902,8 +12938,25 @@ function pgYarn(){
   ch.appendChild(addBtn);card.appendChild(ch);
   var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
 
-  if(!DB.yarns.length){
-    var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3);font-size:13px';e.textContent='暂无采购记录，点击「新增采购」开始录入';cb.appendChild(e);
+  function renderYarnList(){
+  cb.innerHTML='';
+  // 按搜索词 + 付款状态过滤
+  var q=((document.getElementById('y-q')||{value:''}).value||'').trim().toLowerCase();
+  var pfv=(document.getElementById('y-pf')||{value:''}).value;
+  var listAll=DB.yarns.slice().reverse().filter(function(r){
+    if(pfv==='unpaid'&&(r.paid||r.voided))return false;
+    if(pfv==='paid'&&(!r.paid||r.voided))return false;
+    if(pfv==='voided'&&!r.voided)return false;
+    if(q){var hay=((r.poNo||'')+' '+(r.ordNo||'')+' '+(r.supplier||'')+' '+(r.spec||'')+' '+(r.brand||'')+' '+(r.batchNo||'')+' '+(r.color||'')).toLowerCase();if(hay.indexOf(q)<0)return false;}
+    return true;
+  });
+  var totalFiltered=listAll.length;
+  var capped=!window._yarnShowAll&&totalFiltered>100;
+  var list=capped?listAll.slice(0,100):listAll; // 最新100条(已倒序)
+
+  if(!list.length){
+    var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3);font-size:13px';
+    e.textContent=(q||pfv)?'没有符合筛选条件的采购记录':'暂无采购记录，点击「新增采购」开始录入';cb.appendChild(e);
   } else {
     var yarnWrap=document.createElement('div');yarnWrap.className='qt-wrap';
     var yTbl=document.createElement('table');yTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
@@ -12918,7 +12971,7 @@ function pgYarn(){
     });
     yThead.appendChild(yThRow);yTbl.appendChild(yThead);
     var yTbody=document.createElement('tbody');
-    DB.yarns.slice().reverse().forEach(function(r,idx){
+    list.forEach(function(r,idx){
       var isVoided=!!r.voided;
       var bg=isVoided?'#F5F5F5':(idx%2===0?'#ffffff':'#f9f8ff');
       var tr=document.createElement('tr');
@@ -12934,8 +12987,8 @@ function pgYarn(){
       tr.appendChild(mkYTd('<strong>'+esc(r.spec||'')+'</strong>'+(r.brand?'<div style="font-size:10px;color:var(--t3)">'+esc(r.brand)+'</div>':''),'font-size:11px'));
       tr.appendChild(mkYTd(esc(r.color||'—'),'font-size:11px;color:#555'));
       tr.appendChild(mkYTd(esc(r.batchNo||'—'),'font-family:monospace;font-size:10.5px;color:#666'));
-      tr.appendChild(mkYTd(esc(r.ordKg||'—'),'text-align:center;color:#555'));
-      tr.appendChild(mkYTd(esc(r.actKg||'—'),'text-align:center;color:#555'));
+      tr.appendChild(mkYTd(esc(r.ordKg||'—'),'text-align:right;color:#555')); // 数字列右对齐(规范)
+      tr.appendChild(mkYTd(esc(r.actKg||'—'),'text-align:right;color:#555'));
       tr.appendChild(mkYTd(fmtM(r.unitPr),'text-align:right;color:var(--t2);font-size:11px'));
       tr.appendChild(mkYTd('<strong style="color:#C41E3A">'+fmtM(r.amt)+'</strong>','text-align:right'));
       tr.appendChild(mkYTd(paidBadge,'text-align:center'));
@@ -12953,9 +13006,18 @@ function pgYarn(){
       tr.appendChild(opTd);yTbody.appendChild(tr);
     });
     yTbl.appendChild(yTbody);yarnWrap.appendChild(yTbl);cb.appendChild(yarnWrap);
-    var yInfo=document.createElement('div');yInfo.style.cssText='font-size:10.5px;color:var(--t3);margin:5px 2px';
-    yInfo.textContent='共 '+DB.yarns.length+' 条采购记录 · 拖动表头边框可调整列宽';cb.appendChild(yInfo);
+    var yInfo=document.createElement('div');yInfo.style.cssText='font-size:10.5px;color:var(--t3);margin:5px 2px;display:flex;align-items:center;gap:10px';
+    var infoTxt=document.createElement('span');
+    infoTxt.textContent=(capped?('显示最近 '+list.length+' 条 / 筛得 '+totalFiltered+' 条'):('筛得 '+totalFiltered+' 条'))+' · 共 '+DB.yarns.length+' 条采购记录 · 拖动表头边框可调整列宽';
+    yInfo.appendChild(infoTxt);
+    if(capped){
+      var moreBtn=mkBtn('显示全部 '+totalFiltered+' 条','btn bsm bs',function(){window._yarnShowAll=true;renderYarnList();});
+      yInfo.appendChild(moreBtn);
+    }
+    cb.appendChild(yInfo);
   }
+  } // renderYarnList 结束
+  renderYarnList();
   card.appendChild(cb);pg.appendChild(card);
 }
 
@@ -13400,7 +13462,7 @@ function openSpotReturn(tr){
   if(!(act>0))return alert('请先填写该颜色的「实际重量」，才能办理退货');
   var unitPr=base+extra;
   var ex=tr._ret||{};
-  var ov=document.createElement('div');
+  var ov=document.createElement('div');ov.className='lite-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
   var card=document.createElement('div');
   card.style.cssText='background:#fff;border-radius:12px;max-width:390px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13px;max-height:90vh;overflow:auto';
@@ -13480,7 +13542,7 @@ function openSupplierReturn(gd,onDone){
   var net0=_spotColorNet(col,sp.basePr);var unitPr=net0.unitPr;
   var maxQty=parseFloat(col.actQty)||gd.kg;
   var prevQty=(col.ret&&parseFloat(col.ret.qty))||0;
-  var ov=document.createElement('div');
+  var ov=document.createElement('div');ov.className='lite-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
   var card=document.createElement('div');card.style.cssText='background:#fff;border-radius:12px;max-width:400px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);font-size:13px;max-height:90vh;overflow:auto';
   card.innerHTML='<div style="font-size:15px;font-weight:700;color:#DC2626;margin-bottom:4px">↩ 退回布行 — '+esc(gd.colorNm)+'</div>'

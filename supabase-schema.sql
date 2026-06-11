@@ -402,6 +402,7 @@ CREATE TABLE weaving_docs (
   unlock_reason TEXT DEFAULT '',
   selected_colors JSONB DEFAULT '[]',
   color_kg_map JSONB DEFAULT '{}',
+  revisions JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ord_id)
 );
@@ -441,6 +442,7 @@ CREATE TABLE dyeing_docs (
   status TEXT DEFAULT 'draft',
   issued_at TEXT DEFAULT '',
   unlock_reason TEXT DEFAULT '',
+  revisions JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ord_id)
 );

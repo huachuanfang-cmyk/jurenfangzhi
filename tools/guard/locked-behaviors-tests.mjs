@@ -749,6 +749,26 @@ test('成品入库：支持多色合并入库(一次多色·每色逐卷重量)'
   if (!/tgtByClr\[c\.nm\]=\(tgtByClr\[c\.nm\]\|\|0\)\+\(parseFloat\(c\.actQty\)/.test(html)) throw new Error('多色入库未核对现货采购实际重量');
 });
 
+test('加工单档案：织厂/染整历史可查 + 解锁留下达版本(工艺追溯铁证)', () => {
+  // P1 档案页：纯只读查询，必须接入菜单/路由/角色
+  if (!/function pgProcDocs\(\)/.test(html)) throw new Error('缺少加工单档案页 pgProcDocs');
+  if (!/data-page="procdocs"/.test(html)) throw new Error('加工单档案缺少菜单入口');
+  if (!/procdocs:pgProcDocs/.test(html)) throw new Error('加工单档案未接入路由');
+  if ((html.match(/'procdocs'/g)||[]).length < 2) throw new Error('ROLE_PAGES 未给 sales/purchase 开放加工单档案');
+  // 搜索 + 类型/状态筛选(下拉压宽度) + 量大保护
+  if (!/mkInput\('pd-q'/.test(html)) throw new Error('加工单档案缺少搜索框');
+  if (!/window\._pdShowAll/.test(html) || !/all\.slice\(0,100\)/.test(html)) throw new Error('加工单档案缺少量大保护(最近100条)');
+  // 只读详情(含历史版本展示)
+  if (!/function openProcDocView\(r\)/.test(html)) throw new Error('缺少加工单只读详情 openProcDocView');
+  // P2 解锁留痕：只归档已下达版；织厂/染整两处解锁都必须调用
+  if (!/function _archiveIssuedRevision\(cfg,reason\)/.test(html)) throw new Error('缺少下达版本存档 _archiveIssuedRevision');
+  if (!/cfg\.status!=='issued'\)return; \/\/ 只归档"已下达"/.test(html)) throw new Error('版本存档应只针对已下达版(草稿不留痕)');
+  if ((html.match(/_archiveIssuedRevision\(cfg,reason\); \/\/ 解锁前/g)||[]).length < 2) throw new Error('织厂/染整解锁未都接入版本存档');
+  if (!/cfg\.revisions=\(cfg\.revisions\|\|\[\]\)\.concat/.test(html)) throw new Error('版本存档未追加到 revisions[]');
+  // sandbox 安全(weaving/dyeing guard 在 VM 里跑解锁函数,不能因 logAction 未定义而崩)
+  if (!/typeof logAction==='function'/.test(html)) throw new Error('解锁留痕的 logAction 调用缺少 typeof 防护');
+});
+
 test('纱线采购：单号扫描已有取最大(多设备防撞号) + 搜索筛选 + 量大保护', () => {
   // 旧版本机计数器(yarnPoSeq)多设备各数各的会撞号 — 必须扫描已有采购单取最大+1
   if (/DB\.save\('yarnPoSeq'/.test(html)) throw new Error('yarnPoNo 又用回本机计数器,多设备会撞号');

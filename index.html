@@ -179,6 +179,7 @@ input[type=number]{-moz-appearance:textfield}
   <div class="nl">加工厂管理</div>
   <div class="ni" data-page="dw"><span class="nic">&#129525;</span>织厂加工单</div>
   <div class="ni" data-page="dd"><span class="nic">&#127912;</span>染整加工单</div>
+  <div class="ni" data-page="procdocs"><span class="nic">&#128451;</span>加工单档案</div>
   <div class="nl">成品管理</div>
   <div class="ni" data-page="fgstock"><span class="nic">&#128230;</span>成品库存</div>
   <div class="nl">财务</div>
@@ -2919,8 +2920,8 @@ function logAction(action,entity,entityId,detail){
 // admin/readonly 看全部；其它角色按白名单。dash(工作台) 人人可进。
 var ROLE_PAGES={
   finance:  ['dash','recon','apaging','arec','araging','profit','quot','custs','settings'],
-  sales:    ['dash','orders','trk','quot','dw','dd','fgstock','ystock','custs','mat','cnotice','spot'],
-  purchase: ['dash','yarn','greyfab','spot','yarnout','ystock','dw','dd','facts','fabstall','mat'],
+  sales:    ['dash','orders','trk','quot','dw','dd','procdocs','fgstock','ystock','custs','mat','cnotice','spot'],
+  purchase: ['dash','yarn','greyfab','spot','yarnout','ystock','dw','dd','procdocs','facts','fabstall','mat'],
   warehouse:['dash','fgstock','ystock']
 };
 function canAccessPage(page){
@@ -3182,7 +3183,7 @@ function markDuplicateShipmentVoidNoRestock(rid){
 var PROCS=['织布厂','染厂','印花厂','后整理厂','原料厂'];
 // 染整加工单/打办可选的工厂：染厂 + 印花厂 + 后整理厂（这些都属于染整阶段加工）
 function isDyeFinishFactory(f){var ps=(f&&f.prcs)||[];return ps.indexOf('染厂')>=0||ps.indexOf('印花厂')>=0||ps.indexOf('后整理厂')>=0||ps.indexOf('后整理')>=0||ps.indexOf('定型厂')>=0;}
-var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],spot:['现货采购','中大/轻纺城调货倒卖 · 按毛重付款、纸筒+空差算真实成本'],fabstall:['布行档案','中大/轻纺城供货档口'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级']};
+var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库存','入库登记、出货管理与库存总览'],orders:['销售订单','客户订单管理'],quot:['报价单','客户报价管理与打印'],trk:['加工跟踪','外发加工全流程跟踪'],yarn:['纱线采购','采购入库管理'],greyfab:['胚布采购','胚布订购合同管理与打印'],spot:['现货采购','中大/轻纺城调货倒卖 · 按毛重付款、纸筒+空差算真实成本'],fabstall:['布行档案','中大/轻纺城供货档口'],yarnout:['发料/回仓','原料出库与回仓'],ystock:['库存总览','各纱支实时库存'],dw:['织厂加工单','生成并打印织厂委托加工单'],dd:['染整加工单','生成并打印染整委托加工单'],custs:['客户档案','客户基本信息'],facts:['加工厂档案','织布/染厂/印花/后整理'],mat:['物料档案','布料溯源 · 样办参考库'],cnotice:['打办通知单','色样寄染厂打色通知单'],backup:['备份 / 恢复','数据导出、导入与历史快照'],arec:['应收对账','客户应收货款对账与预警'],recon:['应付对账','加工厂对账单管理与付款确认'],recv:['应收账款','客户收款跟踪'],payb:['应付账款','加工厂付款跟踪'],auditlog:['操作日志','谁、何时、改了什么单据 · 全程留痕'],araging:['应收账龄分析','按欠款时长分档 · 催款优先级与坏账预警'],profit:['客户毛利分析','收入−成本 · 哪个客户最赚钱 · 成本漏录提醒'],apaging:['应付账龄分析','欠加工厂多少、欠多久 · 付款优先级'],procdocs:['加工单档案','织厂/染整历史单据 · 工艺追溯（针寸/工序/颜色KG）· 下达版本留痕']};
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
@@ -3213,7 +3214,7 @@ function go(p){
   var m=PM[p]||['',''];
   document.getElementById('pt').textContent=m[0];
   document.getElementById('ps').textContent=m[1];
-  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,spot:pgSpot,fabstall:pgFabStall,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit,apaging:pgApAging};
+  var fn={dash:pgDash,orders:pgOrders,trk:pgTrk,yarn:pgYarn,greyfab:pgGreyFab,spot:pgSpot,fabstall:pgFabStall,yarnout:pgYarnOut,ystock:pgYstock,fgstock:pgFGStock,dw:pgDW,dd:pgDD,custs:pgCusts,facts:pgFacts,mat:pgMat,cnotice:pgColorNotice,quot:pgQuot,arec:pgARec,recon:pgRecon,recv:pgRecv,payb:pgPayb,settings:pgSettings,auditlog:pgAuditLog,backup:pgBackup,araging:pgArAging,profit:pgGrossProfit,apaging:pgApAging,procdocs:pgProcDocs};
   if(fn[p])fn[p]();
 }
 
@@ -8275,6 +8276,21 @@ function issueWDcfg(){
   var s=document.getElementById('wd-o');if(s&&s.onchange)s.onchange();
   showToast('织厂加工单已下达并锁定','success');
 }
+// ── 下达版本留痕（P2）：解锁那一刻，把"已下达的这一版"原样压入 revisions[]，
+//    3年后仍能铁证"当时下达给工厂的是什么"（针寸/工序/颜色KG…）。sandbox 安全：全部 typeof 防护。
+function _archiveIssuedRevision(cfg,reason){
+  try{
+    if(!cfg||cfg.status!=='issued')return; // 只归档"已下达"的版本；草稿改来改去不留痕
+    var snap={};for(var k in cfg){if(k==='revisions')continue;try{snap[k]=JSON.parse(JSON.stringify(cfg[k]));}catch(e){snap[k]=cfg[k];}}
+    cfg.revisions=(cfg.revisions||[]).concat([{
+      archivedAt:new Date().toISOString(),
+      reason:String(reason||'').trim(),
+      by:(typeof currentPreparer==='function'?(currentPreparer()||''):''),
+      issuedAt:cfg.issuedAt||'',
+      data:snap
+    }]);
+  }catch(e){}
+}
 function unlockWDcfg(){
   var oid=(document.getElementById('wd-o')||{value:''}).value;
   if(!oid)return;
@@ -8283,9 +8299,11 @@ function unlockWDcfg(){
   var key=ensureWDTaskKey(oid), l=DB.wdocs||[];
   var cfg=l.find(function(x){return x.ordId===key;});
   if(!cfg)return;
+  _archiveIssuedRevision(cfg,reason); // 解锁前先把已下达版存档(版本留痕)
   cfg.status='draft';
   cfg.unlockReason=reason.trim();
   DB.wdocs=l;
+  try{if(typeof logAction==='function'){var _bo=(DB.orders||[]).find(function(o){return o.id===wdBaseOrdId(key);});logAction('解锁修改','织厂加工单',(_bo&&_bo.no)||key,reason.trim());}}catch(e){}
   if(window._renderWDTaskPanel)window._renderWDTaskPanel(oid);
   var s=document.getElementById('wd-o');if(s&&s.onchange)s.onchange();
   showToast('已解锁，可修改本张织厂单','warning');
@@ -9424,9 +9442,11 @@ function unlockDDcfg(){
   var key=ensureDDTaskKey(oid), l=DB.ddocs||[];
   var cfg=l.find(function(x){return x.ordId===key;});
   if(!cfg)return;
+  _archiveIssuedRevision(cfg,reason); // 解锁前先把已下达版存档(版本留痕)
   cfg.status='draft';
   cfg.unlockReason=reason.trim();
   DB.ddocs=l;
+  try{if(typeof logAction==='function'){var _bo=(DB.orders||[]).find(function(o){return o.id===ddBaseOrdId(key);});logAction('解锁修改','染整加工单',(_bo&&_bo.no)||key,reason.trim());}}catch(e){}
   if(window._renderDDTaskPanel)window._renderDDTaskPanel(oid);
   var s=document.getElementById('dd-o');if(s&&s.onchange)s.onchange();
   showToast('已解锁，可修改本张染整加工单','warning');
@@ -10549,6 +10569,182 @@ function openMultiColorIn(){
     showToast('多色合并入库成功 ✓ '+savedN,'success');
   },'📥 保存入库');
   om(modal);
+}
+
+// ══ 加工单档案（P1）：织厂/染整历史单据统一查询 · 工艺追溯（针寸/工序/颜色KG）· 版本留痕查看 ══
+// 纯只读页：不碰织厂/染整表单、保存、下达的任何逻辑，联动零风险
+function _pdSpecW(w){var s='';if(w.gaugeN)s+=w.gaugeN+'G';if(w.gaugeS)s+=(s?'×':'')+w.gaugeS+'″';var wh=(w.specWd?w.specWd+(w.specWu||'cm'):'')+(w.specWt?'×'+w.specWt+'g':'');return s+(s&&wh?' · ':'')+wh;}
+function _pdSpecD(d){return (d.specWd?d.specWd+(d.specWu||'cm'):'')+(d.specWt?'×'+d.specWt+'g':'');}
+function pgProcDocs(){
+  var pg=document.getElementById('pg');if(!pg)return;pg.innerHTML='';
+  window._pdShowAll=false; // 量大保护：默认最近100条
+  var ordById={};(DB.orders||[]).forEach(function(o){if(o.id)ordById[o.id]=o;});
+  function ordOfKey(key){return ordById[String(key||'').split('::')[0]]||{};}
+
+  // 工具栏（下拉必须压宽度，防全局select{width:100%}巨条）
+  var bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+  var qInp=mkInput('pd-q','','🔍 搜索订单号/客户/工厂/针寸/工序...');
+  qInp.style.cssText='flex:1;max-width:300px;min-width:180px;padding:7px 12px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none;background:#fff';
+  var tSel=mkSelect('pd-t',[{v:'',l:'全部类型'},{v:'w',l:'织厂单'},{v:'d',l:'染整单'}],'');
+  var sSel=mkSelect('pd-s',[{v:'',l:'全部状态'},{v:'issued',l:'已下达'},{v:'draft',l:'草稿'}],'');
+  [tSel,sSel].forEach(function(s){s.style.cssText='padding:7px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;width:auto;flex:0 0 auto';});
+  qInp.oninput=function(){renderPD();};tSel.onchange=function(){renderPD();};sSel.onchange=function(){renderPD();};
+  bar.appendChild(qInp);bar.appendChild(tSel);bar.appendChild(sSel);
+  var hint=document.createElement('span');hint.style.cssText='font-size:10.5px;color:var(--t3)';hint.textContent='历史工艺追溯 · 点行查看详情与下达版本留痕';
+  bar.appendChild(hint);
+  pg.appendChild(bar);
+
+  var card=document.createElement('div');card.className='card';
+  var ch=document.createElement('div');ch.className='ch';
+  ch.innerHTML='<span class="ct">&#128451; 加工单档案</span>';
+  card.appendChild(ch);
+  var cb=document.createElement('div');cb.className='cb';cb.style.padding='0';
+
+  function buildRows(){
+    var rows=[];
+    (DB.wdocs||[]).forEach(function(w){if(!w)return;var o=ordOfKey(w.ordId);
+      rows.push({kind:'w',kindLbl:'织厂单',doc:w,ord:o,fac:w.facNm||'',spec:_pdSpecW(w),proc:(w.yq?'用纱:'+w.yq:'织造'),due:w.due||'',st:w.status||'draft',at:w.issuedAt||'',rev:(w.revisions||[]).length});});
+    (DB.ddocs||[]).forEach(function(d){if(!d)return;var o=ordOfKey(d.ordId);
+      rows.push({kind:'d',kindLbl:'染整单',doc:d,ord:o,fac:d.facNm||'',spec:_pdSpecD(d),proc:(d.procOrder||[]).join('→')||'—',due:d.due||'',st:d.status||'draft',at:d.issuedAt||'',rev:(d.revisions||[]).length});});
+    rows.sort(function(a,b){var x=(b.at||'').localeCompare(a.at||'');if(x)return x;return ((b.ord.no||'')+'').localeCompare((a.ord.no||'')+'');});
+    return rows;
+  }
+
+  function renderPD(){
+    cb.innerHTML='';
+    var q=((document.getElementById('pd-q')||{value:''}).value||'').trim().toLowerCase();
+    var tf=(document.getElementById('pd-t')||{value:''}).value;
+    var sf=(document.getElementById('pd-s')||{value:''}).value;
+    var all=buildRows().filter(function(r){
+      if(tf&&r.kind!==tf)return false;
+      if(sf==='issued'&&r.st!=='issued')return false;
+      if(sf==='draft'&&r.st==='issued')return false;
+      if(q){var hay=((r.ord.no||'')+' '+(r.ord.custNm||'')+' '+r.fac+' '+r.spec+' '+r.proc+' '+r.kindLbl).toLowerCase();if(hay.indexOf(q)<0)return false;}
+      return true;
+    });
+    var total=all.length;
+    var capped=!window._pdShowAll&&total>100;
+    var list=capped?all.slice(0,100):all;
+    if(!list.length){
+      var e=document.createElement('div');e.style.cssText='text-align:center;padding:28px;color:var(--t3);font-size:13px';
+      e.textContent=(q||tf||sf)?'没有符合筛选条件的加工单':'暂无加工单 · 在「织厂加工单 / 染整加工单」页生成后这里自动归档';cb.appendChild(e);return;
+    }
+    var wrap=document.createElement('div');wrap.className='qt-wrap';
+    var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;font-size:11.5px';
+    var cols=[['类型',64],['订单号',105],['客户',125],['工厂',125],['规格/针寸',165],['工序/用纱',165],['交期',85],['状态',88],['下达时间',98],['操作',64]];
+    var thead=document.createElement('thead');var thr=document.createElement('tr');
+    cols.forEach(function(col){
+      var th=document.createElement('th');th.textContent=col[0];
+      th.style.cssText='background:#eeecff;color:#3730a3;font-weight:600;font-size:11px;padding:7px 10px;border:1px solid #c7c4e8;text-align:left;white-space:nowrap;width:'+col[1]+'px;position:sticky;top:0;z-index:2;user-select:none';
+      var rsz=document.createElement('div');rsz.style.cssText='position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:3';
+      rsz.addEventListener('mousedown',function(e){e.preventDefault();var sx=e.clientX,sw=th.offsetWidth;function mv(ev){th.style.width=Math.max(40,sw+(ev.clientX-sx))+'px';}function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);});
+      th.appendChild(rsz);thr.appendChild(th);
+    });
+    thead.appendChild(thr);tbl.appendChild(thead);
+    var tbody=document.createElement('tbody');
+    list.forEach(function(r,idx){
+      var bg=idx%2===0?'#ffffff':'#f9f8ff';
+      var tr=document.createElement('tr');tr.style.cssText='cursor:pointer;transition:background .1s';
+      tr.onmouseover=function(){this.querySelectorAll('td').forEach(function(td){td.style.background='#f0f0ff';});};
+      tr.onmouseout=function(){this.querySelectorAll('td').forEach(function(td){td.style.background=bg;});};
+      tr.addEventListener('click',function(e){if(e.target.tagName==='BUTTON')return;openProcDocView(r);});
+      function td(html,style){var t=document.createElement('td');t.innerHTML=html;t.style.cssText='padding:6px 10px;border:1px solid #e0dff5;vertical-align:middle;background:'+bg+';'+(style||'');return t;}
+      var kindBadge=r.kind==='w'?'<span class="bx bxb">织厂</span>':'<span class="bx" style="background:#FDF2F8;color:#BE185D">染整</span>';
+      var stBadge=r.st==='issued'?'<span class="bx bxg">已下达</span>':'<span class="bx bxk">草稿</span>';
+      if(r.rev>0)stBadge+=' <span class="bx bxo" title="解锁修改过'+r.rev+'次，点行可看历史版本">改'+r.rev+'</span>';
+      tr.appendChild(td(kindBadge,'text-align:center'));
+      tr.appendChild(td('<span style="font-family:monospace;font-weight:700;color:var(--p);font-size:11px">'+esc(r.ord.no||'—')+'</span>'));
+      tr.appendChild(td(esc(shortName(r.ord.custNm||'')||'—'),'font-size:11px'));
+      tr.appendChild(td(esc(r.fac||'—'),'font-size:11px'));
+      tr.appendChild(td(esc(r.spec||'—'),'font-size:11px;color:#1e3a8a'));
+      tr.appendChild(td(esc(r.proc||'—'),'font-size:10.5px;color:#555'));
+      tr.appendChild(td(esc(r.due||'—'),'font-size:11px;color:var(--t2)'));
+      tr.appendChild(td(stBadge,'text-align:center;white-space:nowrap'));
+      tr.appendChild(td(r.at?esc(r.at.slice(0,10)):'—','font-size:10.5px;color:var(--t2)'));
+      var op=td('','white-space:nowrap');
+      op.appendChild(mkBtn('查看','btn bsm bs',(function(rr){return function(){openProcDocView(rr);};})(r)));
+      tr.appendChild(op);
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);wrap.appendChild(tbl);cb.appendChild(wrap);
+    var info=document.createElement('div');info.style.cssText='font-size:10.5px;color:var(--t3);margin:5px 2px;display:flex;align-items:center;gap:10px';
+    var infoTxt=document.createElement('span');
+    infoTxt.textContent=(capped?('显示最近 '+list.length+' 条 / 筛得 '+total+' 条'):('筛得 '+total+' 条'))+' · 织厂单 '+(DB.wdocs||[]).length+' 张 + 染整单 '+(DB.ddocs||[]).length+' 张';
+    info.appendChild(infoTxt);
+    if(capped){info.appendChild(mkBtn('显示全部 '+total+' 条','btn bsm bs',function(){window._pdShowAll=true;renderPD();}));}
+    cb.appendChild(info);
+  }
+  renderPD();
+  card.appendChild(cb);pg.appendChild(card);
+}
+
+// 加工单只读详情（轻量浮层 .lite-ov：ESC可关）：当前版 + 历史下达版本
+function openProcDocView(r){
+  var doc=r.doc,isW=(r.kind==='w');
+  function pair(lbl,val){if(val==null||val===''||(Array.isArray(val)&&!val.length))return '';return '<div style="display:flex;gap:6px;padding:3px 0;border-bottom:1px dashed #EEF2F7"><span style="flex:0 0 96px;color:#94A3B8;font-size:11px">'+esc(lbl)+'</span><span style="flex:1;font-size:12px;color:#1F2937;word-break:break-all">'+esc(String(val))+'</span></div>';}
+  function renderFields(d){
+    var h='';
+    if(isW){
+      h+=pair('织厂',d.facNm)+pair('联系人',d.ct)+pair('交期',d.due);
+      h+=pair('针寸',(d.gaugeN?d.gaugeN+'G':'')+(d.gaugeS?' × '+d.gaugeS+'″':''));
+      h+=pair('门幅/克重',(d.specWd?d.specWd+(d.specWu||'cm'):'')+(d.specWt?' × '+d.specWt+'g/㎡':''));
+      h+=pair('缩水',d.shrink)+pair('用纱',d.yq)+pair('落布',d.ls);
+      h+=pair('加工价',(d.pr?d.pr+' ':'')+(d.taxType||''));
+      var ck=Object.keys(d.colorKgMap||{}).map(function(k){return k+':'+d.colorKgMap[k]+'KG';}).join('、');
+      h+=pair('颜色KG',ck||((d.selectedColors||[]).join('、')));
+      h+=pair('交胚地址',d.raSelNm||d.ra)+pair('收货人',(d.raNm||'')+(d.raCt?' '+d.raCt:'')+(d.raPh?' '+d.raPh:''));
+      h+=pair('注意事项',d.note)+pair('备注',d.rm);
+    }else{
+      h+=pair('染厂',d.facNm)+pair('联系人',(d.ct||'')+(d.ph?' '+d.ph:''))+pair('交期',d.due);
+      h+=pair('门幅/克重',(d.specWd?d.specWd+(d.specWu||'cm'):'')+(d.specWt?' × '+d.specWt+'g/㎡':''));
+      h+=pair('缩水',(d.sw?'W'+d.sw+'% ':'')+(d.sl?'L'+d.sl+'% ':'')+(d.sn?'N'+d.sn+'% ':'')+(d.sk?'斜度'+d.sk+' ':'')+(d.sm||''));
+      h+=pair('工序',(d.procOrder||[]).join(' → '));
+      h+=pair('包装',(d.pkg||[]).join('、'));
+      var vat=(d.vatCode||[]).map(function(c,i){var q=(d.vatQ1||[])[i]||'';return c?(c+(q?'('+q+')':'')):'';}).filter(Boolean).join('、');
+      h+=pair('落缸色号',vat)+pair('选染颜色',(d.selectedVatColors||[]).join('、'));
+      h+=pair('特殊注意',d.pj)+pair('批色说明',d.pjNote)+pair('补充备注',d.rm);
+      h+=pair('织厂(收胚来源)',d.wb)+pair('收胚地址',d.ra)+pair('收胚联系',(d.rct||'')+(d.rph?' '+d.rph:''));
+      h+=pair('交货地址',d.da)+pair('交货联系',(d.dc||'')+(d.dp?' '+d.dp:''));
+    }
+    return h||'<div style="color:#94A3B8;font-size:12px;padding:8px 0">（空）</div>';
+  }
+  var ov=document.createElement('div');ov.className='lite-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
+  var cardEl=document.createElement('div');
+  cardEl.style.cssText='background:#fff;border-radius:12px;max-width:560px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-height:88vh;overflow:auto';
+  var stTxt=r.st==='issued'?'<span class="bx bxg">已下达</span>'+(r.at?' <span style="font-size:10px;color:#94A3B8">'+esc(r.at.slice(0,16).replace('T',' '))+'</span>':''):'<span class="bx bxk">草稿</span>';
+  var head=document.createElement('div');
+  head.innerHTML='<div style="font-size:15px;font-weight:700;color:#3730A3;margin-bottom:2px">'+(isW?'🧵 织厂加工单':'🎨 染整加工单')+' — '+esc(r.ord.no||'')+' '+stTxt+'</div>'
+    +'<div style="font-size:11px;color:#94A3B8;margin-bottom:10px">'+esc(shortName(r.ord.custNm||''))+(r.ord.fab?' · '+esc(r.ord.fab):'')+'</div>';
+  cardEl.appendChild(head);
+  var cur=document.createElement('div');cur.innerHTML=renderFields(doc);cardEl.appendChild(cur);
+  // 历史下达版本（解锁留痕）
+  var revs=doc.revisions||[];
+  if(revs.length){
+    var rh=document.createElement('div');rh.style.cssText='margin-top:12px;font-size:11px;font-weight:700;color:#B45309';
+    rh.textContent='📜 历史下达版本（解锁留痕，共 '+revs.length+' 版）— 上面是当前版，下面是"当时下达的原样"';
+    cardEl.appendChild(rh);
+    revs.slice().reverse().forEach(function(rv,i){
+      var box=document.createElement('div');box.style.cssText='border:1px solid #FDE68A;background:#FFFBEB;border-radius:8px;margin-top:8px;overflow:hidden';
+      var bh=document.createElement('div');bh.style.cssText='padding:7px 10px;font-size:11px;color:#92400E;cursor:pointer;display:flex;gap:10px;align-items:center';
+      bh.innerHTML='<b>第 '+(revs.length-i)+' 版</b><span>下达 '+esc((rv.issuedAt||'').slice(0,16).replace('T',' '))+'</span><span>解锁 '+esc((rv.archivedAt||'').slice(0,16).replace('T',' '))+'</span><span style="color:#DC2626">原因：'+esc(rv.reason||'—')+'</span>'+(rv.by?'<span>'+esc(rv.by)+'</span>':'')+'<span style="margin-left:auto">▸ 展开</span>';
+      var bb=document.createElement('div');bb.style.cssText='display:none;padding:4px 10px 10px;background:#fff';
+      bb.innerHTML=renderFields(rv.data||{});
+      bh.onclick=function(){var open=bb.style.display!=='none';bb.style.display=open?'none':'block';bh.querySelector('span[style*="margin-left"]').textContent=open?'▸ 展开':'▾ 收起';};
+      box.appendChild(bh);box.appendChild(bb);cardEl.appendChild(box);
+    });
+  }
+  var btns=document.createElement('div');btns.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:14px';
+  btns.appendChild(mkBtn('去加工单页(可打印/编辑)','btn bsm bq',function(){
+    ov.remove();
+    var baseOid=String(doc.ordId||'').split('::')[0];
+    if(isW){window._wdActiveTaskKey=doc.ordId;go('dw');setTimeout(function(){if(typeof setDWord==='function')setDWord(baseOid);},80);}
+    else{window._ddActiveTaskKey=doc.ordId;go('dd');setTimeout(function(){if(typeof setDDord==='function')setDDord(baseOid);},80);}
+  }));
+  btns.appendChild(mkBtn('关闭','btn bp',function(){ov.remove();}));
+  cardEl.appendChild(btns);
+  ov.appendChild(cardEl);ov.onmousedown=function(e){if(e.target===ov)ov.remove();};
+  document.body.appendChild(ov);
 }
 
 function pgARec(){

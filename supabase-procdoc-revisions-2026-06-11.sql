@@ -4,3 +4,7 @@
 
 ALTER TABLE weaving_docs ADD COLUMN IF NOT EXISTS revisions JSONB DEFAULT '[]';
 ALTER TABLE dyeing_docs  ADD COLUMN IF NOT EXISTS revisions JSONB DEFAULT '[]';
+
+-- 数量联动(A方案)：记录每个颜色的落缸数/KG是否被"手动改过"，手动则不再跟随销售订单
+ALTER TABLE weaving_docs ADD COLUMN IF NOT EXISTS color_kg_manual_map JSONB DEFAULT '{}';
+ALTER TABLE dyeing_docs  ADD COLUMN IF NOT EXISTS vat_q1_manual       JSONB DEFAULT '[]';

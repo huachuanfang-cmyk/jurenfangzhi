@@ -402,6 +402,7 @@ CREATE TABLE weaving_docs (
   unlock_reason TEXT DEFAULT '',
   selected_colors JSONB DEFAULT '[]',
   color_kg_map JSONB DEFAULT '{}',
+  color_kg_manual_map JSONB DEFAULT '{}',
   revisions JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ord_id)
@@ -437,6 +438,7 @@ CREATE TABLE dyeing_docs (
   vat_rm JSONB DEFAULT '[]',
   vat_code JSONB DEFAULT '[]',
   vat_q1 JSONB DEFAULT '[]',
+  vat_q1_manual JSONB DEFAULT '[]',
   selected_vat_colors JSONB DEFAULT '[]',
   pj_note TEXT DEFAULT '',
   status TEXT DEFAULT 'draft',

@@ -749,6 +749,23 @@ test('成品入库：支持多色合并入库(一次多色·每色逐卷重量)'
   if (!/tgtByClr\[c\.nm\]=\(tgtByClr\[c\.nm\]\|\|0\)\+\(parseFloat\(c\.actQty\)/.test(html)) throw new Error('多色入库未核对现货采购实际重量');
 });
 
+test('加工单数量联动(A方案):草稿随销售订单·手动改过则保护·下达冻结', () => {
+  // 染整落缸数:已下达/手动→认存值,否则跟随销售订单最新(finQty→vatQty→prodQty→qty)
+  if (!/var liveQ=String\(c\.finQty\|\|c\.vatQty\|\|c\.prodQty\|\|c\.qty\|\|''\)/.test(html)) throw new Error('染整落缸数未取销售订单最新量');
+  if (!/var dispQ=\(ddIssued\|\|isManual\)\?/.test(html)) throw new Error('染整落缸数缺少"已下达/手动用存值,否则跟随"判定');
+  if (!/this\.dataset\.manual='1';paintQHint\(\);/.test(html)) throw new Error('染整落缸数改过未记手动');
+  if (!/vatQ1Manual:/.test(html)) throw new Error('染整未保存 vatQ1Manual 手动标记');
+  // 织厂颜色KG:同口径
+  if (!/var wLive=String\(c\.finQty\|\|c\.prodQty\|\|c\.qty\|\|''\)/.test(html)) throw new Error('织厂颜色KG未取销售订单最新量');
+  if (!/colorKgManualMap:/.test(html)) throw new Error('织厂未保存 colorKgManualMap 手动标记');
+  if (!/else if\(wasManual&&hasSaved\)\{inp\.value=cfg\.colorKgMap\[nm\];/.test(html)) throw new Error('织厂回填未做"仅手动颜色用存值"');
+  // #2 染整下达后:色号/落缸数/备注(dvc/dvq1/dvr)也必须锁死
+  if (!/\/\^dv\[cqr\]\/\.test\(el\.id\|\|''\)/.test(html)) throw new Error('染整下达后色号/落缸数/备注未锁(生产事故)');
+  // #1 织厂/染整订单选择器默认隐藏已全部出货完成,但已建过加工单的保留
+  if (!/_wdOrdIds\[o\.id\]\)return true;return !isOrderFullyShipped\(o\)/.test(html)) throw new Error('织厂订单选择器未隐藏已完成订单(保留已建单)');
+  if (!/_ddOrdIds\[o\.id\]\)return true;return !isOrderFullyShipped\(o\)/.test(html)) throw new Error('染整订单选择器未隐藏已完成订单(保留已建单)');
+});
+
 test('加工单档案：织厂/染整历史可查 + 解锁留下达版本(工艺追溯铁证)', () => {
   // P1 档案页：纯只读查询，必须接入菜单/路由/角色
   if (!/function pgProcDocs\(\)/.test(html)) throw new Error('缺少加工单档案页 pgProcDocs');

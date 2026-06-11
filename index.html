@@ -7756,7 +7756,10 @@ function ensureWDTaskKey(oid){
 
 function pgDW(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  // #1 订单搜索框量大保护：默认排除已全部出货完成/已取消的订单(几年后单子多了不卡)。
+  //    但"已建过织厂单"的订单必须保留(否则下达后自己那张单就找不到了)。
+  var _wdOrdIds={};(DB.wdocs||[]).forEach(function(w){if(w&&w.ordId)_wdOrdIds[wdBaseOrdId(w.ordId)]=1;});
+  var ords=DB.orders.filter(function(o){if(o.status==='cancelled')return false;if(_wdOrdIds[o.id])return true;return !isOrderFullyShipped(o);}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var facts=DB.facts;
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
@@ -8040,10 +8043,22 @@ function pgDW(){
       var kgWrap=document.createElement('div');kgWrap.style.cssText='display:flex;flex-direction:column;align-items:center;margin-left:4px';
       var kgLbl=document.createElement('div');kgLbl.style.cssText='font-size:9px;color:#D97706;margin-bottom:2px';kgLbl.textContent='KG';
       var kgInp=document.createElement('input');kgInp.type='text';kgInp.className='wd-clr-kg';kgInp.dataset.nm=c.nm;
-      kgInp.value=c.prodQty||'';kgInp.placeholder='KG';
+      var wLive=String(c.finQty||c.prodQty||c.qty||''); // 销售订单最新数量(同口径)
+      kgInp.dataset.live=wLive;kgInp.dataset.manual='0';
+      kgInp.value=wLive;kgInp.placeholder='KG'; // 初值=销售最新;若有存档手动值,下面回填阶段覆盖
       kgInp.style.cssText='width:60px;padding:3px 5px;border:1px solid #F59E0B;border-radius:4px;font-size:12px;text-align:center;background:#FFFBEB;outline:none';
       kgInp.onclick=function(e){e.preventDefault();e.stopPropagation();};
-      kgWrap.appendChild(kgLbl);kgWrap.appendChild(kgInp);
+      kgInp.oninput=function(){this.dataset.manual='1';paintWHint();}; // A方案:改过即记手动
+      var wHint=document.createElement('div');wHint.className='wd-kg-hint';wHint.style.cssText='font-size:8.5px;line-height:1.2;margin-top:1px;text-align:center';
+      function paintWHint(){
+        var man=kgInp.dataset.manual==='1',lv=kgInp.dataset.live||'';
+        if(!man){wHint.innerHTML='<span style="color:#16A34A">随订单</span>';}
+        else if(lv&&lv!==kgInp.value){wHint.innerHTML='<span style="color:#D97706">销售'+esc(lv)+'</span> <a href="javascript:void(0)" class="wd-kg-adopt" style="color:#2563EB">↺采纳</a>';}
+        else{wHint.innerHTML='<span style="color:#64748B">手动</span>';}
+      }
+      wHint.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('wd-kg-adopt')){kgInp.value=kgInp.dataset.live||'';kgInp.dataset.manual='0';paintWHint();}});
+      paintWHint();
+      kgWrap.appendChild(kgLbl);kgWrap.appendChild(kgInp);kgWrap.appendChild(wHint);
       lbl4.appendChild(ck4);lbl4.appendChild(tick4);lbl4.appendChild(info4);lbl4.appendChild(kgWrap);
       clrGrid4.appendChild(lbl4);
     });
@@ -8167,8 +8182,23 @@ function pgDW(){
         if(hasSelected)cb.checked=!!selectedMap[cb.value];
         if(cb.onchange)cb.onchange();
       });
+      // A方案:已下达→冻结回填存值;未下达→只回填"手动改过"的颜色,其余保持随销售订单最新量
+      var wIssued=cfg.status==='issued';
+      var manMap=cfg.colorKgManualMap||{};
       document.querySelectorAll('.wd-clr-kg').forEach(function(inp){
-        if(cfg.colorKgMap&&inp.dataset.nm&&cfg.colorKgMap[inp.dataset.nm])inp.value=cfg.colorKgMap[inp.dataset.nm];
+        var nm=inp.dataset.nm;if(!nm)return;
+        var hasSaved=cfg.colorKgMap&&cfg.colorKgMap[nm]!=null&&cfg.colorKgMap[nm]!=='';
+        var wasManual=!!manMap[nm];
+        if(wIssued){if(hasSaved){inp.value=cfg.colorKgMap[nm];}inp.dataset.manual=wasManual?'1':'0';}
+        else if(wasManual&&hasSaved){inp.value=cfg.colorKgMap[nm];inp.dataset.manual='1';}
+        // 未手动→不覆盖,保持初值(销售订单最新量)
+        var hf=inp.parentElement&&inp.parentElement.querySelector('.wd-kg-hint');
+        if(hf){var man=inp.dataset.manual==='1',lv=inp.dataset.live||'';
+          if(wIssued)hf.innerHTML='<span style="color:#94A3B8">已冻结</span>';
+          else if(!man)hf.innerHTML='<span style="color:#16A34A">随订单</span>';
+          else if(lv&&lv!==inp.value)hf.innerHTML='<span style="color:#D97706">销售'+esc(lv)+'</span> <a href="javascript:void(0)" class="wd-kg-adopt" style="color:#2563EB">↺采纳</a>';
+          else hf.innerHTML='<span style="color:#64748B">手动</span>';
+        }
       });
       // ── 规格同步检测（方案B）──
       var ordSpecs={'wd-gn':ord&&ord.gaugeN,'wd-gs':ord&&ord.gaugeS,'wd-wd':ord&&ord.width,'wd-wt':ord&&ord.weight,'wd-sh':ord&&ord.shrinkP};
@@ -8254,7 +8284,8 @@ function saveWDcfg(){
     note:(document.getElementById('wd-note')||{value:''}).value,
     rm:(document.getElementById('wd-rm')||{value:''}).value,
     selectedColors:(function(){var a=[];document.querySelectorAll('.wd-clr-chk').forEach(function(cb){if(cb.checked)a.push(cb.value);});return a;})(),
-    colorKgMap:(function(){var map={};document.querySelectorAll('.wd-clr-kg').forEach(function(inp){if(inp.dataset.nm&&inp.value)map[inp.dataset.nm]=inp.value;});return map;})()
+    colorKgMap:(function(){var map={};document.querySelectorAll('.wd-clr-kg').forEach(function(inp){if(inp.dataset.nm&&inp.value)map[inp.dataset.nm]=inp.value;});return map;})(),
+    colorKgManualMap:(function(){var map={};document.querySelectorAll('.wd-clr-kg').forEach(function(inp){if(inp.dataset.nm)map[inp.dataset.nm]=(inp.dataset.manual==='1');});return map;})()
   };
   if(existing && existing.id) cfg.id = existing.id;
   if(idx>=0)l[idx]=cfg;else l.push(cfg);
@@ -8557,7 +8588,9 @@ function ensureDDTaskKey(oid){
 }
 function pgDD(){
   var pg=document.getElementById('pg');pg.innerHTML='';
-  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  // #1 同织厂:默认隐藏已全部出货完成的订单,但已建过染整单的保留
+  var _ddOrdIds={};(DB.ddocs||[]).forEach(function(d){if(d&&d.ordId)_ddOrdIds[ddBaseOrdId(d.ordId)]=1;});
+  var ords=DB.orders.filter(function(o){if(o.status==='cancelled')return false;if(_ddOrdIds[o.id])return true;return !isOrderFullyShipped(o);}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var card=document.createElement('div');card.className='card';
   var ch=document.createElement('div');ch.className='ch';
   ch.innerHTML='<span class="ct">生成染整加工单</span><span style="font-size:11px;color:var(--t3)">填写后点"保存配置"，下次打开自动恢复</span>';
@@ -8644,7 +8677,8 @@ function pgDD(){
       if(el.id==='dd-o-i')return;
       if(el.closest('#dd-task-panel'))return;
       if(el.closest('#dd-actions'))return;
-      if(/^dd-/.test(el.id||'')||el.className==='dd-pkg-cb'||(el.closest&&el.closest('#dd-proc-checks')))el.disabled=!!isIssued;
+      // 含落缸数/色号/备注(id dvc-/dvq1-/dvr-),下达后一并锁死(原来漏锁,已下达还能偷改=生产事故)
+      if(/^dd-/.test(el.id||'')||/^dv[cqr]/.test(el.id||'')||el.className==='dd-pkg-cb'||el.className==='dd-clr-chk'||(el.closest&&el.closest('#dd-proc-checks')))el.disabled=!!isIssued;
     });
     var ordInput=document.getElementById('dd-o-i');if(ordInput)ordInput.disabled=false;
   }
@@ -9010,6 +9044,8 @@ function buildVatTable(){
   var savedVatRm=savedCfg.vatRm||[];
   var savedVatCode=savedCfg.vatCode||[];
   var savedVatQ1=savedCfg.vatQ1||[];
+  var savedVatQ1Manual=savedCfg.vatQ1Manual||[]; // A方案:每色落缸数是否被手动改过(true=认你的,不再跟随销售订单)
+  var ddIssued=savedCfg.status==='issued';       // 已下达=冻结,显示下达时存的数
   var savedVatSelected=Array.isArray(savedCfg.selectedVatColors)?savedCfg.selectedVatColors:null;
   var inferVatSelected=!savedVatSelected&&savedVatQ1.some(function(v){return String(v||'').trim();});
   var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse';
@@ -9027,7 +9063,24 @@ function buildVatTable(){
     // 颜色名列 - 用appendChild不用innerHTML+=，防止破坏checkbox.checked
     var nmTd=document.createElement('td');nmTd.style.cssText=cellStyle+';font-weight:600;padding:5px';nmTd.textContent=c.nm;tr.appendChild(nmTd);
     var td1=document.createElement('td');td1.style.cssText=cellStyle;var i1=mkInput('dvc-'+i,savedVatCode[i]||c.code);i1.style.cssText=iStyle;td1.appendChild(i1);tr.appendChild(td1);
-    var td2=document.createElement('td');td2.style.cssText=cellStyle;var i2=mkInput('dvq1-'+i,c.vatQty||c.prodQty||'','kg','number');i2.style.cssText=iStyle+'text-align:center;';td2.appendChild(i2);tr.appendChild(td2);
+    // A方案落缸数：①已下达→冻结显示存的数 ②手动改过→认你的值 ③否则跟随销售订单最新量(finQty→vatQty→prodQty→qty)
+    var liveQ=String(c.finQty||c.vatQty||c.prodQty||c.qty||'');
+    var isManual=!!savedVatQ1Manual[i];
+    var dispQ=(ddIssued||isManual)?(savedVatQ1[i]!=null&&savedVatQ1[i]!==''?savedVatQ1[i]:liveQ):liveQ;
+    var td2=document.createElement('td');td2.style.cssText=cellStyle;
+    var i2=mkInput('dvq1-'+i,dispQ,'kg','number');i2.style.cssText=iStyle+'text-align:center;';i2.dataset.manual=isManual?'1':'0';i2.dataset.live=liveQ;
+    var qHint=document.createElement('div');qHint.className='dvq1-hint';qHint.style.cssText='font-size:9px;line-height:1.3;margin-top:1px;text-align:center';
+    function paintQHint(){
+      if(ddIssued){qHint.innerHTML='<span style="color:#94A3B8">已下达·冻结</span>';return;}
+      var man=i2.dataset.manual==='1',lv=i2.dataset.live||'';
+      if(!man){qHint.innerHTML='<span style="color:#16A34A">随销售订单</span>';}
+      else if(lv&&lv!==i2.value){qHint.innerHTML='<span style="color:#D97706">销售现为'+esc(lv)+'</span> <a href="javascript:void(0)" class="dvq1-adopt" style="color:#2563EB;text-decoration:underline">↺采纳</a>';}
+      else{qHint.innerHTML='<span style="color:#64748B">手动</span>';}
+    }
+    i2.oninput=function(){this.dataset.manual='1';paintQHint();}; // 改过即记为手动(A方案零负担)
+    qHint.addEventListener('click',function(e){if(e.target&&e.target.classList&&e.target.classList.contains('dvq1-adopt')){i2.value=i2.dataset.live||'';i2.dataset.manual='0';paintQHint();}});
+    paintQHint();
+    td2.appendChild(i2);td2.appendChild(qHint);tr.appendChild(td2);
     var td5=document.createElement('td');td5.style.cssText=cellStyle+'background:var(--b2)';
     var i5=mkInput('dvr-'+i,savedVatRm[i]||'','✏ 此颜色特殊要求（如：色差需确认、先打样板…）');
     i5.style.cssText='width:100%;padding:5px 8px;border:1.5px solid var(--p);border-radius:4px;font-size:11px;background:#fff';
@@ -9407,6 +9460,7 @@ function saveDDcfg(){
     vatCode:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvc-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatRm:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvr-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     vatQ1:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?el.value:'');}while(a.length&&!a[a.length-1])a.pop();return a;})(),
+    vatQ1Manual:(function(){var a=[];for(var vi=0;vi<20;vi++){var el=document.getElementById('dvq1-'+vi);a.push(el?(el.dataset.manual==='1'):false);}while(a.length&&!a[a.length-1])a.pop();return a;})(),
     selectedVatColors:(function(){var a=[];document.querySelectorAll('.dd-clr-chk').forEach(function(cb){if(cb.checked)a.push(cb.value);});return a;})(),
     pjNote:(document.getElementById('dd-pj-note')||{value:''}).value
   };

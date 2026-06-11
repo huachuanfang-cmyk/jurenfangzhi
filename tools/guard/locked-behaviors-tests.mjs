@@ -761,6 +761,24 @@ test('纱线采购：单号扫描已有取最大(多设备防撞号) + 搜索筛
   if (!/listAll\.slice\(0,100\)/.test(html)) throw new Error('纱线采购未按100条截断');
 });
 
+test('原料管理四页：搜索/筛选/量大保护 + 发料单号编辑保留', () => {
+  // 胚布采购：搜索+付款筛选+100条截断+待付款卡可点
+  if (!/mkInput\('gf-q'/.test(html) || !/mkSelect\('gf-pf'/.test(html)) throw new Error('胚布采购缺少搜索/付款筛选');
+  if (!/window\._gfShowAll/.test(html)) throw new Error('胚布采购缺少量大保护');
+  // 现货采购：付款筛选+100条截断(搜索原有)
+  if (!/mkSelect\('sp-pf'/.test(html)) throw new Error('现货采购缺少付款筛选');
+  if (!/window\._spotShowAll/.test(html)) throw new Error('现货采购缺少量大保护');
+  // 发料/回仓：搜索+类型筛选+100条截断
+  if (!/mkInput\('yo-q'/.test(html) || !/mkSelect\('yo-tf'/.test(html)) throw new Error('发料/回仓缺少搜索/类型筛选');
+  if (!/window\._yoShowAll/.test(html)) throw new Error('发料/回仓缺少量大保护');
+  // 发料单号：编辑必须保留原号(旧版每次保存重新随机会换号)；新建防同日撞号
+  if (!/var _frNo=rec\.frNo;/.test(html)) throw new Error('发料单号编辑未保留原号');
+  if (!/while\(DB\.yarnouts\.some\(function\(x\)\{return x\.frNo===_frNo;\}\)\)/.test(html)) throw new Error('发料单号缺少防撞兜底');
+  // 库存总览：搜索+只看有余量(默认勾选)
+  if (!/mkInput\('ys-q'/.test(html)) throw new Error('库存总览缺少搜索');
+  if (!/onlyCk\.checked=true/.test(html)) throw new Error('库存总览「只看有余量」应默认勾选');
+});
+
 test('物料档案：列表按编号排序 + 中文搜索不闪退(异步竞态防护)', () => {
   // 列表必须按编号数值倒序(不再混乱)
   if (!/filtered\.sort\(function\(a,b\)\{var d=_matNum/.test(html)) throw new Error('物料列表未按编号排序');

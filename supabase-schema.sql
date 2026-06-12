@@ -114,6 +114,9 @@ CREATE TABLE trackings (
   unit_pr NUMERIC DEFAULT 0,
   fee TEXT DEFAULT '',
   f_paid BOOLEAN DEFAULT FALSE,
+  tax_incl BOOLEAN DEFAULT FALSE,
+  misc_cost TEXT DEFAULT '',
+  misc_rm TEXT DEFAULT '',
   est_d TEXT DEFAULT '',
   act_d TEXT DEFAULT '',
   rm TEXT DEFAULT '',
@@ -141,6 +144,9 @@ CREATE TABLE yarns (
   arr_date TEXT DEFAULT '',
   act_kg TEXT DEFAULT '',
   paid BOOLEAN DEFAULT FALSE,
+  tax_incl BOOLEAN DEFAULT FALSE,
+  misc_cost TEXT DEFAULT '',
+  misc_rm TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   del_fac_id TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -181,6 +187,10 @@ CREATE TABLE grey_fabrics (
   colors JSONB DEFAULT '[]',
   total_kg TEXT DEFAULT '',
   total_amt TEXT DEFAULT '',
+  paid BOOLEAN DEFAULT FALSE,
+  tax_incl BOOLEAN DEFAULT FALSE,
+  misc_cost TEXT DEFAULT '',
+  misc_rm TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -512,6 +522,8 @@ CREATE TABLE spot_purchases (
   colors JSONB DEFAULT '[]',
   total_amt NUMERIC DEFAULT 0,
   total_net NUMERIC DEFAULT 0,
+  misc_cost TEXT DEFAULT '',
+  misc_rm TEXT DEFAULT '',
   rm TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

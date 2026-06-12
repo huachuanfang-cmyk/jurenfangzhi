@@ -4968,24 +4968,31 @@ function pgGrossProfit(){
   });
   // taxIncl: 该笔采购/加工标了「含税(有票)」→ 有进项票可抵扣 → 计入 invoicedCost(从计税基数里扣)
   (DB.trks||[]).forEach(function(t){
-    if(!t||t.voided)return;var feeRaw=parseFloat(t.fee)||0;if(!feeRaw)return;
-    var ord=ordOf(t);if(!ord)return;var os=getOS(ord);os.feeCost+=feeRaw;
-    if(t.taxIncl)os.invoicedCost+=feeRaw;
+    if(!t||t.voided)return;
+    var feeRaw=parseFloat(t.fee)||0;
+    var miscRaw=parseFloat(t.miscCost)||0; // 本环节杂费(包装/纸筒等),填的是不含税原值
+    if(!feeRaw&&!miscRaw)return;
+    var ord=ordOf(t);if(!ord)return;var os=getOS(ord);
+    // 杂费跟随该单含税开关:含税(有票)→实付×1.06并计进项抵扣;现金→原值
+    var miscPaid=t.taxIncl?miscRaw*1.06:miscRaw;
+    os.feeCost+=feeRaw+miscPaid;
+    if(t.taxIncl)os.invoicedCost+=feeRaw+miscRaw; // 进项抵扣按发票面额(原值,不含买票溢价)
     var pk=t.proc||'其他加工';os.procCost[pk]=(os.procCost[pk]||0)+feeRaw;
+    if(miscPaid>0)os.procCost['其它费用(包装/纸筒等)']=(os.procCost['其它费用(包装/纸筒等)']||0)+miscPaid;
   });
   (DB.yarns||[]).forEach(function(y){
-    if(!y||y.voided)return;var amtRaw=parseFloat(y.amt)||0;if(!amtRaw)return;
-    var ord=ordOf(y);if(!ord)return;var os=getOS(ord);os.matCost+=amtRaw;if(y.taxIncl)os.invoicedCost+=amtRaw;
+    if(!y||y.voided)return;var amtRaw=parseFloat(y.amt)||0;var miscRaw=parseFloat(y.miscCost)||0;if(!amtRaw&&!miscRaw)return;
+    var ord=ordOf(y);if(!ord)return;var os=getOS(ord);os.matCost+=amtRaw+miscRaw;if(y.taxIncl)os.invoicedCost+=amtRaw+miscRaw; // 运费等杂费计入材料成本
   });
   // 胚布采购（直接购胚模式的材料成本，与纱线分列）
   (DB.greyfabs||[]).forEach(function(g){
-    if(!g||g.voided)return;var amtRaw=parseFloat(g.totalAmt)||0;if(!amtRaw)return;
-    var ord=ordOf(g);if(!ord)return;var os=getOS(ord);os.gfCost+=amtRaw;if(g.taxIncl)os.invoicedCost+=amtRaw;
+    if(!g||g.voided)return;var amtRaw=parseFloat(g.totalAmt)||0;var miscRaw=parseFloat(g.miscCost)||0;if(!amtRaw&&!miscRaw)return;
+    var ord=ordOf(g);if(!ord)return;var os=getOS(ord);os.gfCost+=amtRaw+miscRaw;if(g.taxIncl)os.invoicedCost+=amtRaw+miscRaw;
   });
   // 其它成本（运费/杂费，订单级手填）；标了含税(有票)→计入进项抵扣
   orders.forEach(function(o){var mcRaw=parseFloat(o.miscCost)||0;if(mcRaw>0){var os=getOS(o);os.miscCost+=mcRaw;if(o.miscCostTaxIncl)os.invoicedCost+=mcRaw;}});
   // 现货进货成本（现货采购单·调货倒卖，按毛重付款的实付金额，挂到关联订单）
-  (DB.spots||[]).forEach(function(sp){if(!sp||sp.voided)return;var amt=parseFloat(sp.totalAmt)||0;if(!amt)return;var ord=ordOf(sp);if(!ord)return;var os=getOS(ord);os.stockCost+=amt;if(sp.taxIncl)os.invoicedCost+=amt;});
+  (DB.spots||[]).forEach(function(sp){if(!sp||sp.voided)return;var amt=parseFloat(sp.totalAmt)||0;var miscRaw=parseFloat(sp.miscCost)||0;if(!amt&&!miscRaw)return;var ord=ordOf(sp);if(!ord)return;var os=getOS(ord);os.stockCost+=amt+miscRaw;if(sp.taxIncl)os.invoicedCost+=amt+miscRaw;});
   var osList=Object.keys(OS).map(function(k){
     var s=OS[k];s.cost=s.feeCost+s.matCost+(s.gfCost||0)+(s.miscCost||0)+(s.stockCost||0);
     s.taxed=!(s.ord&&s.ord.taxType==='excl');           // 开票订单才有综合税耗；现金不开票=0
@@ -7529,6 +7536,10 @@ function openTM(id){
     g3.appendChild(fv('应付加工费(元·自动)',feeInp));
     g3.appendChild(fv('付款状态',mkSelect('t-fp',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],t.fPaid?'1':'0')));
     g3.appendChild(fv('加工费税票',taxPill('t-tax',t.taxIncl)));
+    // 其它费用(包装费/纸筒费等本环节杂费)：填不含税原值，跟随上面"加工费税票"含税开关补6%、计进毛利成本
+    var miscInp=mkInput('t-misc',t.miscCost,'如 包装/纸筒 50','number');
+    g3.appendChild(fv('其它费用(元·包装/纸筒等)',miscInp));
+    g3.appendChild(fvFull('其它费用说明',mkInput('t-misc-rm',t.miscRm,'如：加厚纸筒×2 / 特殊包装')));
     fbSel.onchange=function(){_tFee();};
     if(pcSel)pcSel.addEventListener('change',function(){_tFee();});
     // 标签随单位联动：用本地元素引用（此时 body 尚未挂到 document，不能用 getElementById）
@@ -7593,7 +7604,7 @@ function saveT(id){
     var fee=(baseQ&&up)?(baseQ*up).toFixed(2):'';
     var l=DB.trks;
     if(!Array.isArray(l)) l=[];
-    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',taxIncl:(document.getElementById('t-tax')||{value:'0'}).value==='1',estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
+    var d={id:id||uid(),ordId:oid,ordNo:ord?ord.no:'',clrNm:sel?sel.value:'',clrCode:(opt&&opt.dataset?opt.dataset.code:'')||'',yb:document.getElementById('t-yb').value,proc:document.getElementById('t-pc').value,factNm:fn,machNo:document.getElementById('t-mn').value,vatNo:document.getElementById('t-vn').value,vatWt:document.getElementById('t-vw').value,status:document.getElementById('t-st').value,unit:(document.getElementById('t-un')||{value:'kg'}).value,feeBase:fb,sentQ:sq||'',retQ:document.getElementById('t-rq').value,actW:document.getElementById('t-aw').value,unitPr:up||'',fee:fee,fPaid:document.getElementById('t-fp').value==='1',taxIncl:(document.getElementById('t-tax')||{value:'0'}).value==='1',miscCost:(document.getElementById('t-misc')||{value:''}).value.trim(),miscRm:(document.getElementById('t-misc-rm')||{value:''}).value.trim(),estD:document.getElementById('t-ed').value,actD:document.getElementById('t-ad').value,rm:document.getElementById('t-rm').value};
     var i=id?l.findIndex(function(x){return x.id===id;}):-1;
     if(i>=0)l[i]=d;else l.push(d);
     DB.trks=l;
@@ -13388,6 +13399,8 @@ function openYarnM(id){
     g.appendChild(fv('金额（元）',amtInp));
     g.appendChild(fv('付款状态',mkSelect('y-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
     g.appendChild(fv('税票',taxPill('y-tax',r.taxIncl)));
+    g.appendChild(fv('其它费用(元·运费等)',mkInput('y-misc',r.miscCost,'如 运费 80','number')));
+    g.appendChild(fvFull('其它费用说明',mkInput('y-misc-rm',r.miscRm,'如：不包送·运费')));
     body.appendChild(g);
 
     // ══ 到货确认 ══
@@ -13600,6 +13613,7 @@ function saveYarn(id){
       actKg:(document.getElementById('y-actKg')||{value:''}).value,
       paid:(document.getElementById('y-paid')||{value:'0'}).value==='1',
       taxIncl:(document.getElementById('y-tax')||{value:'0'}).value==='1',
+      miscCost:(document.getElementById('y-misc')||{value:''}).value.trim(),miscRm:(document.getElementById('y-misc-rm')||{value:''}).value.trim(),
       rm:(document.getElementById('y-rm')||{value:''}).value,
       delFacId:(document.getElementById('y-delFac')||{value:''}).value
     };
@@ -13916,6 +13930,8 @@ function openSpotM(id){
     g3.appendChild(fv('基础进货单价(元)',basePrInp));
     g3.appendChild(fv('价格类型',taxPill('sp-inc',r.taxIncl,['excl','incl'])));
     g3.appendChild(fv('付款状态',mkSelect('sp-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0')));
+    g3.appendChild(fv('其它费用(元·运费等)',mkInput('sp-misc',r.miscCost,'如 运费 60','number')));
+    g3.appendChild(fv('其它费用说明',mkInput('sp-misc-rm',r.miscRm,'如：调货运费')));
     body.appendChild(g3);
     basePrInp.addEventListener('input',_spotCalc);unitSel.addEventListener('change',_spotCalc);
     // ② 颜色明细
@@ -14011,6 +14027,7 @@ function openSpotM(id){
       matId:(document.getElementById('sp-mat')||{value:''}).value,fab:(document.getElementById('sp-fab')||{value:''}).value.trim(),
       unit:unit,basePr:base||'',
       taxIncl:(document.getElementById('sp-inc')||{value:'excl'}).value==='incl',
+      miscCost:(document.getElementById('sp-misc')||{value:''}).value.trim(),miscRm:(document.getElementById('sp-misc-rm')||{value:''}).value.trim(),
       paid:(document.getElementById('sp-paid')||{value:'0'}).value==='1',
       colors:colors,totalAmt:Number(totAmt.toFixed(2)),totalBuy:Number(totBuy.toFixed(1)),totalNet:Number(totAct.toFixed(1)),
       rm:(document.getElementById('sp-rm')||{value:''}).value};
@@ -17932,7 +17949,9 @@ function openGreyFabM(id,readonly){
     var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
     paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
     var gfTaxSel=taxPill('gf-tax',r.taxIncl);gfTaxSel.style.marginLeft='8px';
-    payDiv.appendChild(paySel);payDiv.appendChild(gfTaxSel);body.appendChild(payDiv);
+    var gfMisc=mkInput('gf-misc',r.miscCost,'其它费用(运费等)','number');gfMisc.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:140px;margin-left:8px';
+    var gfMiscRm=mkInput('gf-misc-rm',r.miscRm,'费用说明');gfMiscRm.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:160px;margin-left:8px';
+    payDiv.appendChild(paySel);payDiv.appendChild(gfTaxSel);payDiv.appendChild(gfMisc);payDiv.appendChild(gfMiscRm);body.appendChild(payDiv);
 
     // Remarks
     var rmDiv=document.createElement('div');rmDiv.style.cssText='margin-bottom:14px';
@@ -17980,6 +17999,7 @@ function openGreyFabM(id,readonly){
       colors:colors,totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
       paid:(document.getElementById('gf-paid')||{value:'0'}).value==='1',
       taxIncl:(document.getElementById('gf-tax')||{value:'0'}).value==='1',
+      miscCost:(document.getElementById('gf-misc')||{value:''}).value.trim(),miscRm:(document.getElementById('gf-misc-rm')||{value:''}).value.trim(),
       rm:(document.getElementById('gf-rm')||{value:''}).value
     };
     var l=DB.greyfabs||[];var i2=id?l.findIndex(function(x){return x.id===id;}):-1;

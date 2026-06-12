@@ -749,6 +749,27 @@ test('成品入库：支持多色合并入库(一次多色·每色逐卷重量)'
   if (!/tgtByClr\[c\.nm\]=\(tgtByClr\[c\.nm\]\|\|0\)\+\(parseFloat\(c\.actQty\)/.test(html)) throw new Error('多色入库未核对现货采购实际重量');
 });
 
+test('作业成本法:各环节杂费记在对应单据(加工/纱线/胚布/现货)并计入毛利', () => {
+  // 四张单各有杂费框
+  if (!/mkInput\('t-misc'/.test(html)) throw new Error('加工跟踪缺少其它费用框');
+  if (!/mkInput\('y-misc'/.test(html)) throw new Error('纱线采购缺少其它费用框');
+  if (!/mkInput\('gf-misc'/.test(html)) throw new Error('胚布采购缺少其它费用框');
+  if (!/mkInput\('sp-misc'/.test(html)) throw new Error('现货采购缺少其它费用框');
+  // 四张单都保存 miscCost
+  ['t-misc','y-misc','gf-misc','sp-misc'].forEach(function(id){
+    if (!(new RegExp("miscCost:\\(document\\.getElementById\\('"+id+"'\\)")).test(html)) throw new Error(id+' 未保存杂费 miscCost');
+  });
+  // 加工跟踪杂费跟随该单含税开关补6%(开票染厂统一+6%)
+  if (!/var miscPaid=t\.taxIncl\?miscRaw\*1\.06:miscRaw/.test(html)) throw new Error('加工杂费未跟随含税开关补6%');
+  // 杂费必须计入毛利成本(各环节)
+  if (!/os\.feeCost\+=feeRaw\+miscPaid/.test(html)) throw new Error('加工杂费未计入毛利');
+  if (!/os\.matCost\+=amtRaw\+miscRaw/.test(html)) throw new Error('纱线杂费未计入毛利');
+  if (!/os\.gfCost\+=amtRaw\+miscRaw/.test(html)) throw new Error('胚布杂费未计入毛利');
+  if (!/os\.stockCost\+=amt\+miscRaw/.test(html)) throw new Error('现货杂费未计入毛利');
+  // 销售订单的"其它成本"保留(订单级杂费)
+  if (!/o\.miscCostTaxIncl\)os\.invoicedCost\+=mcRaw/.test(html)) throw new Error('销售订单其它成本不应被删除');
+});
+
 test('加工单数量联动(A方案):草稿随销售订单·手动改过则保护·下达冻结', () => {
   // 染整落缸数:已下达/手动→认存值,否则跟随销售订单最新(finQty→vatQty→prodQty→qty)
   if (!/var liveQ=String\(c\.finQty\|\|c\.vatQty\|\|c\.prodQty\|\|c\.qty\|\|''\)/.test(html)) throw new Error('染整落缸数未取销售订单最新量');

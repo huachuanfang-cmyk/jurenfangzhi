@@ -1830,7 +1830,8 @@ async function pullFromSupabase(_quiet){
   // 导致下次 pull 用旧/空数据覆盖本地正确数据。本地优先是单机 ERP 的正确语义。
   // 恢复路径：若本地为空（如清空浏览器），pull 正常从 Supabase 还原；
   //           auto-migrate（下方）则在 Supabase 为空时把本地推上去。
-  var _localFirstKeys={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1};
+  // yn 加入本地优先：作废/付款状态本地写了就不让云端覆盖（Supabase yarns 表缺 voided/no 等列）
+  var _localFirstKeys={fgr:1,fgo:1,fgi:1,ret:1,o:1,ar:1,yn:1};
   for(var key in TABLE_MAP){
     if(localStorage.getItem('gjr5_dirty_'+key) === '1') continue;
     if(pushedKeys.indexOf(key) >= 0) continue;

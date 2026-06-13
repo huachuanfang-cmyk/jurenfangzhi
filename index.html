@@ -7503,7 +7503,7 @@ function openTM(id){
       if(!isWeave)return;
       // 从织厂加工单带工厂+单价
       var oid=(document.getElementById('t-ord')||{value:''}).value;
-      var wdoc=(DB.wdocs||[]).find(function(w){return w&&(w.ordId===oid||w.ordId===oid+'-1');});
+      var wdoc=getWDTasks(oid)[0]||null;
       if(wdoc){
         if(wdoc.facNm){var fc=document.getElementById('t-fc');if(fc&&!fc.value)fc.value=wdoc.facNm;}
         if(wdoc.pr){var up=document.getElementById('t-up');if(up&&!up.value){up.value=wdoc.pr;_tFee&&_tFee();}}

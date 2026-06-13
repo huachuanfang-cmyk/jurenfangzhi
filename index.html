@@ -7486,7 +7486,7 @@ function openTM(id){
     var colSel=document.createElement('select');colSel.id='t-col';
     if(so&&so.colors){so.colors.forEach(function(c){var op=document.createElement('option');op.value=c.nm;op.dataset.code=c.code||'';op.dataset.yb=c.yb||'';op.selected=c.nm===t.clrNm;op.textContent=c.nm+(c.code?' ('+c.code+')':'');colSel.appendChild(op);});}
     colSel.onchange=function(){var op=this.options[this.selectedIndex];var yb=document.getElementById('t-yb');if(yb&&!yb.value&&op)yb.value=op.dataset.yb||'';};
-    g.appendChild(fv('颜色',colSel));
+    var fvCol=fv('颜色',colSel);g.appendChild(fvCol);
     g.appendChild(fv('纱批号',mkInput('t-yb',t.yb,'自动带入可修改')));
     body.appendChild(g);
     body.appendChild(secHdr('加工信息'));
@@ -7495,6 +7495,25 @@ function openTM(id){
     g2.appendChild(fv('工序',pcSel,true));
     var facSel=mkSelect('t-fc',[{v:'',l:'请选择'}].concat(DB.facts.map(function(f){return{v:f.nm,l:f.nm};})),t.factNm||'');
     g2.appendChild(fv('加工厂',facSel,true));
+    // 工序切换：织布厂→隐藏颜色+自动带工厂/单价/投纱量；其余→恢复颜色
+    function _autoFillByProc(){
+      var proc=pcSel.value;
+      var isWeave=(proc==='织布厂');
+      fvCol.style.display=isWeave?'none':'';
+      if(!isWeave)return;
+      // 从织厂加工单带工厂+单价
+      var oid=(document.getElementById('t-ord')||{value:''}).value;
+      var wdoc=(DB.wdocs||[]).find(function(w){return w&&(w.ordId===oid||w.ordId===oid+'-1');});
+      if(wdoc){
+        if(wdoc.facNm){var fc=document.getElementById('t-fc');if(fc&&!fc.value)fc.value=wdoc.facNm;}
+        if(wdoc.pr){var up=document.getElementById('t-up');if(up&&!up.value){up.value=wdoc.pr;_tFee&&_tFee();}}
+      }
+      // 投纱量自动带入发出数量（仅新建且为空时）
+      var sqEl=document.getElementById('t-sq');if(!sqEl||sqEl.value)return;
+      var yarn=upstreamQty(oid,(DB.orders.find(function(o){return o.id===oid;})||{}).no||'','织布厂');
+      if(yarn>0){sqEl.value=yarn.toFixed(1);_tFee&&_tFee();}
+    }
+    pcSel.addEventListener('change',_autoFillByProc);
     g2.appendChild(fv('机台号',mkInput('t-mn',t.machNo,'织布厂机台号')));
     g2.appendChild(fv('缸号（染厂分配）',mkInput('t-vn',t.vatNo,'染厂缸号登记')));
     g2.appendChild(fv('染缸容量(kg)',mkInput('t-vw',t.vatWt,'','number')));
@@ -7572,8 +7591,8 @@ function openTM(id){
     }
     sqi.addEventListener('input',_tBalance);rqi.addEventListener('input',_tBalance);
     if(pcSel)pcSel.addEventListener('change',_tBalance);
-    var _origOrdChg=ordSel.onchange;ordSel.onchange=function(){if(_origOrdChg)_origOrdChg.call(this);_tBalance();};
-    setTimeout(_tBalance,0); // 挂载后算一次
+    var _origOrdChg=ordSel.onchange;ordSel.onchange=function(){if(_origOrdChg)_origOrdChg.call(this);_tBalance();_autoFillByProc();};
+    setTimeout(function(){_tBalance();_autoFillByProc();},0); // 挂载后初始化一次
     var _tHint=document.createElement('div');_tHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:4px 2px 0';
     _tHint.textContent='💡 加工费按实付金额录入。「加工费税票」选含税(有票)的，毛利页会自动当进项抵扣、少计税；选不含税/现金则照常。你只管按实际标，系统算税。';
     body.appendChild(_tHint);

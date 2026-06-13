@@ -8012,13 +8012,26 @@ function pgDW(){
   window._renderWDTaskPanel=renderWDTaskPanel;
   function setWDReadOnly(isIssued){
     var root=document.getElementById('pg');if(!root)return;
-    root.querySelectorAll('input,select,textarea').forEach(function(el){
+    // 已下达：锁全部表单元素；解锁：只恢复 wd- 开头的字段
+    root.querySelectorAll('input,select,textarea,button').forEach(function(el){
       if(el.id==='wd-o-i')return;
       if(el.closest('#wd-task-panel'))return;
-      if(el.className==='wd-clr-chk'||el.className==='wd-clr-kg'||/^wd-/.test(el.id||''))el.disabled=!!isIssued;
+      if(el.closest('#wd-actions'))return;
+      if(isIssued){el.disabled=true;}
+      else{if(el.className==='wd-clr-chk'||el.className==='wd-clr-kg'||/^wd-/.test(el.id||''))el.disabled=false;}
     });
     var ordInput=document.getElementById('wd-o-i');if(ordInput)ordInput.disabled=false;
     ordSel.disabled=false;
+    // 醒目横幅
+    var cb=document.getElementById('wd-form-body')||root;
+    var old=document.getElementById('wd-issued-banner');if(old)old.remove();
+    if(isIssued){
+      var bn=document.createElement('div');bn.id='wd-issued-banner';
+      bn.style.cssText='background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:8px;padding:10px 16px;margin:0 0 12px;font-size:12px;font-weight:700;color:#92400E;display:flex;align-items:center;gap:8px';
+      bn.innerHTML='🔒 已下达给织厂 · 只读模式。如需修改，点底部「解锁修改」并填写原因，每次解锁都有留痕记录。';
+      var firstCard=root.querySelector('.card');
+      if(firstCard)firstCard.parentNode.insertBefore(bn,firstCard);else root.prepend(bn);
+    }
   }
   function renderWDActions(cfg){
     var bar=document.getElementById('wd-actions');if(!bar)return;
@@ -8835,10 +8848,18 @@ function pgDD(){
       if(el.id==='dd-o-i')return;
       if(el.closest('#dd-task-panel'))return;
       if(el.closest('#dd-actions'))return;
-      // 含落缸数/色号/备注(id dvc-/dvq1-/dvr-),下达后一并锁死(原来漏锁,已下达还能偷改=生产事故)
-      if(/^dd-/.test(el.id||'')||/^dv[cqr]/.test(el.id||'')||el.className==='dd-pkg-cb'||el.className==='dd-clr-chk'||(el.closest&&el.closest('#dd-proc-checks')))el.disabled=!!isIssued;
+      if(isIssued){el.disabled=true;}
+      else{if(/^dd-/.test(el.id||'')||/^dv[cqr]/.test(el.id||'')||el.className==='dd-pkg-cb'||el.className==='dd-clr-chk'||(el.closest&&el.closest('#dd-proc-checks')))el.disabled=false;}
     });
     var ordInput=document.getElementById('dd-o-i');if(ordInput)ordInput.disabled=false;
+    var old=document.getElementById('dd-issued-banner');if(old)old.remove();
+    if(isIssued){
+      var bn=document.createElement('div');bn.id='dd-issued-banner';
+      bn.style.cssText='background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:8px;padding:10px 16px;margin:0 0 12px;font-size:12px;font-weight:700;color:#92400E;display:flex;align-items:center;gap:8px';
+      bn.innerHTML='🔒 已下达给染厂 · 只读模式。如需修改，点底部「解锁修改」并填写原因，每次解锁都有留痕记录。';
+      var firstCard=root.querySelector('.card');
+      if(firstCard)firstCard.parentNode.insertBefore(bn,firstCard);else root.prepend(bn);
+    }
   }
   function renderDDActions(cfg){
     var bar=document.getElementById('dd-actions');if(!bar)return;

@@ -11168,8 +11168,26 @@ function pgARec(){
     var filtered=getTabRecs(filterKey);
     listCard.innerHTML='';
     var ch=document.createElement('div');ch.className='ch';
-    ch.innerHTML='<span class="ct">对账单列表（'+filtered.length+'张）</span>';
+    ch.innerHTML='<span class="ct">对账单列表</span>';
     listCard.appendChild(ch);
+
+    // ── 客户筛选栏（大厂标准：单列表 + 客户维度收拢）──
+    var custQ=window._arecCustFilter||'';
+    var fb=document.createElement('div');
+    fb.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid var(--bd)';
+    var custSel=document.createElement('select');
+    custSel.style.cssText='padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:#fff;color:#374151;cursor:pointer;max-width:260px';
+    custSel.innerHTML='<option value="">全部客户</option>';
+    var custNames={};recs.forEach(function(r){if(r.custNm)custNames[r.custNm]=1;});
+    Object.keys(custNames).sort().forEach(function(nm){var opt=document.createElement('option');opt.value=nm;opt.textContent=nm;if(custQ===nm)opt.selected=true;custSel.appendChild(opt);});
+    custSel.onchange=function(){window._arecCustFilter=this.value;renderList(filterKey);};
+    fb.appendChild(custSel);
+    if(custQ){var fclr=document.createElement('span');fclr.textContent='× 全部客户';fclr.style.cssText='font-size:11px;color:#6B7280;cursor:pointer;padding:3px 8px;background:#E5E7EB;border-radius:4px;white-space:nowrap';fclr.onclick=function(){window._arecCustFilter='';renderList(filterKey);};fb.appendChild(fclr);}
+    if(custQ){filtered=filtered.filter(function(r){return r.custNm===custQ;});}
+    var fcnt=document.createElement('span');fcnt.style.cssText='font-size:11px;color:#9CA3AF;margin-left:auto;white-space:nowrap';
+    fcnt.textContent=(custQ?'「'+custQ+'」 ':'')+'共 '+filtered.length+' 张';
+    fb.appendChild(fcnt);listCard.appendChild(fb);
+
     if(!filtered.length){
       var empty=document.createElement('div');empty.style.cssText='text-align:center;padding:28px;color:var(--t3)';
       empty.innerHTML='&#128203; 暂无记录';listCard.appendChild(empty);return;

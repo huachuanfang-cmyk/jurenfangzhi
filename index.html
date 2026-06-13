@@ -2418,6 +2418,30 @@ async function onAuthSuccess(){
 
   // 从Supabase拉取数据
   await pullFromSupabase();
+
+  // ★ 一次性修复：彻底清除反复复活的 PO20260007（fac_nm含沃马+ord_kg=4350）
+  // 根因：Supabase yarns 表无 no 列，旧记录一直被 sync 拉回；已授权删除（2026-06-13）
+  if(!localStorage.getItem('gjr5_fix_po7_done')){
+    try{
+      if(_supabaseData&&isOnline()){
+        var _fxRes=await _supabaseData.from('yarns').select('id,fac_nm,ord_kg');
+        if(_fxRes.data){
+          for(var _fxi=0;_fxi<_fxRes.data.length;_fxi++){
+            var _fxr=_fxRes.data[_fxi];
+            if(((_fxr.fac_nm||'').indexOf('沃马')>=0)&&parseFloat(_fxr.ord_kg||0)===4350){
+              await _supabaseData.from('yarns').delete().eq('id',_fxr.id);
+              var _fxYn=DB.load('yn')||[];
+              DB.save('yn',_fxYn.filter(function(x){return x.id!==_fxr.id;}));
+              try{addTombstone('yn',_fxr.id,'yarns');}catch(e){}
+              console.log('[修复] PO20260007 已彻底删除, Supabase id='+_fxr.id);
+            }
+          }
+        }
+      }
+    }catch(e){console.warn('[修复异常]',e);}
+    localStorage.setItem('gjr5_fix_po7_done','1');
+  }
+
   // 云端可能带回最新公司档案，再刷一次品牌
   refreshCO();applyCompanyBranding();
   // 云端拉取后再算一次角色（首次新设备 / 云端改过角色时生效）

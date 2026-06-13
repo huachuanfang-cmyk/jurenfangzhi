@@ -7409,6 +7409,7 @@ function pgTrk(){
   var ss=mkSelect('ts',[{v:'',l:'全部状态'},{v:'pending',l:'待开始'},{v:'in_progress',l:'进行中'},{v:'completed',l:'已完成'}],'');ss.style.width='105px';ss.onchange=fTrk;
   sb2.appendChild(inp);sb2.appendChild(sp);sb2.appendChild(ss);
   sb2.appendChild(mkBtn('&#43; 新增加工记录','btn bp',function(){openTM();}));
+  sb2.appendChild(mkBtn('&#127912; 染色·多色批量','btn bs',function(){openDyeMulti();}));
   pg.appendChild(sb2);
   var card=document.createElement('div');card.className='card';
   var cb=document.createElement('div');cb.id='trks-body';cb.className='cb';cb.style.padding='0';
@@ -7611,6 +7612,101 @@ function saveT(id){
     logAction(id?'编辑加工跟踪':'新增加工跟踪','加工跟踪',(d.ordNo||'')+'/'+(d.proc||''),(d.factNm||'')+' '+(d.clrNm||'')+' '+(d.proc||'')+(d.fee?' 加工费¥'+d.fee:''));
     cm();pgTrk();
   } catch(err){ alert("保存失败: " + err.message); }
+}
+// ── 染色·多色批量录入：一个表格录全部颜色，一次保存生成各色染费记录（其余工序仍用 openTM 单条）──
+function openDyeMulti(){
+  var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
+  var rowRefs=[]; // [{c, vatNo, vq, up, sub, fin, loss}]
+  var modal=buildModal('染色 · 多色批量录入','mxl',function(body){
+    body.appendChild(secHdr('关联订单 + 染厂'));
+    var g=document.createElement('div');g.className='fg';
+    var ordSel=mkSearchableSelect('dm-ord',ords.map(function(o){return{v:o.id,l:o.no+' | '+shortName(o.custNm||'')+(o.fab?' | '+o.fab:'')+(o.colors&&o.colors.length?' ('+o.colors.length+'色)':'')};}),'','输入订单号/客户名搜索');
+    g.appendChild(fv('订单',ordSel,true));
+    var facSel=mkSelect('dm-fc',[{v:'',l:'请选择染厂'}].concat(DB.facts.map(function(f){return{v:f.nm,l:f.nm};})),'');
+    g.appendChild(fv('染厂',facSel,true));
+    g.appendChild(fv('状态',mkSelect('dm-st',[{v:'pending',l:'待开始'},{v:'in_progress',l:'进行中'},{v:'completed',l:'已完成'}],'pending')));
+    g.appendChild(fv('加工费税票',taxPill('dm-tax',false)));
+    body.appendChild(g);
+    body.appendChild(secHdr('各颜色染费（落缸KG × 染单价 = 小计）'));
+    var hint=document.createElement('div');hint.style.cssText='font-size:11px;color:#94A3B8;padding:0 2px 6px';
+    hint.textContent='💡 选订单后自动列出全部颜色。落缸KG＝染厂实际下缸投产量（按染厂对账单录）；成品KG入仓后自动带、此处只读。一次保存生成各色记录。';
+    body.appendChild(hint);
+    var tWrap=document.createElement('div');tWrap.style.cssText='overflow-x:auto';
+    var tbl=document.createElement('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
+    tbl.innerHTML='<thead><tr style="background:#F8FAFC;color:#475569">'
+      +['缸号','颜色','色号','落缸KG','染单价(元/kg)','小计(元)','成品KG(入仓带)','染损%'].map(function(h){return '<th style="padding:6px 8px;border:1px solid #E5E7EB;font-weight:600;white-space:nowrap">'+h+'</th>';}).join('')
+      +'</tr></thead><tbody id="dm-tbody"></tbody>';
+    tWrap.appendChild(tbl);body.appendChild(tWrap);
+    var sumEl=document.createElement('div');sumEl.style.cssText='font-size:12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:6px;padding:8px 12px;margin-top:8px;color:#9A3412;font-weight:600';
+    body.appendChild(sumEl);
+    body.appendChild(secHdr('日期'));
+    var g4=document.createElement('div');g4.className='fg2';
+    g4.appendChild(fv('预计完成',mkInput('dm-ed','','','date')));
+    g4.appendChild(fv('实际完成',mkInput('dm-ad','','','date')));
+    g4.appendChild(fvFull('备注',mkInput('dm-rm','','整批染色备注')));
+    body.appendChild(g4);
+    function recalc(){
+      var totVq=0,totSub=0;
+      rowRefs.forEach(function(r){
+        var vq=parseFloat(r.vq.value)||0;var up=parseFloat(r.up.value)||0;
+        var sub=vq*up;r.sub.textContent=sub?sub.toFixed(2):'—';
+        var fin=parseFloat(r.fin)||0;
+        r.loss.textContent=(vq&&fin)?(((vq-fin)/vq*100).toFixed(1)+'%'):'—';
+        totVq+=vq;totSub+=sub;
+      });
+      sumEl.textContent='合计落缸 '+totVq.toFixed(1)+' KG　｜　染费合计 ¥'+totSub.toFixed(2)+'　（'+rowRefs.length+'色）';
+    }
+    function rebuild(){
+      var oid=ordSel.value;var ord=DB.orders.find(function(o){return o.id===oid;});
+      var tb=document.getElementById('dm-tbody');if(!tb)return;tb.innerHTML='';rowRefs=[];
+      if(!ord||!ord.colors||!ord.colors.length){tb.innerHTML='<tr><td colspan="8" style="padding:14px;text-align:center;color:#94A3B8;border:1px solid #E5E7EB">选订单后显示其颜色明细</td></tr>';recalc();return;}
+      ord.colors.forEach(function(c){
+        var tr=document.createElement('tr');
+        function cell(){var td=document.createElement('td');td.style.cssText='padding:4px 6px;border:1px solid #E5E7EB';return td;}
+        var c1=cell();var vatI=mkInput('','','缸号');c1.appendChild(vatI);
+        var c2=cell();c2.textContent=c.nm||'';c2.style.fontWeight='600';
+        var c3=cell();c3.textContent=c.code||'';c3.style.color='#6B7280';
+        var c4=cell();var vqI=mkInput('',c.vatQty||'','落缸','number');c4.appendChild(vqI);
+        var c5=cell();var upI=mkInput('','','单价','number');c5.appendChild(upI);
+        var c6=cell();c6.style.cssText='padding:4px 6px;border:1px solid #E5E7EB;text-align:right';c6.textContent='—';
+        var c7=cell();c7.style.cssText='padding:4px 6px;border:1px solid #E5E7EB;text-align:right;color:#9CA3AF';c7.textContent=c.finQty||'—';
+        var c8=cell();c8.style.cssText='padding:4px 6px;border:1px solid #E5E7EB;text-align:right';c8.textContent='—';
+        [c1,c2,c3,c4,c5,c6,c7,c8].forEach(function(x){tr.appendChild(x);});
+        tb.appendChild(tr);
+        var ref={c:c,vatNo:vatI,vq:vqI,up:upI,sub:c6,fin:c.finQty||'',loss:c8};
+        vqI.oninput=recalc;upI.oninput=recalc;
+        rowRefs.push(ref);
+      });
+      recalc();
+    }
+    ordSel.onchange=rebuild;
+    setTimeout(rebuild,0);
+  },function(){
+    try{
+      var oid=(document.getElementById('dm-ord')||{value:''}).value;if(!oid)return alert('请选择订单');
+      var fn=(document.getElementById('dm-fc')||{value:''}).value;if(!fn)return alert('请选择染厂');
+      var ord=DB.orders.find(function(o){return o.id===oid;})||{};
+      var st=(document.getElementById('dm-st')||{value:'pending'}).value;
+      var taxIncl=(document.getElementById('dm-tax')||{value:'0'}).value==='1';
+      var ed=(document.getElementById('dm-ed')||{value:''}).value;
+      var ad=(document.getElementById('dm-ad')||{value:''}).value;
+      var rm=(document.getElementById('dm-rm')||{value:''}).value;
+      var rows=rowRefs.filter(function(r){return (parseFloat(r.vq.value)||0)>0||(parseFloat(r.up.value)||0)>0;});
+      if(!rows.length)return alert('请至少录入一种颜色的落缸KG或染单价');
+      var l=DB.trks;if(!Array.isArray(l))l=[];var n=0;
+      rows.forEach(function(r){
+        var vq=parseFloat(r.vq.value)||0;var up=parseFloat(r.up.value)||0;
+        var fee=(vq&&up)?(vq*up).toFixed(2):'';
+        l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',proc:'染厂',factNm:fn,machNo:'',vatNo:(r.vatNo.value||'').trim(),vatWt:'',status:st,unit:'kg',feeBase:'sent',sentQ:vq||'',retQ:'',actW:'',unitPr:up||'',fee:fee,fPaid:false,taxIncl:taxIncl,miscCost:'',miscRm:'',estD:ed,actD:ad,rm:rm});
+        n++;
+      });
+      DB.trks=l;
+      logAction('新增加工跟踪(染色批量)','加工跟踪',(ord.no||'')+'/染厂',fn+' 共'+n+'色');
+      cm();pgTrk();
+      showToast('已生成 '+n+' 条染色记录','info');
+    }catch(err){alert('保存失败: '+err.message);}
+  });
+  om(modal);
 }
 function delT(id){
   var rec=(DB.trks||[]).find(function(x){return x.id===id;});

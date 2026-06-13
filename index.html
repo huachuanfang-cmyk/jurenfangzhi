@@ -7708,8 +7708,26 @@ function openDyeMulti(){
       });
       recalc();
     }
-    ordSel.onchange=rebuild;
-    setTimeout(rebuild,0);
+    ordSel.onchange=function(){
+      rebuild();
+      // 选订单后自动从染整加工单带入染厂
+      var oid=ordSel.value;
+      var ddoc=getDDTasks(oid)[0]||null;
+      if(ddoc&&ddoc.facNm&&!facSel.value){facSel.value=ddoc.facNm;}
+    };
+    setTimeout(function(){
+      // 初始化时也触发一次（编辑场景）
+      rebuild();
+      var oid=ordSel.value;if(!oid)return;
+      var ddoc=getDDTasks(oid)[0]||null;
+      if(ddoc&&ddoc.facNm&&!facSel.value){facSel.value=ddoc.facNm;}
+    },0);
+    // 其它费用
+    body.appendChild(secHdr('其它费用（运费/杂费等）'));
+    var gm=document.createElement('div');gm.className='fg';
+    gm.appendChild(fv('其它费用(元)',mkInput('dm-misc','','如：运费 50','number')));
+    gm.appendChild(fv('费用说明',mkInput('dm-misc-rm','','如：染色运费 / 拉链费')));
+    body.appendChild(gm);
   },function(){
     try{
       var oid=(document.getElementById('dm-ord')||{value:''}).value;if(!oid)return alert('请选择订单');
@@ -7720,13 +7738,17 @@ function openDyeMulti(){
       var ed=(document.getElementById('dm-ed')||{value:''}).value;
       var ad=(document.getElementById('dm-ad')||{value:''}).value;
       var rm=(document.getElementById('dm-rm')||{value:''}).value;
+      var miscCost=(document.getElementById('dm-misc')||{value:''}).value.trim();
+      var miscRm=(document.getElementById('dm-misc-rm')||{value:''}).value.trim();
       var rows=rowRefs.filter(function(r){return (parseFloat(r.vq.value)||0)>0||(parseFloat(r.up.value)||0)>0;});
       if(!rows.length)return alert('请至少录入一种颜色的落缸KG或染单价');
       var l=DB.trks;if(!Array.isArray(l))l=[];var n=0;
-      rows.forEach(function(r){
+      rows.forEach(function(r,ri){
         var vq=parseFloat(r.vq.value)||0;var up=parseFloat(r.up.value)||0;
         var fee=(vq&&up)?(vq*up).toFixed(2):'';
-        l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',proc:'染厂',factNm:fn,machNo:'',vatNo:(r.vatNo.value||'').trim(),vatWt:'',status:st,unit:'kg',feeBase:'sent',sentQ:vq||'',retQ:'',actW:'',unitPr:up||'',fee:fee,fPaid:false,taxIncl:taxIncl,miscCost:'',miscRm:'',estD:ed,actD:ad,rm:rm});
+        // 其它费用只记在第一条记录上，避免重复计入成本
+        var mc=ri===0?miscCost:'';var mr=ri===0?miscRm:'';
+        l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',proc:'染厂',factNm:fn,machNo:'',vatNo:(r.vatNo.value||'').trim(),vatWt:'',status:st,unit:'kg',feeBase:'sent',sentQ:vq||'',retQ:'',actW:'',unitPr:up||'',fee:fee,fPaid:false,taxIncl:taxIncl,miscCost:mc,miscRm:mr,estD:ed,actD:ad,rm:rm});
         n++;
       });
       DB.trks=l;

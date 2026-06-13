@@ -5115,8 +5115,23 @@ function pgGrossProfit(){
     cb.innerHTML=tableHTML([{t:'客户'},{t:'实收',a:'right',c:'#1e3a8a'},{t:'实付成本',a:'right',c:'#EA580C'},{t:'税金',a:'right',c:'#C2410C'},{t:'落袋利润',a:'right',c:'#166534'},{t:'利润率',a:'center',c:'#166534'},{t:'成本完整度',a:'center'}],rows);
   }
   function renderOrd(){
+    var q=(window._profitOrdQ||'').trim().toLowerCase();
     var list=osList.slice().sort(function(a,b){return b.profit-a.profit;});
-    if(!list.length){cb.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3)">暂无数据</div>';return;}
+    if(q){list=list.filter(function(s){var o=s.ord;return (o.no||'').toLowerCase().indexOf(q)>=0||(o.custNm||'').toLowerCase().indexOf(q)>=0||(o.fab||'').toLowerCase().indexOf(q)>=0;});}
+    cb.innerHTML='';
+    // ── 搜索栏 ──
+    var sb=document.createElement('div');
+    sb.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid var(--bd)';
+    var sinp=document.createElement('input');sinp.type='text';sinp.placeholder='搜订单号 / 客户 / 布类…';sinp.value=window._profitOrdQ||'';
+    sinp.style.cssText='flex:1;max-width:300px;padding:5px 10px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;outline:none';
+    sinp.oninput=function(){window._profitOrdQ=this.value;renderOrd();};
+    sb.appendChild(sinp);
+    if(q){var clr=document.createElement('span');clr.textContent='× 清除';clr.style.cssText='font-size:11px;color:#6B7280;cursor:pointer;padding:3px 8px;background:#E5E7EB;border-radius:4px;white-space:nowrap';clr.onclick=function(){window._profitOrdQ='';renderOrd();};sb.appendChild(clr);}
+    var scnt=document.createElement('span');scnt.style.cssText='font-size:11px;color:#9CA3AF;margin-left:auto;white-space:nowrap';
+    scnt.textContent=(q?'筛到 '+list.length+' 张 · ':'')+'共 '+osList.length+' 张订单';
+    sb.appendChild(scnt);cb.appendChild(sb);
+    if(!list.length){var em=document.createElement('div');em.style.cssText='padding:30px;text-align:center;color:var(--t3)';em.textContent=q?'没有匹配"'+q+'"的订单':'暂无数据';cb.appendChild(em);return;}
+    // ── 表格 ──
     var rows='';list.forEach(function(s,i){
       var bg=i%2===0?'#fff':'#F8FAFC';var o=s.ord;
       var cmpl=s.cost<=0?'<span style="color:#DC2626">⚠ 成本未录</span>':'<span style="color:#16A34A">✓</span>';
@@ -5129,7 +5144,6 @@ function pgGrossProfit(){
         +'<td style="padding:7px 10px;text-align:right;color:#C2410C">'+(s.taxAmt?money(s.taxAmt):'—')+'</td>'
         +pcell(s.profit)+mcell(s.margin,s.rev)
         +'<td style="padding:7px 10px;text-align:center;font-size:10.5px">'+cmpl+'</td></tr>';
-      // 明细子行：成本构成（各工序加工费 + 纱线 + 税金），默认隐藏
       var parts=[];
       Object.keys(s.procCost).forEach(function(pk){if(s.procCost[pk]>0)parts.push(esc(pk)+'：'+money(s.procCost[pk]));});
       if(s.matCost>0)parts.push('纱线采购：'+money(s.matCost));
@@ -5143,8 +5157,9 @@ function pgGrossProfit(){
       rows+='<tr class="prof-d prof-d-'+i+'" style="display:none;background:#FCFCFE;border-bottom:1px solid #F1F5F9">'
         +'<td colspan="9" style="padding:6px 10px 6px 28px;font-size:10.5px;color:#475569">💴 落袋构成：'+detail+'</td></tr>';
     });
-    cb.innerHTML=tableHTML([{t:'订单号'},{t:'客户'},{t:'布类'},{t:'实收',a:'right',c:'#1e3a8a'},{t:'实付成本',a:'right',c:'#EA580C'},{t:'税金',a:'right',c:'#C2410C'},{t:'落袋利润',a:'right',c:'#166534'},{t:'利润率',a:'center',c:'#166534'},{t:'录入',a:'center'}],rows);
-    // 点订单行展开/收起成本构成
+    var tw=document.createElement('div');
+    tw.innerHTML=tableHTML([{t:'订单号'},{t:'客户'},{t:'布类'},{t:'实收',a:'right',c:'#1e3a8a'},{t:'实付成本',a:'right',c:'#EA580C'},{t:'税金',a:'right',c:'#C2410C'},{t:'落袋利润',a:'right',c:'#166534'},{t:'利润率',a:'center',c:'#166534'},{t:'录入',a:'center'}],rows);
+    cb.appendChild(tw);
     cb.querySelectorAll('.prof-ord').forEach(function(row){
       row.onclick=function(){
         var idx=this.dataset.i;var arrow=this.querySelector('span');
@@ -5152,6 +5167,8 @@ function pgGrossProfit(){
         cb.querySelectorAll('.prof-d-'+idx).forEach(function(d){d.style.display=open?'none':'';});
       };
     });
+    // 自动聚焦搜索框（方便继续输入）
+    setTimeout(function(){if(q)sinp.focus();},0);
   }
   function renderMonth(){
     var mon={};

@@ -18150,6 +18150,32 @@ function openGreyFabM(id,readonly){
     var clrBody=document.createElement('tbody');clrBody.id='gf-clr-body';
     clrTbl.appendChild(clrBody);clrSec.appendChild(clrTbl);
 
+    // 快填实收：工厂统一发货（不分颜色），填总KG后按下单比例自动分摊到各色实收
+    var qfBar=document.createElement('div');
+    qfBar.style.cssText='display:flex;align-items:center;gap:8px;margin-top:10px;padding:7px 12px;background:#F0FDF4;border-radius:6px;border:1px dashed #86EFAC;flex-wrap:wrap';
+    var qfPre=document.createElement('span');qfPre.style.cssText='font-size:11px;color:#16A34A;font-weight:700;white-space:nowrap';qfPre.textContent='快填实收：';
+    var qfInp=document.createElement('input');qfInp.id='gf-qf-total';qfInp.type='number';qfInp.placeholder='工厂实发总KG';
+    qfInp.style.cssText='width:130px;padding:4px 8px;border:1px solid #86EFAC;border-radius:4px;font-size:12px;outline:none';
+    var qfUnit=document.createElement('span');qfUnit.style.cssText='font-size:11px;color:#64748B';qfUnit.textContent='KG';
+    var qfBtn=document.createElement('button');qfBtn.type='button';qfBtn.textContent='按比例分配到各色';
+    qfBtn.style.cssText='padding:4px 14px;background:#16A34A;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap';
+    qfBtn.onclick=function(){
+      var total=parseFloat(qfInp.value);
+      if(!(total>0)){alert('请先填入工厂实发总KG');return;}
+      var kgEls=clrBody.querySelectorAll('.gf-kg');
+      var akgEls=clrBody.querySelectorAll('.gf-akg');
+      var sumOrd=0;kgEls.forEach(function(el){sumOrd+=parseFloat(el.value)||0;});
+      if(!sumOrd){alert('请先填写各色下单数');return;}
+      akgEls.forEach(function(el,i){
+        var ok=parseFloat(kgEls[i].value)||0;
+        el.value=ok?(total*ok/sumOrd).toFixed(2):'';
+      });
+      calcGFTotal();
+    };
+    var qfHint=document.createElement('span');qfHint.style.cssText='font-size:10px;color:#94A3B8';qfHint.textContent='工厂整批发货不分色，按各色下单比例自动分摊实收KG';
+    qfBar.appendChild(qfPre);qfBar.appendChild(qfInp);qfBar.appendChild(qfUnit);qfBar.appendChild(qfBtn);qfBar.appendChild(qfHint);
+    clrSec.appendChild(qfBar);
+
     // Total row
     var totalDiv=document.createElement('div');
     totalDiv.style.cssText='display:flex;justify-content:flex-end;gap:24px;margin-top:8px;padding:8px 10px;background:var(--b3);border-radius:4px;font-size:12px;font-weight:700';

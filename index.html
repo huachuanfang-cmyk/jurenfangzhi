@@ -6043,6 +6043,16 @@ function pgBackup(){
     var snapInfo=document.createElement('div');snapInfo.style.cssText='font-size:10.5px;color:var(--t3);margin:6px 2px';
     snapInfo.textContent='共 '+snaps.length+' 份快照 · 每天自动新增一份 · 超过7天自动清除最旧的';
     s3b.appendChild(snapInfo);
+    var clearBtn=document.createElement('button');clearBtn.className='btn bsm brd';clearBtn.style.marginTop='8px';
+    clearBtn.textContent='🗑 清空旧快照（只保留今天）';
+    clearBtn.onclick=function(){
+      if(!confirm('确认清空旧快照？只保留今天的快照，其余全部删除。\n（你已导出备份，数据不会丢失）'))return;
+      var kept=snaps.filter(function(s){return s.date===tod();});
+      localStorage.setItem(SNAP_KEY,JSON.stringify(kept));
+      showToast('已清空旧快照，保留今天 '+kept.length+' 份','success');
+      pgBak();
+    };
+    s3b.appendChild(clearBtn);
   }
   sec3.appendChild(s3b);pg.appendChild(sec3);
 }

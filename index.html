@@ -2481,7 +2481,11 @@ async function onAuthSuccess(){
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
   _auditIssues = DB.audit();
-  go('dash');
+  // 若用户在 pull 期间（10~15秒）已手动导航到其他页面，保留当前页并刷新数据；
+  // 否则（首次加载、尚未导航）才跳工作台。修复"同步后被强制踢回工作台"的 bug。
+  var _navd=document.querySelector('.ni.on');
+  var _navPage=_navd&&_navd.dataset&&_navd.dataset.page;
+  go(_navPage&&_navPage!=='dash'?_navPage:'dash');
 }
 
 function showLogin(){

@@ -11502,7 +11502,7 @@ function pgARec(){
       }
       mkARTd(esc(r.no||''),'font-weight:700;color:var(--p);font-family:monospace;font-size:11px');
       mkARTd('<strong>'+esc(r.custNm||'')+'</strong>','');
-      mkARTd(esc(r.month||''),'font-size:11px;color:var(--t2)');
+      mkARTd(esc(r.month||'')+(r.monthTo&&r.monthTo!==r.month?' 至 '+esc(r.monthTo):''),'font-size:11px;color:var(--t2)');
       mkARTd(esc(r.payType||''),'font-size:11px;color:var(--t2)');
       mkARTd(esc(r.dueDate||'—'),dueDateStyle+';font-size:11px');
       mkARTd('¥'+(parseFloat(r.totalAmt)||0).toFixed(2),'text-align:right;font-size:11px;white-space:nowrap;color:var(--t1)');
@@ -11787,7 +11787,7 @@ function exportARecExcel(id){
   }
 
   // ── 行2：致客户（A-C）| 月份（D-E）| 付款方式（F-G）| 到期日（H-J）──
-  var r2=ws.addRow(['致：'+(r.custNm||''),'','','对账月份：'+(r.month||''),'','付款方式：'+(r.payType||''),'','到期日：'+(r.dueDate||''),'','']);
+  var r2=ws.addRow(['致：'+(r.custNm||''),'','','对账月份：'+(r.month||'')+(r.monthTo&&r.monthTo!==r.month?' 至 '+r.monthTo:''),'','付款方式：'+(r.payType||''),'','到期日：'+(r.dueDate||''),'','']);
   r2.height=22;
   for(var _gi=1;_gi<=10;_gi++){r2.getCell(_gi).fill=F_TITLEBAR;r2.getCell(_gi).font={name:FN,size:10};r2.getCell(_gi).border={};}
   sc(r2.getCell(1),F_TITLEBAR,{bold:true,size:11,color:{argb:DARK}},{horizontal:'left'},null);
@@ -12123,7 +12123,7 @@ function printARec(id){
     +'<div style="display:grid;grid-template-columns:1fr 1fr;margin-bottom:5px">'
     +'<div>'
     +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef;font-size:11px"><span style="color:#666;min-width:60px">致：</span><span style="font-weight:700">'+esc(r.custNm||'')+'</span></div>'
-    +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef;font-size:11px"><span style="color:#666;min-width:60px">对账月份：</span><span style="font-weight:600">'+esc(r.month||'')+'</span></div>'
+    +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef;font-size:11px"><span style="color:#666;min-width:60px">对账月份：</span><span style="font-weight:600">'+esc(r.month||'')+(r.monthTo&&r.monthTo!==r.month?' 至 '+esc(r.monthTo):'')+'</span></div>'
     +'</div><div>'
     +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef;font-size:11px"><span style="color:#666;min-width:60px">付款方式：</span><span style="font-weight:600">'+esc(r.payType||'')+'</span></div>'
     +'<div style="display:flex;gap:5px;padding:2px 0;border-bottom:.5px solid #efefef;font-size:11px"><span style="color:#666;min-width:60px">到期日：</span><span style="font-weight:700;color:#C41E3A">'+esc(r.dueDate||'')+'</span></div>'
@@ -12220,7 +12220,8 @@ function openPaymentModal(arecId){
     body.style.cssText='padding:16px;display:flex;flex-direction:column;gap:12px';
     var info=document.createElement('div');
     info.style.cssText='background:#EFF6FF;border-left:3px solid #BFDBFE;border-radius:3px;padding:8px 12px;font-size:11px;color:#1e3a8a;line-height:2';
-    info.innerHTML='<strong>客户：</strong>'+esc(rec.custNm)+'　<strong>对账月份：</strong>'+esc(rec.month)+'　<strong>欠尾款：</strong>¥'+(parseFloat(rec.balanceAmt)||0).toFixed(2);
+    var _mRange=esc(rec.month||'')+(rec.monthTo&&rec.monthTo!==rec.month?' 至 '+esc(rec.monthTo):'');
+    info.innerHTML='<strong>客户：</strong>'+esc(rec.custNm)+'　<strong>对账月份：</strong>'+_mRange+'　<strong>欠尾款：</strong>¥'+(parseFloat(rec.balanceAmt)||0).toFixed(2);
     body.appendChild(info);
     var g=document.createElement('div');g.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px';
     function mF(lbl,el){var w=document.createElement('div');var l=document.createElement('label');l.style.cssText='display:block;font-size:9px;font-weight:700;color:#999;letter-spacing:.5px;margin-bottom:4px';l.textContent=lbl;w.appendChild(l);w.appendChild(el);return w;}
@@ -12278,7 +12279,11 @@ function openARecModal(id){
     custSel.appendChild(new Option('请选择客户',''));
     custs.forEach(function(c){var opt=new Option(c.nm,c.nm);if(rec&&rec.custNm===c.nm)opt.selected=true;custSel.appendChild(opt);});
 
-    var monthInp=mInp('month',rec?rec.month:'','','month');monthInp.style.borderColor='#BFDBFE';
+    var monthInp=mInp('month',rec?rec.month:'','','month');monthInp.style.cssText+='border-color:#BFDBFE;width:120px';
+    var monthToInp=mInp('month-to',rec?(rec.monthTo||rec.month||''):'','','month');monthToInp.style.cssText+='border-color:#BFDBFE;width:120px';
+    // 起月变更时：若止月为空或早于起月，自动跟进
+    monthInp.oninput=function(){if(!monthToInp.value||monthToInp.value<monthInp.value)monthToInp.value=monthInp.value;updatePayAndDue();};
+    monthToInp.oninput=function(){if(monthToInp.value&&monthToInp.value<monthInp.value)monthInp.value=monthToInp.value;updatePayAndDue();};
 
     // 付款方式自动带入
     var payDisp=document.createElement('div');payDisp.id='ar-pay-disp';payDisp.style.cssText='padding:7px 10px;background:var(--b3);border-radius:6px;font-size:12px;color:var(--t2);font-weight:600';payDisp.textContent=rec?rec.payType||'—':'选客户后自动带入';
@@ -12289,7 +12294,7 @@ function openARecModal(id){
 
     function updatePayAndDue(){
       var cNm=custSel.value;
-      var mVal=monthInp.value;
+      var mVal=monthToInp.value||monthInp.value; // 到期日按截止月份算
       // 从最近的订单找付款方式
       var custOrds=orders.filter(function(o){return (o.custNm||o.cust||'')=== cNm;});
       var payType='月结30天';
@@ -12308,10 +12313,14 @@ function openARecModal(id){
       }
     }
     custSel.onchange=updatePayAndDue;
-    monthInp.oninput=updatePayAndDue;
+    // monthInp/monthToInp.oninput already wired above
+
+    var monthRangeWrap=document.createElement('div');monthRangeWrap.style.cssText='display:flex;align-items:center;gap:5px';
+    var toSep=document.createElement('span');toSep.textContent='至';toSep.style.cssText='font-size:11px;color:#64748B;white-space:nowrap';
+    monthRangeWrap.appendChild(monthInp);monthRangeWrap.appendChild(toSep);monthRangeWrap.appendChild(monthToInp);
 
     g1.appendChild(mFld('客户 *',custSel));
-    g1.appendChild(mFld('对账月份 *',monthInp));
+    g1.appendChild(mFld('对账月份（起→止）*',monthRangeWrap));
     g1.appendChild(mFld('付款方式（自动）',payDisp));
     g1.appendChild(mFld('到期日（自动计算）',dueDisp));
     body.appendChild(g1);
@@ -12384,22 +12393,20 @@ function openARecModal(id){
 
     // 拉取按钮
     var fetchBtn=mkBtn('&#128229; 拉取未对账出货记录','btn bp',function(){
-      var cNm=custSel.value;var mVal=monthInp.value;
+      var cNm=custSel.value;var mVal=monthInp.value;var mValTo=monthToInp.value||mVal;
       if(!cNm||!mVal)return alert('请先选择客户和对账月份');
       var curRecId=rec?rec.id:null;
       var savedOutIds=(rec&&rec.outIds)||[];
-      // 找该客人所有未对账的出货记录（编辑模式下，也要包含已经挂在本单里的记录）
-      // 拉取：本月出货 + 历史遗留未对账（未挂任何对账单的旧记录）
       var matched=fgouts.filter(function(o){
         if(arOutIsVoided(o))return false;
-        if(o.arecId&&o.arecId!==curRecId)return false; // 已在其它对账单
-        if((o.custNm||'')!==cNm)return false; // 客户不匹配
+        if(o.arecId&&o.arecId!==curRecId)return false;
+        if((o.custNm||'')!==cNm)return false;
         var outYM=(o.date||'').slice(0,7);
-        // 本月出货 OR 历史遗留（出货月份早于对账月份且未对账）
-        return outYM<=mVal;
+        // 在起止月份范围内
+        return outYM>=mVal&&outYM<=mValTo;
       }).map(function(o){
         var copy=Object.assign({},o);
-        copy._isLegacy=(copy.date||'').slice(0,7)<mVal;
+        copy._isLegacy=false;
         return copy;
       });
       // 查找匹配的退货记录（用于红字冲销行）
@@ -12871,9 +12878,11 @@ function openARecModal(id){
     if(!custNm)return alert('请选择客户');
     var month=(document.getElementById('ar-month')||{value:''}).value;
     if(!month)return alert('请填写对账月份');
+    var monthTo=(document.getElementById('ar-month-to')||{value:''}).value||month;
+    if(monthTo<month)monthTo=month;
 
     var payType=(document.getElementById('ar-payType')||{value:''}).value||'月结30天';
-    var dueDate=calcDueDate(payType,month);
+    var dueDate=calcDueDate(payType,monthTo);
     var receiptAccount={
       type:(document.getElementById('ar-acc-type')||{value:'company'}).value||'company',
       name:(document.getElementById('ar-acc-name')||{value:''}).value.trim(),
@@ -12978,7 +12987,7 @@ function openARecModal(id){
     var data={
       id:rec?rec.id:'ar_'+Date.now(),
       no:rec?rec.no:arecNo(),
-      custNm:custNm,month:month,payType:payType,dueDate:dueDate,
+      custNm:custNm,month:month,monthTo:monthTo,payType:payType,dueDate:dueDate,
       outIds:selOutIds,retIds:selRetIds,totalAmt:String(total),shipFeeTotal:String(shipFeeTotal),returnTotal:String(returnTotal),
       adjustments:adjustments,deductTotal:String(deductTotal),addTotal:String(addTotal),
       payments:payments,paidTotal:String(paidTotal),

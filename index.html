@@ -8034,22 +8034,14 @@ function openTMNew(){
       var useModeB=_dualMode(proc)&&bKg>0;
       var l=DB.trks;if(!Array.isArray(l))l=[];var n=0;
       if(useModeB){
-        var totalOrdKg=0;rowRefs.forEach(function(r){totalOrdKg+=parseFloat(r.c.kg||r.c.prodQty||r.c.qty||0)||0;});
-        var bTotalFee=bKg*bPr;var nClr=rowRefs.length||1;
-        rowRefs.forEach(function(r,ri){
-          var ordKg=parseFloat(r.c.kg||r.c.prodQty||r.c.qty||0)||0;
-          var ratio=totalOrdKg>0?ordKg/totalOrdKg:1/nClr;
-          var colorKg=parseFloat((bKg*ratio).toFixed(2));
-          var colorFee=parseFloat((bTotalFee*ratio).toFixed(2));
-          var finKg=r.finSpan?parseFloat(r.finSpan.dataset.val)||0:(r.awI?parseFloat(r.awI.value)||0:0);
-          var vatNo=r.vatNoI?(r.vatNoI.value||'').trim():'';
-          var mc=ri===0?miscCost:'';var mr=ri===0?miscRm:'';
-          l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',
-            proc:proc,factNm:fn,machNo:'',vatNo:vatNo,vatWt:'',status:st,unit:'kg',feeBase:'sent',
-            sentQ:colorKg,retQ:'',actW:finKg||'',unitPr:bPr,fee:colorFee,
-            fPaid:false,taxIncl:taxIncl,miscCost:mc,miscRm:mr,estD:ed,actD:ad,rm:rm,batchMode:true});
-          n++;
-        });
+        // 方案B：整批结算，工厂没有按颜色分，保存一条整批记录（颜色留空）
+        var bTotalFee=(bKg*bPr).toFixed(2);
+        l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:'',clrCode:'',yb:'',
+          proc:proc,factNm:fn,machNo:'',vatNo:'',vatWt:'',status:st,unit:'kg',feeBase:'sent',
+          sentQ:bKg,retQ:'',actW:'',unitPr:bPr,fee:bTotalFee,
+          fPaid:false,taxIncl:taxIncl,miscCost:miscCost,miscRm:miscRm,
+          estD:ed,actD:ad,rm:rm,batchMode:true});
+        n++;
       } else {
         var rows=rowRefs.filter(function(r){
           return (r.vqI&&parseFloat(r.vqI.value)>0)||(r.sqI&&parseFloat(r.sqI.value)>0)||

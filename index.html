@@ -18062,12 +18062,12 @@ function openGreyFabM(id,readonly){
       var ord=DB.orders.find(function(o){return o.id===this.value;}.bind(this));
       if(!ord)return;
       var noEl=document.getElementById('gf-ordno-disp');if(noEl)noEl.textContent=ord.no;
-      // 同步布类、针寸数、幅宽克重
-      var fabEl=document.getElementById('gf-fab');if(fabEl&&!fabEl.value)fabEl.value=ord.fab||'';
-      var gnEl=document.getElementById('gf-gn');if(gnEl&&!gnEl.value)gnEl.value=ord.gaugeN||'';
-      var gsEl=document.getElementById('gf-gs');if(gsEl&&!gsEl.value)gsEl.value=ord.gaugeS||'';
-      var wdEl=document.getElementById('gf-wd');if(wdEl&&!wdEl.value)wdEl.value=ord.width||'';
-      var wtEl=document.getElementById('gf-wt');if(wtEl&&!wtEl.value)wtEl.value=ord.weight||'';
+      // 切换订单时强制覆盖规格（不加 !value 守卫，否则先选A再选B仍显示A的规格）
+      var fabEl=document.getElementById('gf-fab');if(fabEl)fabEl.value=ord.fab||'';
+      var gnEl=document.getElementById('gf-gn');if(gnEl)gnEl.value=ord.gaugeN||'';
+      var gsEl=document.getElementById('gf-gs');if(gsEl)gsEl.value=ord.gaugeS||'';
+      var wdEl=document.getElementById('gf-wd');if(wdEl)wdEl.value=ord.width||'';
+      var wtEl=document.getElementById('gf-wt');if(wtEl)wtEl.value=ord.weight||'';
       // 同步颜色明细
       renderGFColors(ord);
     };

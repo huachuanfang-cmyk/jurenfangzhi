@@ -18143,48 +18143,42 @@ function openGreyFabM(id,readonly){
       +'<th style="padding:7px 10px;text-align:left;font-weight:600">颜色名称</th>'
       +'<th style="padding:7px 10px;text-align:left;font-weight:600">色号</th>'
       +'<th style="padding:7px 10px;text-align:right;font-weight:600">下单数（KG）</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:600;color:#16A34A">实收（KG）</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:600">单价（元/KG）</th>'
-      +'<th style="padding:7px 10px;text-align:right;font-weight:600">金额（元）</th>'
       +'</tr></thead>';
     var clrBody=document.createElement('tbody');clrBody.id='gf-clr-body';
     clrTbl.appendChild(clrBody);clrSec.appendChild(clrTbl);
 
-    // 快填实收：工厂统一发货（不分颜色），填总KG后按下单比例自动分摊到各色实收
-    var qfBar=document.createElement('div');
-    qfBar.style.cssText='display:flex;align-items:center;gap:8px;margin-top:10px;padding:7px 12px;background:#F0FDF4;border-radius:6px;border:1px dashed #86EFAC;flex-wrap:wrap';
-    var qfPre=document.createElement('span');qfPre.style.cssText='font-size:11px;color:#16A34A;font-weight:700;white-space:nowrap';qfPre.textContent='快填实收：';
-    var qfInp=document.createElement('input');qfInp.id='gf-qf-total';qfInp.type='number';qfInp.placeholder='工厂实发总KG';
-    qfInp.style.cssText='width:130px;padding:4px 8px;border:1px solid #86EFAC;border-radius:4px;font-size:12px;outline:none';
-    var qfUnit=document.createElement('span');qfUnit.style.cssText='font-size:11px;color:#64748B';qfUnit.textContent='KG';
-    var qfBtn=document.createElement('button');qfBtn.type='button';qfBtn.textContent='按比例分配到各色';
-    qfBtn.style.cssText='padding:4px 14px;background:#16A34A;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap';
-    qfBtn.onclick=function(){
-      var total=parseFloat(qfInp.value);
-      if(!(total>0)){alert('请先填入工厂实发总KG');return;}
-      var kgEls=clrBody.querySelectorAll('.gf-kg');
-      var akgEls=clrBody.querySelectorAll('.gf-akg');
-      var sumOrd=0;kgEls.forEach(function(el){sumOrd+=parseFloat(el.value)||0;});
-      if(!sumOrd){alert('请先填写各色下单数');return;}
-      akgEls.forEach(function(el,i){
-        var ok=parseFloat(kgEls[i].value)||0;
-        el.value=ok?(total*ok/sumOrd).toFixed(2):'';
-      });
-      calcGFTotal();
-    };
-    var qfHint=document.createElement('span');qfHint.style.cssText='font-size:10px;color:#94A3B8';qfHint.textContent='工厂整批发货不分色，按各色下单比例自动分摊实收KG';
-    qfBar.appendChild(qfPre);qfBar.appendChild(qfInp);qfBar.appendChild(qfUnit);qfBar.appendChild(qfBtn);qfBar.appendChild(qfHint);
-    clrSec.appendChild(qfBar);
-
-    // Total row
-    var totalDiv=document.createElement('div');
-    totalDiv.style.cssText='display:flex;justify-content:flex-end;gap:24px;margin-top:8px;padding:8px 10px;background:var(--b3);border-radius:4px;font-size:12px;font-weight:700';
-    totalDiv.innerHTML='<span>合计：<span id="gf-total-kg" style="color:var(--p)">0 KG</span></span>'
-      +'<span>金额：<span id="gf-total-amt" style="color:var(--p)">¥0.00</span></span>';
-    clrSec.appendChild(totalDiv);
-    var gfHint=document.createElement('div');gfHint.style.cssText='font-size:10.5px;color:#94A3B8;padding:2px 2px 0';
-    gfHint.textContent='💡 下单时填「下单数」(给供应商的量)；胚布交货后回来编辑这张单、把实际入库公斤填进「实收KG」——金额与成本自动按实收算（实收未填时暂按下单数）。单价填实付现金价即可。';
-    clrSec.appendChild(gfHint);
+    // 下单合计KG（展示用）
+    var ordSumDiv=document.createElement('div');
+    ordSumDiv.style.cssText='display:flex;justify-content:flex-end;margin-top:6px;padding:6px 10px;background:var(--b3);border-radius:4px;font-size:12px;font-weight:600;color:var(--t2)';
+    ordSumDiv.innerHTML='下单合计：<span id="gf-total-kg" style="color:var(--p);margin-left:4px">0 KG</span>';
+    clrSec.appendChild(ordSumDiv);
+    // 收货结算：实际总KG × 胚布单价（整批计价，不按颜色分）
+    var _defAkg=r.totalAkg||'';
+    if(!_defAkg&&r.colors&&r.colors.length){var _skg=0;r.colors.forEach(function(c){_skg+=parseFloat(c.akg)||parseFloat(c.kg)||0;});if(_skg>0)_defAkg=_skg.toFixed(1);}
+    var _defPr=r.totalPr||'';
+    if(!_defPr&&r.colors&&r.colors.length){for(var _ci=0;_ci<r.colors.length;_ci++){if(parseFloat(r.colors[_ci].pr)>0){_defPr=r.colors[_ci].pr;break;}}}
+    var settleSec=document.createElement('div');
+    settleSec.style.cssText='margin-top:10px;padding:10px 14px;background:#F0FDF4;border-radius:6px;border:1px solid #86EFAC';
+    var sHdr=document.createElement('div');sHdr.style.cssText='font-size:10px;color:#16A34A;font-weight:700;letter-spacing:.8px;margin-bottom:8px';sHdr.textContent='收货结算（交货后填写）';
+    var sRow=document.createElement('div');sRow.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    var sAkgLbl=document.createElement('span');sAkgLbl.style.cssText='font-size:11px;color:#16A34A;white-space:nowrap';sAkgLbl.textContent='实际收货总KG：';
+    var sAkgInp=document.createElement('input');sAkgInp.id='gf-total-akg';sAkgInp.type='number';sAkgInp.placeholder='工厂实发总KG';sAkgInp.value=_defAkg;
+    sAkgInp.style.cssText='width:110px;padding:5px 8px;border:1px solid #86EFAC;border-radius:4px;font-size:13px;font-weight:700;outline:none;color:#15803D';
+    sAkgInp.addEventListener('input',calcGFTotal);
+    var sAkgUnit=document.createElement('span');sAkgUnit.style.cssText='font-size:11px;color:#64748B';sAkgUnit.textContent='KG  ×';
+    var sPrLbl=document.createElement('span');sPrLbl.style.cssText='font-size:11px;color:#374151;white-space:nowrap';sPrLbl.textContent='单价：';
+    var sPrInp=document.createElement('input');sPrInp.id='gf-total-pr';sPrInp.type='number';sPrInp.placeholder='元/KG';sPrInp.value=_defPr;
+    sPrInp.style.cssText='width:85px;padding:5px 8px;border:1px solid var(--bd);border-radius:4px;font-size:13px;font-weight:700;outline:none';
+    sPrInp.addEventListener('input',calcGFTotal);
+    var sPrUnit=document.createElement('span');sPrUnit.style.cssText='font-size:11px;color:#64748B';sPrUnit.textContent='元/KG  ＝';
+    var sAmtSpan=document.createElement('span');sAmtSpan.id='gf-settle-amt';sAmtSpan.style.cssText='font-size:15px;font-weight:700;color:var(--p)';sAmtSpan.textContent='¥0.00';
+    var sTotalAmtHid=document.createElement('span');sTotalAmtHid.id='gf-total-amt';sTotalAmtHid.style.display='none';
+    sRow.appendChild(sAkgLbl);sRow.appendChild(sAkgInp);sRow.appendChild(sAkgUnit);sRow.appendChild(sPrLbl);sRow.appendChild(sPrInp);sRow.appendChild(sPrUnit);sRow.appendChild(sAmtSpan);sRow.appendChild(sTotalAmtHid);
+    settleSec.appendChild(sHdr);settleSec.appendChild(sRow);
+    var sHintDiv=document.createElement('div');sHintDiv.style.cssText='font-size:10px;color:#94A3B8;margin-top:6px';
+    sHintDiv.textContent='💡 下单时只填「下单数」；交货后填实际总KG和单价，系统自动计算采购成本（整批计价，无需按颜色分摊）';
+    settleSec.appendChild(sHintDiv);
+    clrSec.appendChild(settleSec);
     body.appendChild(clrSec);
 
     // Render saved colors
@@ -18215,9 +18209,6 @@ function openGreyFabM(id,readonly){
         var td1=document.createElement('td');td1.style.padding='5px 8px';var inp1=gfInp('gf-nm',initNm,'颜色名称','',false);inp1.dataset.idx=String(i);td1.appendChild(inp1);tr.appendChild(td1);
         var td2=document.createElement('td');td2.style.padding='5px 8px';var inp2=gfInp('gf-code',initCode,'色号','',false);inp2.dataset.idx=String(i);td2.appendChild(inp2);tr.appendChild(td2);
         var td3=document.createElement('td');td3.style.cssText='padding:5px 8px;text-align:right';var inp3=gfInp('gf-kg',String(initKg),'下单KG','80px',true);inp3.dataset.idx=String(i);inp3.value=String(initKg);td3.appendChild(inp3);tr.appendChild(td3);
-        var td3b=document.createElement('td');td3b.style.cssText='padding:5px 8px;text-align:right';var inp3b=gfInp('gf-akg',String(initAkg),'实收KG','80px',true);inp3b.dataset.idx=String(i);inp3b.style.borderColor='#86EFAC';inp3b.title='交货后实际入库公斤数；填了就按它算成本，不填暂用下单数';td3b.appendChild(inp3b);tr.appendChild(td3b);
-        var td4=document.createElement('td');td4.style.cssText='padding:5px 8px;text-align:right';var inp4=gfInp('gf-pr',initPr,'单价','80px',true);inp4.dataset.idx=String(i);inp4.value=initPr;td4.appendChild(inp4);tr.appendChild(td4);
-        var td5=document.createElement('td');td5.id='gf-amt-'+i;td5.style.cssText='padding:5px 8px;text-align:right;font-weight:600;color:var(--p)';td5.textContent='—';tr.appendChild(td5);
         tbody.appendChild(tr);
       });
       calcGFTotal();
@@ -18237,12 +18228,14 @@ function openGreyFabM(id,readonly){
     // 付款状态
     var payDiv=document.createElement('div');payDiv.style.cssText='margin-bottom:14px';
     payDiv.innerHTML='<div style="font-size:10px;color:var(--t3);font-weight:700;letter-spacing:.8px;margin-bottom:6px">付款状态</div>';
+    var payRow=document.createElement('div');payRow.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap';
     var paySel=mkSelect('gf-paid',[{v:'0',l:'未付款'},{v:'1',l:'已付款'}],r.paid?'1':'0');
     paySel.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;min-width:140px';
-    var gfTaxSel=taxPill('gf-tax',r.taxIncl);gfTaxSel.style.marginLeft='8px';
-    var gfMisc=mkInput('gf-misc',r.miscCost,'其它费用(运费等)','number');gfMisc.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:140px;margin-left:8px';
-    var gfMiscRm=mkInput('gf-misc-rm',r.miscRm,'费用说明');gfMiscRm.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:160px;margin-left:8px';
-    payDiv.appendChild(paySel);payDiv.appendChild(gfTaxSel);payDiv.appendChild(gfMisc);payDiv.appendChild(gfMiscRm);body.appendChild(payDiv);
+    var gfTaxSel=taxPill('gf-tax',r.taxIncl);
+    var gfMisc=mkInput('gf-misc',r.miscCost,'其它费用(运费等)','number');gfMisc.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:140px';
+    var gfMiscRm=mkInput('gf-misc-rm',r.miscRm,'费用说明');gfMiscRm.style.cssText='font-size:12px;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;width:160px';
+    payRow.appendChild(paySel);payRow.appendChild(gfTaxSel);payRow.appendChild(gfMisc);payRow.appendChild(gfMiscRm);
+    payDiv.appendChild(payRow);body.appendChild(payDiv);
 
     // Remarks
     var rmDiv=document.createElement('div');rmDiv.style.cssText='margin-bottom:14px';
@@ -18257,23 +18250,22 @@ function openGreyFabM(id,readonly){
     if(!oid)return alert('请选择关联销售订单');
     var ord=DB.orders.find(function(o){return o.id===oid;})||{};
     var colors=[];
-    // 按实际渲染的行读取（胚布色可能为本白，与订单成品色不同，不能按订单色行数循环）
+    // 按实际渲染的行读取颜色明细（颜色名/色号/下单数，用于采购单）
     var kgs=document.querySelectorAll('.gf-kg');
-    var akgs=document.querySelectorAll('.gf-akg');
-    var prs=document.querySelectorAll('.gf-pr');
     var nms=document.querySelectorAll('.gf-nm');
     var codes=document.querySelectorAll('.gf-code');
     nms.forEach(function(nmEl,i){
       var nm=(nms[i]||{value:''}).value;
       var kg=(kgs[i]||{value:''}).value;
-      var akg=(akgs[i]||{value:''}).value;
-      var pr=(prs[i]||{value:''}).value;
       var code=(codes[i]||{value:''}).value;
-      if(nm||kg||akg||pr)colors.push({nm:nm,code:code,kg:kg,akg:akg,pr:pr});
+      if(nm||kg)colors.push({nm:nm,code:code,kg:kg});
     });
-    // 结算数量：实收优先（交货后真实公斤数），未填则暂用下单数
-    var totalKg=0,totalAmt=0;
-    colors.forEach(function(c){var q=(parseFloat(c.akg)>0?parseFloat(c.akg):(parseFloat(c.kg)||0));totalKg+=q;totalAmt+=q*(parseFloat(c.pr)||0);});
+    // 收货结算：实际收货总KG × 单价（整批计价，不按颜色分摊）
+    var totalAkgVal=parseFloat((document.getElementById('gf-total-akg')||{value:''}).value)||0;
+    var totalPrVal=parseFloat((document.getElementById('gf-total-pr')||{value:''}).value)||0;
+    var ordTotalKg=0;colors.forEach(function(c){ordTotalKg+=parseFloat(c.kg)||0;});
+    var totalKg=totalAkgVal>0?totalAkgVal:ordTotalKg;
+    var totalAmt=totalAkgVal*totalPrVal;
     var contractNo=ord.no;
     var d={
       id:id||uid(),contractNo:contractNo,ordId:oid,ordNo:ord.no,
@@ -18287,7 +18279,7 @@ function openGreyFabM(id,readonly){
       weight:(document.getElementById('gf-wt')||{value:''}).value,
       ordDate:(document.getElementById('gf-odate')||{value:''}).value,
       delDate:(document.getElementById('gf-delDate')||{value:''}).value,
-      colors:colors,totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
+      colors:colors,totalAkg:totalAkgVal?totalAkgVal.toFixed(1):'',totalPr:totalPrVal?totalPrVal.toFixed(2):'',totalKg:totalKg.toFixed(1),totalAmt:totalAmt.toFixed(2),
       paid:(document.getElementById('gf-paid')||{value:'0'}).value==='1',
       taxIncl:(document.getElementById('gf-tax')||{value:'0'}).value==='1',
       miscCost:(document.getElementById('gf-misc')||{value:''}).value.trim(),miscRm:(document.getElementById('gf-misc-rm')||{value:''}).value.trim(),
@@ -18307,22 +18299,18 @@ function openGreyFabM(id,readonly){
 }
 
 function calcGFTotal(){
+  // 下单合计KG（各色 gf-kg 之和，仅展示）
   var kgs=document.querySelectorAll('.gf-kg');
-  var akgs=document.querySelectorAll('.gf-akg');
-  var prs=document.querySelectorAll('.gf-pr');
-  var totalKg=0,totalAmt=0;
-  kgs.forEach(function(inp,i){
-    var kg=parseFloat(inp.value)||0;
-    var akg=parseFloat((akgs[i]||{value:''}).value)||0;
-    var q=akg>0?akg:kg;                           // 实收优先，未填暂用下单数
-    var pr=parseFloat((prs[i]||{value:''}).value)||0;
-    var amt=q*pr;
-    totalKg+=q;totalAmt+=amt;
-    var amtEl=document.getElementById('gf-amt-'+i);
-    if(amtEl)amtEl.textContent=amt>0?'¥'+amt.toFixed(2):'—';
-  });
-  var tkg=document.getElementById('gf-total-kg');if(tkg)tkg.textContent=totalKg.toFixed(1)+' KG';
-  var tamt=document.getElementById('gf-total-amt');if(tamt)tamt.textContent='¥'+totalAmt.toFixed(2);
+  var ordKg=0;kgs.forEach(function(inp){ordKg+=parseFloat(inp.value)||0;});
+  var tkg=document.getElementById('gf-total-kg');if(tkg)tkg.textContent=ordKg.toFixed(1)+' KG';
+  // 收货结算：实际收货总KG × 单价（整批计价）
+  var akgEl=document.getElementById('gf-total-akg');
+  var prEl=document.getElementById('gf-total-pr');
+  var akg=akgEl?parseFloat(akgEl.value)||0:0;
+  var pr=prEl?parseFloat(prEl.value)||0:0;
+  var amt=akg*pr;
+  var sAmt=document.getElementById('gf-settle-amt');if(sAmt)sAmt.textContent='¥'+amt.toFixed(2);
+  var tamt=document.getElementById('gf-total-amt');if(tamt)tamt.textContent='¥'+amt.toFixed(2);
 }
 
 function prtGreyFab(id){
@@ -18335,7 +18323,7 @@ function prtGreyFab(id){
     var kg=parseFloat(c.kg)||0;totKg+=kg;
     clrRows+='<tr><td style="padding:6px 10px">'+esc(c.nm||'')+'</td>'      +'<td style="padding:6px 10px;color:#555">'+esc(c.code||'')+'</td>'      +'<td style="padding:6px 10px;text-align:right;font-weight:700">'+(kg||'—')+'</td></tr>';
   });
-  var unitPr=r.colors&&r.colors[0]&&r.colors[0].pr?r.colors[0].pr+' 元/KG':'—';
+  var unitPr=r.totalPr?r.totalPr+' 元/KG':(r.colors&&r.colors[0]&&r.colors[0].pr?r.colors[0].pr+' 元/KG':'—');
   var logoHtml=DB._logo?'<img src="'+DB._logo+'" style="height:36px;width:auto">'  :'';
   var body=docHeader('胚 布 订 购 合 同')+
   // 合同编号右上

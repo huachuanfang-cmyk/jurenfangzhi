@@ -8895,6 +8895,7 @@ function issueWDcfg(){
   cfg.status='issued';
   cfg.issuedAt=new Date().toISOString();
   DB.wdocs=l;
+  try{if(typeof logAction==='function'){var _bo=(DB.orders||[]).find(function(o){return o.id===wdBaseOrdId(key);});logAction('下达','织厂加工单',(_bo&&_bo.no)||key,(cfg.facNm||'')+' '+(cfg.specWd?cfg.specWd:''));}}catch(e){}
   if(window._renderWDTaskPanel)window._renderWDTaskPanel(oid);
   var s=document.getElementById('wd-o');if(s&&s.onchange)s.onchange();
   showToast('织厂加工单已下达并锁定','success');
@@ -10086,6 +10087,7 @@ function issueDDcfg(){
   cfg.status='issued';
   cfg.issuedAt=new Date().toISOString();
   DB.ddocs=l;
+  try{if(typeof logAction==='function'){var _bo=(DB.orders||[]).find(function(o){return o.id===ddBaseOrdId(key);});logAction('下达','染整加工单',(_bo&&_bo.no)||key,(cfg.facNm||'')+' '+((cfg.procOrder||[]).join('/')||''));}}catch(e){}
   if(window._renderDDTaskPanel)window._renderDDTaskPanel(oid);
   var s=document.getElementById('dd-o');if(s&&s.onchange)s.onchange();
   showToast('染整加工单已下达并锁定','success');

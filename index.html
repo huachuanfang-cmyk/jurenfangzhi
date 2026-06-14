@@ -9174,7 +9174,9 @@ function ensureDDTaskKey(oid){
   var key=window._ddActiveTaskKey;
   if(key&&ddBaseOrdId(key)===oid)return key;
   var tasks=getDDTasks(oid);
-  key=tasks.length?tasks[0].ordId:ddNewTaskKey(oid);
+  // 优先选已下达的任务，避免刷新后锁定状态丢失
+  var best=tasks.find(function(t){return t.status==='issued';})||tasks[0];
+  key=best?best.ordId:ddNewTaskKey(oid);
   window._ddActiveTaskKey=key;
   return key;
 }

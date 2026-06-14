@@ -7841,6 +7841,7 @@ function openDyeMulti(){
 function openTMNew(){
   var ords=DB.orders.filter(function(o){return o.status!=='cancelled';}).sort(function(a,b){return (a.no||'')<(b.no||'')?1:-1;});
   var rowRefs=[];
+  var _selDocId=null; // 当前选中的具体加工单 ordId（ddoc 或 wdoc）
   function _isDyePrint(p){return p==='染厂'||p==='印花厂';}
   function _dualMode(p){return !_isDyePrint(p);}
   function _getFinKg(oid,clrNm){
@@ -7867,6 +7868,10 @@ function openTMNew(){
     var wfWarn=document.createElement('div');wfWarn.id='tm-wf-warn';
     wfWarn.style.cssText='display:none;background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:6px;padding:10px 14px;font-size:12px;color:#991B1B;font-weight:600;line-height:1.6';
     body.appendChild(wfWarn);
+    // ── Step-2 升级：具体加工单 picker（选哪一张）──
+    var wfPicker=document.createElement('div');wfPicker.id='tm-wf-picker';
+    wfPicker.style.cssText='display:none;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:6px;padding:10px 14px;margin-top:0';
+    body.appendChild(wfPicker);
     body.appendChild(secHdr('各颜色数量与费用'));
     var hint=document.createElement('div');hint.style.cssText='font-size:11px;color:#94A3B8;padding:0 2px 6px';
     hint.textContent='💡 选订单后自动列出全部颜色。绿色数字＝已从成品入库自动带入（只读）；染厂/印花厂必须逐色填，其余工序可用下方「整批结算」代替。';
@@ -7961,35 +7966,77 @@ function openTMNew(){
       el.style.display=msg?'':'none';
       el.textContent=msg;
     }
-    // ── Step-2：工序→子工序映射（只在 openTMNew 内有效，不影响其他任何模块）──
+    // ── Step-2 升级：工序→子工序映射 + 加工单 picker（只在 openTMNew 内有效）──
     var _DD_PROC_MAP={
       '染厂':    ['坯布预定','车边','半漂','食毛','染色','过软','干布','固色'],
       '印花厂':  ['印花','白胶浆','撞白','拉封'],
       '后整理厂':['定型','预缩','重软','磨毛','抓毛','剪毛','吸毛','双胶带','1.5KG纸筒']
     };
-    function _updateSubProcOpts(oid,proc){
+    // 从选中的某一张 ddoc 更新具体工序下拉
+    function _refreshSubProcFromDoc(proc,ddoc){
       var el=document.getElementById('tm-sp-wrap');var sel=document.getElementById('tm-sp');if(!el||!sel)return;
-      var needsSub=(proc==='染厂'||proc==='印花厂'||proc==='后整理厂');
-      if(!needsSub){el.style.display='none';sel.value='';return;}
-      // 收集该订单所有染整加工单里的工序
-      var ddProcs=[];
-      getDDTasks(oid).forEach(function(d){(d.procOrder||[]).forEach(function(p){if(ddProcs.indexOf(p)<0)ddProcs.push(p);});});
-      // 按工厂类型筛选；若无匹配则退回全部（向后兼容老数据）
       var mapped=_DD_PROC_MAP[proc]||[];
+      var ddProcs=(ddoc.procOrder||[]);
       var opts=ddProcs.filter(function(p){return mapped.indexOf(p)>=0;});
-      if(!opts.length)opts=ddProcs.slice();
-      // 重建下拉选项
+      if(!opts.length)opts=ddProcs.slice(); // 若无匹配则显示该单全部工序
       sel.innerHTML='';
-      var def=document.createElement('option');def.value='';def.textContent=opts.length?'请选择具体工序':'（染整加工单暂无匹配工序）';sel.appendChild(def);
+      var def=document.createElement('option');def.value='';def.textContent=opts.length?'请选择具体工序':'（此加工单无匹配工序）';sel.appendChild(def);
       opts.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
-      if(opts.length===1)sel.value=opts[0]; // 只有一个时自动选中
+      if(opts.length===1)sel.value=opts[0];
       el.style.display='';
+    }
+    // 重置具体工序到"待选"状态
+    function _resetSubProc(proc){
+      var el=document.getElementById('tm-sp-wrap');var sel=document.getElementById('tm-sp');if(!el||!sel)return;
+      var need=(proc==='染厂'||proc==='印花厂'||proc==='后整理厂');
+      if(!need){el.style.display='none';sel.innerHTML='';return;}
+      sel.innerHTML='<option value="">（请先在上方选择关联加工单）</option>';
+      el.style.display='';
+    }
+    // 渲染加工单 picker pill 列表
+    function _updateWFPicker(oid,proc){
+      var el=document.getElementById('tm-wf-picker');if(!el)return;
+      el.innerHTML='';_selDocId=null;_resetSubProc(proc);
+      var isDyeFin=(proc==='染厂'||proc==='印花厂'||proc==='后整理厂');
+      var isWeave=(proc==='织布厂');
+      if(!oid||(!isDyeFin&&!isWeave)){el.style.display='none';return;}
+      var tasks=isDyeFin?getDDTasks(oid):getWDTasks(oid);
+      if(!tasks.length){el.style.display='none';return;}
+      var hdr=document.createElement('div');
+      hdr.style.cssText='font-size:10px;font-weight:700;color:#1D4ED8;margin-bottom:7px;letter-spacing:.5px';
+      hdr.textContent=isDyeFin?'选择关联染整加工单（选中后自动带入工厂和可选工序）：':'选择关联织厂加工单（选中后自动带入工厂）：';
+      el.appendChild(hdr);
+      var pills=document.createElement('div');pills.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+      tasks.forEach(function(cfg){
+        var procsLbl=(cfg.procOrder||[]).join('→')||(cfg.facNm||'');
+        var fac=cfg.facNm||'';
+        var st=cfg.status==='issued'?'已下达':'草稿';
+        var stClr=cfg.status==='issued'?'#15803D':'#92400E';
+        var stBg=cfg.status==='issued'?'#DCFCE7':'#FEF3C7';
+        var pill=document.createElement('button');pill.type='button';
+        pill.innerHTML=(isDyeFin?'<span style="font-weight:700;font-size:11px">'+esc(procsLbl)+'</span><span style="font-size:10px;color:#475569;margin-left:5px">'+esc(fac)+'</span>':'<span style="font-weight:700;font-size:11px">'+esc(fac)+'</span>')+
+          '<span style="font-size:10px;background:'+stBg+';color:'+stClr+';border-radius:4px;padding:1px 5px;margin-left:5px">'+st+'</span>';
+        pill.style.cssText='padding:7px 12px;border:1.5px solid #BFDBFE;border-radius:6px;background:#fff;cursor:pointer;transition:.12s;display:flex;align-items:center;gap:2px';
+        pill.onclick=function(){
+          pills.querySelectorAll('button').forEach(function(b){b.style.borderColor='#BFDBFE';b.style.background='#fff';});
+          pill.style.borderColor='#2563EB';pill.style.background='#DBEAFE';
+          _selDocId=cfg.ordId;
+          if(cfg.facNm)facSel.value=cfg.facNm;
+          if(isDyeFin)_refreshSubProcFromDoc(proc,cfg);
+        };
+        pills.appendChild(pill);
+      });
+      el.appendChild(pills);
+      el.style.display='';
+      // 只有一张时自动选中
+      if(tasks.length===1)setTimeout(function(){var b=pills.querySelector('button');if(b)b.click();},0);
     }
     function rebuild(){
       var oid=ordSel.value;var ord=DB.orders.find(function(o){return o.id===oid;});
       var proc=pcSel.value;var isDyePrint=_isDyePrint(proc);var isWeave=(proc==='织布厂');var isDual=_dualMode(proc);
+      _selDocId=null;
       _updateWFWarn(oid,proc);
-      _updateSubProcOpts(oid,proc);
+      _updateWFPicker(oid,proc);
       modeB.style.display=isDual?'':'none';
       btKgI.value='';btPrI.value='';btKgI.disabled=false;btPrI.disabled=false;btKgI.style.background='';btPrI.style.background='';btAmtSpan.textContent='¥—';
       var ml=document.getElementById('tm-mode-lbl');if(ml){ml.textContent='两种方案均可填，填一方另一方自动锁定';ml.style.color='#94A3B8';}
@@ -8055,13 +8102,8 @@ function openTMNew(){
       });
       recalc();
     }
-    function _autoFillFac(){
-      var oid=ordSel.value;var proc=pcSel.value;if(!oid||facSel.value)return;
-      if(proc==='织布厂'){var w=getWDTasks(oid)[0];if(w&&w.facNm)facSel.value=w.facNm;}
-      else{var d=getDDTasks(oid)[0];if(d&&d.facNm)facSel.value=d.facNm;}
-    }
-    ordSel.onchange=function(){rebuild();_autoFillFac();};
-    pcSel.addEventListener('change',function(){rebuild();_autoFillFac();});
+    ordSel.onchange=function(){rebuild();};
+    pcSel.addEventListener('change',function(){rebuild();});
     btKgI.oninput=function(){checkMode();};
     btPrI.oninput=function(){checkMode();};
     setTimeout(function(){rebuild();},0);
@@ -8070,16 +8112,19 @@ function openTMNew(){
       var oid=(document.getElementById('tm-ord')||{value:''}).value;if(!oid)return alert('请选择订单');
       var fn=(document.getElementById('tm-fc')||{value:''}).value;if(!fn)return alert('请选择工厂');
       var proc=(document.getElementById('tm-pc')||{value:''}).value;
-      // ── 工单卡控（硬校验，与 _updateWFWarn 保持一致）──
+      // ── Step-1 工单卡控（硬校验）──
       if(proc==='织布厂'&&!getWDTasks(oid).length)return alert('此订单没有「织厂加工单」，请先建单再录织造费用。');
       if((proc==='染厂'||proc==='印花厂'||proc==='后整理厂')&&!getDDTasks(oid).length)return alert('此订单没有「染整加工单」，请先建单再录染整费用。');
-      // ── Step-2：具体工序校验（硬校验，与 _updateSubProcOpts 逻辑一致）──
+      // ── Step-2 具体加工单 + 工序校验（硬校验）──
+      var isDyeFin=(proc==='染厂'||proc==='印花厂'||proc==='后整理厂');
+      var isWeaveProc=(proc==='织布厂');
+      if((isDyeFin||isWeaveProc)&&!_selDocId)return alert('请先在上方选择关联加工单（点击蓝色卡片）');
       var subProc='';
-      if(proc==='染厂'||proc==='印花厂'||proc==='后整理厂'){
+      if(isDyeFin){
         subProc=(document.getElementById('tm-sp')||{value:''}).value;
-        if(!subProc)return alert('请选择具体工序（如：染色、磨毛、定型等）');
-        var _allDD=[];getDDTasks(oid).forEach(function(d){(d.procOrder||[]).forEach(function(p){if(_allDD.indexOf(p)<0)_allDD.push(p);});});
-        if(_allDD.length&&_allDD.indexOf(subProc)<0)return alert('染整加工单中没有「'+subProc+'」工序，请先在染整加工单勾选该工序后再录费用。');
+        if(!subProc)return alert('请选择具体工序');
+        var selDoc=getDDTasks(oid).find(function(d){return d.ordId===_selDocId;});
+        if(selDoc&&(selDoc.procOrder||[]).indexOf(subProc)<0)return alert('所选加工单中没有「'+subProc+'」工序，请在染整加工单中勾选后再录费用。');
       }
       var ord=DB.orders.find(function(o){return o.id===oid;})||{};
       var st=(document.getElementById('tm-st')||{value:'pending'}).value;
@@ -8098,7 +8143,7 @@ function openTMNew(){
         // 方案B：整批结算，工厂没有按颜色分，保存一条整批记录（颜色留空）
         var bTotalFee=(bKg*bPr).toFixed(2);
         l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:'',clrCode:'',yb:'',
-          proc:proc,subProc:subProc,factNm:fn,machNo:'',vatNo:'',vatWt:'',status:st,unit:'kg',feeBase:'sent',
+          proc:proc,subProc:subProc,docRef:_selDocId||'',factNm:fn,machNo:'',vatNo:'',vatWt:'',status:st,unit:'kg',feeBase:'sent',
           sentQ:bKg,retQ:'',actW:'',unitPr:bPr,fee:bTotalFee,
           fPaid:false,taxIncl:taxIncl,miscCost:miscCost,miscRm:miscRm,
           estD:ed,actD:ad,rm:rm,batchMode:true});
@@ -8121,7 +8166,7 @@ function openTMNew(){
           var finKg=r.finSpan?parseFloat(r.finSpan.dataset.val)||0:aw;
           var mc=ri===0?miscCost:'';var mr=ri===0?miscRm:'';
           l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',
-            proc:proc,subProc:subProc,factNm:fn,machNo:'',vatNo:vatNo,vatWt:'',status:st,unit:'kg',
+            proc:proc,subProc:subProc,docRef:_selDocId||'',factNm:fn,machNo:'',vatNo:vatNo,vatWt:'',status:st,unit:'kg',
             feeBase:isWeave?'act':'sent',sentQ:isWeave?sq:vq,retQ:isWeave?rq:'',actW:isWeave?aw:(finKg||''),
             unitPr:up,fee:fee,fPaid:false,taxIncl:taxIncl,miscCost:mc,miscRm:mr,estD:ed,actD:ad,rm:rm});
           n++;

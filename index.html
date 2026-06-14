@@ -7859,6 +7859,10 @@ function openTMNew(){
     g.appendChild(fv('状态',mkSelect('tm-st',[{v:'pending',l:'待开始'},{v:'in_progress',l:'进行中'},{v:'completed',l:'已完成'}],'pending')));
     g.appendChild(fv('加工费税票',taxPill('tm-tax',false)));
     body.appendChild(g);
+    // ── 工单卡控提示（Step-1：工厂类型级别授权）──
+    var wfWarn=document.createElement('div');wfWarn.id='tm-wf-warn';
+    wfWarn.style.cssText='display:none;background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:6px;padding:10px 14px;font-size:12px;color:#991B1B;font-weight:600;line-height:1.6';
+    body.appendChild(wfWarn);
     body.appendChild(secHdr('各颜色数量与费用'));
     var hint=document.createElement('div');hint.style.cssText='font-size:11px;color:#94A3B8;padding:0 2px 6px';
     hint.textContent='💡 选订单后自动列出全部颜色。绿色数字＝已从成品入库自动带入（只读）；染厂/印花厂必须逐色填，其余工序可用下方「整批结算」代替。';
@@ -7937,9 +7941,26 @@ function openTMNew(){
         if(ml){ml.textContent='两种方案均可填，填一方另一方自动锁定';ml.style.color='#94A3B8';}
       }
     }
+    // ── 工单卡控：检查是否有对应加工单，无则显示警告并锁定保存 ──
+    function _updateWFWarn(oid,proc){
+      var el=document.getElementById('tm-wf-warn');if(!el)return;
+      var msg='';
+      if(oid){
+        if(proc==='织布厂'){
+          if(!getWDTasks(oid).length)
+            msg='⚠ 此订单还没有「织厂加工单」。请先到左侧菜单「织厂加工单」建单后再录织造费用。';
+        } else if(proc==='染厂'||proc==='印花厂'||proc==='后整理厂'){
+          if(!getDDTasks(oid).length)
+            msg='⚠ 此订单还没有「染整加工单」。请先到左侧菜单「染整加工单」建单后再录染整费用。';
+        }
+      }
+      el.style.display=msg?'':'none';
+      el.textContent=msg;
+    }
     function rebuild(){
       var oid=ordSel.value;var ord=DB.orders.find(function(o){return o.id===oid;});
       var proc=pcSel.value;var isDyePrint=_isDyePrint(proc);var isWeave=(proc==='织布厂');var isDual=_dualMode(proc);
+      _updateWFWarn(oid,proc);
       modeB.style.display=isDual?'':'none';
       btKgI.value='';btPrI.value='';btKgI.disabled=false;btPrI.disabled=false;btKgI.style.background='';btPrI.style.background='';btAmtSpan.textContent='¥—';
       var ml=document.getElementById('tm-mode-lbl');if(ml){ml.textContent='两种方案均可填，填一方另一方自动锁定';ml.style.color='#94A3B8';}
@@ -8020,6 +8041,9 @@ function openTMNew(){
       var oid=(document.getElementById('tm-ord')||{value:''}).value;if(!oid)return alert('请选择订单');
       var fn=(document.getElementById('tm-fc')||{value:''}).value;if(!fn)return alert('请选择工厂');
       var proc=(document.getElementById('tm-pc')||{value:''}).value;
+      // ── 工单卡控（硬校验，与 _updateWFWarn 保持一致）──
+      if(proc==='织布厂'&&!getWDTasks(oid).length)return alert('此订单没有「织厂加工单」，请先建单再录织造费用。');
+      if((proc==='染厂'||proc==='印花厂'||proc==='后整理厂')&&!getDDTasks(oid).length)return alert('此订单没有「染整加工单」，请先建单再录染整费用。');
       var ord=DB.orders.find(function(o){return o.id===oid;})||{};
       var st=(document.getElementById('tm-st')||{value:'pending'}).value;
       var taxIncl=(document.getElementById('tm-tax')||{value:'0'}).value==='1';

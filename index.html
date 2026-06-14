@@ -1602,6 +1602,18 @@ function _addSkippedCols(key,cols){
 (function(){
   try{var s=localStorage.getItem('gjr5_skip_cols');if(s)window._cloudColSkip=JSON.parse(s);}catch(e){window._cloudColSkip={};}
 })();
+// 加工单锁定状态列：清除其跳过记录，让 Supabase 补列(status/issued_at/unlock_reason/revisions)后能重新上传。
+// 每次启动执行：列已存在则上传成功不再跳过；列仍缺失则原有容错会再次跳过，无副作用。
+(function(){
+  try{
+    var _lockCols=['status','issued_at','unlock_reason','revisions'];
+    ['dd','wd'].forEach(function(k){
+      var arr=window._cloudColSkip&&window._cloudColSkip[k];if(!arr)return;
+      window._cloudColSkip[k]=arr.filter(function(c){return _lockCols.indexOf(c)<0;});
+    });
+    localStorage.setItem('gjr5_skip_cols',JSON.stringify(window._cloudColSkip||{}));
+  }catch(e){}
+})();
 
 async function upsertCloudRows(key,table,rows){
   var conflictKey=cloudConflictKey(key);

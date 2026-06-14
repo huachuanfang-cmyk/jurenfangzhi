@@ -1891,6 +1891,20 @@ async function pullFromSupabase(_quiet){
       if(_localOnly.length>0){
         (function(_key,_t,_rows){upsertCloudRows(_key,_t,_rows).catch(function(){});})(key,TABLE_MAP[key],_localOnly);
       }
+      // ── 加工单锁定状态兜底：status/issuedAt/unlockReason/revisions 若云端表无对应列，
+      //    snakeToCamel 后为 undefined，会把本地"已下达"整行覆盖回草稿。此处仅当云端字段缺失(undefined)时
+      //    用本地值回填，绝不覆盖云端已有的真实值 → 既修复刷新丢锁，又不影响多设备同步其它字段。
+      if(key==='dd'||key==='wd'){
+        var _locByKey={};_localPre.forEach(function(x){if(x){if(x.ordId)_locByKey['o:'+x.ordId]=x;if(x.id)_locByKey['i:'+x.id]=x;}});
+        camelData.forEach(function(row){
+          if(!row)return;
+          var loc=(row.ordId&&_locByKey['o:'+row.ordId])||(row.id&&_locByKey['i:'+row.id])||null;
+          if(!loc)return;
+          ['status','issuedAt','unlockReason','revisions'].forEach(function(f){
+            if(row[f]===undefined&&loc[f]!==undefined)row[f]=loc[f];
+          });
+        });
+      }
       var _merged=camelData.concat(_localOnly);
       // ── 安全阀（兜底）：合并结果仍 < 本地，拒绝覆盖 ──
       if(_localPre.length>0&&_merged.length<_localPre.length){

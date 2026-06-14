@@ -7515,7 +7515,7 @@ function renderTrks(list){
     var dStr=diff===null?'—':((diff>=0?'+':'')+diff.toFixed(1)+'%');
     var yt=diff===null?'':' title="收回'+t.retQ+' vs 发出'+t.sentQ+'：'+(diff>=0?'加重'+diff.toFixed(1):'损耗'+(-diff).toFixed(1))+'%"';
     var us='<span style="font-size:9px;color:#9CA3AF;margin-left:1px">'+trkUnit(t)+'</span>';
-    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span></td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+dStr+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
+    tr.innerHTML='<td class="tc">'+esc(t.ordNo)+'</td><td><span class="bx bxb">'+esc(t.proc)+'</span>'+(t.subProc?'<span style="font-size:10px;color:#6B7280;margin-left:3px">·'+esc(t.subProc)+'</span>':'')+'</td><td>'+esc(t.factNm)+'</td><td>'+esc(t.clrNm||'')+'</td><td class="cd">'+esc(t.clrCode||'')+'</td><td class="cd" style="font-size:11px">'+esc(t.yb||'')+'</td><td class="cd">'+esc(t.machNo||'')+'</td><td class="cd">'+esc(t.vatNo||'')+'</td><td class="cd">'+(t.vatWt||'—')+'</td><td>'+(t.sentQ?t.sentQ+us:'—')+'</td><td>'+(t.retQ?t.retQ+us:'—')+'</td><td class="'+lc+'"'+yt+'>'+dStr+'</td><td class="cd">'+fmtM(t.fee)+'</td><td>'+(t.fPaid?'<span class="bx bxg">已付</span>':'<span class="bx bxr">未付</span>')+'</td><td class="cd">'+esc(t.estD||'')+'</td><td class="'+(t.actD?'cg':'')+'">'+esc(t.actD||'')+'</td><td>'+tBx(t.status)+'</td>';
     var td=document.createElement('td');td.className='bg2';
     // 「详情」原本调用 openTD(id) 但该函数从未定义，点击无响应
     // 修复：复用 openTM（编辑弹窗即详情，本系统其他模块的通用做法）
@@ -7854,6 +7854,10 @@ function openTMNew(){
     g.appendChild(fv('订单',ordSel,true));
     var pcSel=mkSelect('tm-pc',PROCS,PROCS[0]);
     g.appendChild(fv('工序',pcSel,true));
+    // ── Step-2：具体工序子选择器（仅染厂/印花厂/后整理厂显示）──
+    var spSel=mkSelect('tm-sp',[{v:'',l:'请先选择订单和工序'}],'');
+    var spFld=fv('具体工序',spSel,true);spFld.id='tm-sp-wrap';spFld.style.display='none';
+    g.appendChild(spFld);
     var facSel=mkSelect('tm-fc',[{v:'',l:'请选择工厂'}].concat(DB.facts.map(function(f){return{v:f.nm,l:f.nm};})),'');
     g.appendChild(fv('加工厂',facSel,true));
     g.appendChild(fv('状态',mkSelect('tm-st',[{v:'pending',l:'待开始'},{v:'in_progress',l:'进行中'},{v:'completed',l:'已完成'}],'pending')));
@@ -7957,10 +7961,35 @@ function openTMNew(){
       el.style.display=msg?'':'none';
       el.textContent=msg;
     }
+    // ── Step-2：工序→子工序映射（只在 openTMNew 内有效，不影响其他任何模块）──
+    var _DD_PROC_MAP={
+      '染厂':    ['坯布预定','车边','半漂','食毛','染色','过软','干布','固色'],
+      '印花厂':  ['印花','白胶浆','撞白','拉封'],
+      '后整理厂':['定型','预缩','重软','磨毛','抓毛','剪毛','吸毛','双胶带','1.5KG纸筒']
+    };
+    function _updateSubProcOpts(oid,proc){
+      var el=document.getElementById('tm-sp-wrap');var sel=document.getElementById('tm-sp');if(!el||!sel)return;
+      var needsSub=(proc==='染厂'||proc==='印花厂'||proc==='后整理厂');
+      if(!needsSub){el.style.display='none';sel.value='';return;}
+      // 收集该订单所有染整加工单里的工序
+      var ddProcs=[];
+      getDDTasks(oid).forEach(function(d){(d.procOrder||[]).forEach(function(p){if(ddProcs.indexOf(p)<0)ddProcs.push(p);});});
+      // 按工厂类型筛选；若无匹配则退回全部（向后兼容老数据）
+      var mapped=_DD_PROC_MAP[proc]||[];
+      var opts=ddProcs.filter(function(p){return mapped.indexOf(p)>=0;});
+      if(!opts.length)opts=ddProcs.slice();
+      // 重建下拉选项
+      sel.innerHTML='';
+      var def=document.createElement('option');def.value='';def.textContent=opts.length?'请选择具体工序':'（染整加工单暂无匹配工序）';sel.appendChild(def);
+      opts.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
+      if(opts.length===1)sel.value=opts[0]; // 只有一个时自动选中
+      el.style.display='';
+    }
     function rebuild(){
       var oid=ordSel.value;var ord=DB.orders.find(function(o){return o.id===oid;});
       var proc=pcSel.value;var isDyePrint=_isDyePrint(proc);var isWeave=(proc==='织布厂');var isDual=_dualMode(proc);
       _updateWFWarn(oid,proc);
+      _updateSubProcOpts(oid,proc);
       modeB.style.display=isDual?'':'none';
       btKgI.value='';btPrI.value='';btKgI.disabled=false;btPrI.disabled=false;btKgI.style.background='';btPrI.style.background='';btAmtSpan.textContent='¥—';
       var ml=document.getElementById('tm-mode-lbl');if(ml){ml.textContent='两种方案均可填，填一方另一方自动锁定';ml.style.color='#94A3B8';}
@@ -8044,6 +8073,14 @@ function openTMNew(){
       // ── 工单卡控（硬校验，与 _updateWFWarn 保持一致）──
       if(proc==='织布厂'&&!getWDTasks(oid).length)return alert('此订单没有「织厂加工单」，请先建单再录织造费用。');
       if((proc==='染厂'||proc==='印花厂'||proc==='后整理厂')&&!getDDTasks(oid).length)return alert('此订单没有「染整加工单」，请先建单再录染整费用。');
+      // ── Step-2：具体工序校验（硬校验，与 _updateSubProcOpts 逻辑一致）──
+      var subProc='';
+      if(proc==='染厂'||proc==='印花厂'||proc==='后整理厂'){
+        subProc=(document.getElementById('tm-sp')||{value:''}).value;
+        if(!subProc)return alert('请选择具体工序（如：染色、磨毛、定型等）');
+        var _allDD=[];getDDTasks(oid).forEach(function(d){(d.procOrder||[]).forEach(function(p){if(_allDD.indexOf(p)<0)_allDD.push(p);});});
+        if(_allDD.length&&_allDD.indexOf(subProc)<0)return alert('染整加工单中没有「'+subProc+'」工序，请先在染整加工单勾选该工序后再录费用。');
+      }
       var ord=DB.orders.find(function(o){return o.id===oid;})||{};
       var st=(document.getElementById('tm-st')||{value:'pending'}).value;
       var taxIncl=(document.getElementById('tm-tax')||{value:'0'}).value==='1';
@@ -8061,7 +8098,7 @@ function openTMNew(){
         // 方案B：整批结算，工厂没有按颜色分，保存一条整批记录（颜色留空）
         var bTotalFee=(bKg*bPr).toFixed(2);
         l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:'',clrCode:'',yb:'',
-          proc:proc,factNm:fn,machNo:'',vatNo:'',vatWt:'',status:st,unit:'kg',feeBase:'sent',
+          proc:proc,subProc:subProc,factNm:fn,machNo:'',vatNo:'',vatWt:'',status:st,unit:'kg',feeBase:'sent',
           sentQ:bKg,retQ:'',actW:'',unitPr:bPr,fee:bTotalFee,
           fPaid:false,taxIncl:taxIncl,miscCost:miscCost,miscRm:miscRm,
           estD:ed,actD:ad,rm:rm,batchMode:true});
@@ -8084,7 +8121,7 @@ function openTMNew(){
           var finKg=r.finSpan?parseFloat(r.finSpan.dataset.val)||0:aw;
           var mc=ri===0?miscCost:'';var mr=ri===0?miscRm:'';
           l.push({id:uid(),ordId:oid,ordNo:ord.no||'',clrNm:r.c.nm||'',clrCode:r.c.code||'',yb:r.c.yb||'',
-            proc:proc,factNm:fn,machNo:'',vatNo:vatNo,vatWt:'',status:st,unit:'kg',
+            proc:proc,subProc:subProc,factNm:fn,machNo:'',vatNo:vatNo,vatWt:'',status:st,unit:'kg',
             feeBase:isWeave?'act':'sent',sentQ:isWeave?sq:vq,retQ:isWeave?rq:'',actW:isWeave?aw:(finKg||''),
             unitPr:up,fee:fee,fPaid:false,taxIncl:taxIncl,miscCost:mc,miscRm:mr,estD:ed,actD:ad,rm:rm});
           n++;

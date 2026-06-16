@@ -988,6 +988,37 @@ var DB={
   }
 };
 
+// ── 精准恢复：只从备份还原"本地专属模块"(现货采购/布行档案/打办通知单)，其它表一律不动 ──
+//   场景：这些模块因当初未建云端表、未纳入保护名单而被覆盖丢失，需单独捞回，又不能回滚已同步的订单/加工单等。
+function restoreLocalOnlyFromBackup(file){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      if(!data.timestamp&&!data.orders&&!data.custs){alert('文件格式不正确，请选择巨人纺织ERP的备份文件');return;}
+      var nSp=(data.spots||[]).length,nFh=(data.fabstalls||[]).length,nCn=(data.cnotices||[]).length;
+      if(!nSp&&!nFh&&!nCn){alert('该备份里没有现货采购/布行档案/打办通知单数据，无法用此方式恢复。');return;}
+      var ts=data.timestamp?new Date(data.timestamp).toLocaleString():'未知时间';
+      var curSp=(DB.spots||[]).length;
+      if(!confirm('【精准恢复 · 只动这三类，其它表完全不变】\n\n'
+        +'  · 现货采购：备份 '+nSp+' 条（当前本机 '+curSp+' 条）\n'
+        +'  · 布行档案：备份 '+nFh+' 条\n'
+        +'  · 打办通知单：备份 '+nCn+' 条\n\n'
+        +'备份时间：'+ts+'\n\n'
+        +'✓ 订单、加工单等其它数据保持现状（6/14 之后的编辑全部保留）。\n确认恢复这三类数据？'))return;
+      verifyPwd(function(){
+        if(data.spots)DB.spots=data.spots;
+        if(data.fabstalls)DB.fabstalls=data.fabstalls;
+        if(data.cnotices)DB.save('cnotices',data.cnotices);
+        try{if(typeof logAction==='function')logAction('精准恢复','备份恢复','现货采购/布行/打办','现货'+nSp+'·布行'+nFh+'·打办'+nCn+'，来自'+ts);}catch(le){}
+        showToast('已恢复现货采购等本地模块，其它数据未改动','success');
+        setTimeout(function(){location.reload();},900);
+      });
+    }catch(err){alert('恢复失败：'+err.message);}
+  };
+  reader.readAsText(file);
+}
+
 // ═══ SUPABASE 配置 ═══
 var SUPABASE_URL = 'https://upgudkwdnplzfylitqzq.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_TNSfUp_ax3UDKxTI9PV6hA_kCb0mbPY';
@@ -1745,7 +1776,7 @@ async function forceFullSync(){
     showToast('正在留快照 + 拉取主电脑最新版...','info');
     // 1) 留全表快照
     try{
-      var _allKeys=['c','f','mat','o','t','wd','qt','ar','rc','dd','yn','yo','fgi','gfy','fgo','fgr','cnotices','ret'];
+      var _allKeys=['c','f','mat','o','t','wd','qt','ar','rc','dd','yn','yo','fgi','gfy','fgo','fgr','cnotices','ret','sp','fh'];
       _allKeys.forEach(function(k){
         var arr=DB.load(k);
         if(arr&&arr.length){
@@ -1994,8 +2025,8 @@ function restoreFromSnapshot(){
 var _origSave = DB.save.bind(DB);
 // ── 全表自动快照：每个业务表每次保存时都在独立 key 留副本，刷新/同步都不会覆盖 ──
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
-var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1,users:1};
-var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单'};
+var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1,users:1,sp:1,fh:1};
+var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单',sp:'现货采购',fh:'布行档案'};
 var REQUIRED_CLOUD_COLUMNS={
   fgo:['status','duplicate_of','no_restock_on_void','void_reason','voided_at'],
   ar:['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note']
@@ -6081,9 +6112,25 @@ function pgBackup(){
   fileInp.onchange=function(){if(this.files&&this.files[0])DB.restore(this.files[0]);};
   var restBtn=document.createElement('button');
   restBtn.className='btn';restBtn.style.cssText='padding:8px 24px;font-size:13px;border:1.5px solid #dc2626;color:#dc2626;background:#fff';
-  restBtn.innerHTML='&#128229; 选择备份文件恢复';
+  restBtn.innerHTML='&#128229; 全部恢复（覆盖当前数据）';
   restBtn.onclick=function(){fileInp.click();};
   s2b.appendChild(fileInp);s2b.appendChild(restBtn);
+
+  // 精准恢复：只捞现货采购/布行/打办通知单，不动其它表
+  var s2safe=document.createElement('div');s2safe.style.cssText='margin-top:16px;padding-top:14px;border-top:1px dashed #d4d4d8';
+  var s2safeDesc=document.createElement('div');s2safeDesc.style.cssText='font-size:11.5px;color:var(--t3);margin-bottom:12px;line-height:1.8';
+  s2safeDesc.innerHTML='<b style="color:#16a34a">🛟 精准恢复（推荐用于找回丢失的现货采购）</b><br>'
+    +'只从备份还原 <b>现货采购 / 布行档案 / 打办通知单</b> 这三类，<b>其它表（订单、加工单等）完全不动</b>，最近的编辑都保留。';
+  s2safe.appendChild(s2safeDesc);
+  var fileInp2=document.createElement('input');fileInp2.type='file';fileInp2.accept='.json';fileInp2.style.cssText='display:none';
+  fileInp2.onchange=function(){if(this.files&&this.files[0])restoreLocalOnlyFromBackup(this.files[0]);};
+  var safeBtn=document.createElement('button');
+  safeBtn.className='btn';safeBtn.style.cssText='padding:8px 24px;font-size:13px;border:1.5px solid #16a34a;color:#16a34a;background:#fff;font-weight:700';
+  safeBtn.innerHTML='&#128507; 只恢复现货采购等本地模块';
+  safeBtn.onclick=function(){fileInp2.click();};
+  s2safe.appendChild(fileInp2);s2safe.appendChild(safeBtn);
+  s2b.appendChild(s2safe);
+
   sec2.appendChild(s2b);pg.appendChild(sec2);
 
   // ── 第三区：历史快照 ──

@@ -2124,6 +2124,36 @@ async function getSyncSafetyRows(){
   return rows;
 }
 
+// ═══ 数据健康自动对账：每次启动后台静默体检"本机 vs 云端"，发现少数据/缺表立刻顶部红色报警 ═══
+//   健康 → 无感不显示；异常 → 挂持久红条，点击打开安全检查详情去修复。复用 getSyncSafetyRows() 引擎。
+async function runDataHealthWatch(){
+  try{
+    if(_testMode||!_supabaseData||!isOnline())return; // 离线/测试态不报警（不算数据丢失）
+    var rows=await getSyncSafetyRows();
+    var alarms=[];
+    rows.forEach(function(r){
+      if(r.cloudErr&&/离线|未连接/.test(r.cloudErr))return; // 纯离线跳过
+      if(r.schemaErr){alarms.push(r.label+'（云端结构未升级）');return;}
+      if(r.cloudErr){alarms.push(r.label+'（云端表异常）');return;}
+      if(typeof r.cloud==='number'&&r.local>r.cloud){
+        alarms.push(r.label+'：本机 '+r.local+' 条 > 云端 '+r.cloud+' 条，'+(r.local-r.cloud)+' 条未上云');
+      }
+    });
+    showDataHealthBanner(alarms);
+  }catch(e){console.warn('[数据健康自检]',e);}
+}
+function showDataHealthBanner(alarms){
+  var id='data-health-banner';
+  var old=document.getElementById(id);if(old)old.remove();
+  if(!alarms||!alarms.length)return; // 一切正常 → 无感
+  var bar=document.createElement('div');bar.id=id;
+  bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99998;background:#DC2626;color:#fff;padding:9px 16px;font-size:13px;font-weight:700;box-shadow:0 2px 12px rgba(0,0,0,.3);cursor:pointer;display:flex;align-items:center;gap:10px;line-height:1.4';
+  bar.title=alarms.join('\n');
+  bar.innerHTML='<span style="font-size:16px">&#9888;</span><span>数据安全警报：'+alarms.length+' 项数据未成功上云，有丢失风险！点此查看详情并「重试同步」修复。</span>';
+  bar.onclick=function(){if(typeof openSyncSafetyModal==='function')openSyncSafetyModal();};
+  document.body.appendChild(bar);
+}
+
 async function openSyncSafetyModal(){
   var rows=await getSyncSafetyRows();
   var problemRows=rows.filter(function(r){
@@ -2567,6 +2597,8 @@ async function onAuthSuccess(){
   var _navd=document.querySelector('.ni.on');
   var _navPage=_navd&&_navd.dataset&&_navd.dataset.page;
   go(_navPage&&_navPage!=='dash'?_navPage:'dash');
+  // 同步与自动迁移settle后，后台自动对账"本机vs云端"，有未上云数据立刻顶部红色报警
+  setTimeout(function(){runDataHealthWatch();},9000);
 }
 
 function showLogin(){

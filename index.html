@@ -16449,14 +16449,14 @@ function openFGReturn(outId){
       +'② <b>纯扣损</b>：不勾疋料，仅填扣损KG → 只抵扣对账，不回仓';
     body.appendChild(tip);
     // 一键纯扣损：取消所有疋料勾选，避免误动库存（货不退回时用）
-    var pureBtn=mkBtn('&#127991; 切到纯扣损（货不退回·一键取消所有疋料勾选）','btn bsm bs',function(){
+    var pureBtn=mkBtn('&#127991; 切到纯扣损（货不退回 · 一键取消全部勾选）','btn',function(){
       selAllCb.checked=false;
       rollCbs.forEach(function(cb){cb.checked=false;});
       if(deductKGInp)deductKGInp._userSet=true;
       updateStat();
       if(deductKGInp)deductKGInp.focus();
     });
-    pureBtn.style.marginBottom='6px';
+    pureBtn.style.cssText='display:block;width:100%;box-sizing:border-box;margin:0 0 10px;padding:9px 0;text-align:center;font-size:12px;font-weight:700;color:#B45309;background:#FFFBEB;border:1.5px dashed #FCD34D;border-radius:999px;cursor:pointer';
     body.appendChild(pureBtn);
   },function(){
     // ── 保存逻辑 ──

@@ -16046,6 +16046,12 @@ function pgFGStock(){
           var outCodes=[...new Set(rls.map(function(x){return x.colorCode||'';}).filter(Boolean))].join('、');
           var outVats=[...new Set(rls.map(function(x){return x.vatNo||'';}).filter(Boolean))].join('、');
           var hasRetD=retByOutId&&retByOutId[r.id]&&retByOutId[r.id].length>0;
+          // 区分"退货"(有实物回仓)与"扣损"(纯扣账不退货)：避免时间久了把扣损误当退货
+          var _retsD=(retByOutId&&retByOutId[r.id])?retByOutId[r.id]:[];
+          var _hasPhysRet=_retsD.some(function(x){return (x.rollIds||[]).length>0||x.status==='completed';});
+          var _retBadge=hasRetD?(_hasPhysRet
+            ?'<span style="margin-left:4px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 4px;border-radius:2px">退货</span>'
+            :'<span style="margin-left:4px;font-size:9px;background:#FFFBEB;color:#B45309;border:1px solid #FCD34D;padding:1px 4px;border-radius:2px">扣损</span>'):'';
           var dBg=ri%2===0?'#FAF9FF':'#F3F2FF';
           if(r.voided)dBg='#f2f2f2';
           var dtr=document.createElement('tr');
@@ -16058,7 +16064,7 @@ function pgFGStock(){
             td.innerHTML=html;return td;
           }
           dtr.appendChild(mkDTd2('','width:26px;border-left:3px solid #C4B5FD;background:'+dBg));
-          dtr.appendChild(mkDTd2('<span style="font-family:monospace;font-weight:700;color:'+(r.voided?'#9CA3AF':'#4338CA')+';font-size:10.5px">'+esc(r.no||'')+'</span>'+(r.voided?'<span style="margin-left:4px;font-size:9px;background:#e5e7eb;color:#6b7280;border:1px solid #d1d5db;padding:1px 4px;border-radius:2px">作废</span>':'')+(hasRetD?'<span style="margin-left:4px;font-size:9px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;padding:1px 4px;border-radius:2px">退货</span>':'')));
+          dtr.appendChild(mkDTd2('<span style="font-family:monospace;font-weight:700;color:'+(r.voided?'#9CA3AF':'#4338CA')+';font-size:10.5px">'+esc(r.no||'')+'</span>'+(r.voided?'<span style="margin-left:4px;font-size:9px;background:#e5e7eb;color:#6b7280;border:1px solid #d1d5db;padding:1px 4px;border-radius:2px">作废</span>':'')+_retBadge));
           dtr.appendChild(mkDTd2('<span style="color:#374151;font-weight:600">'+esc(clrNms||'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#94A3B8;font-family:monospace;font-size:10px">'+(outCodes?esc(outCodes)+' / ':'')+(outVats?esc(outVats):'—')+'</span>'));
           dtr.appendChild(mkDTd2('<span style="color:#64748B">'+esc(r.date||'')+'</span>'));
@@ -16380,7 +16386,7 @@ function openFGReturn(outId){
     deductWrap.innerHTML='<span style="font-size:11px;font-weight:700;color:#92400E">对账扣损</span>';
     var deductKGInp=document.createElement('input');deductKGInp.type='number';deductKGInp.step='0.1';deductKGInp.min='0';
     deductKGInp.id='fgret-deduct-kg';
-    deductKGInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;color:#92400E;background:#fff;outline:none;text-align:right';
+    deductKGInp.style.cssText='width:130px;flex:none;padding:5px 8px;border:1.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;color:#92400E;background:#fff;outline:none;text-align:right';
     var deductUnit=document.createElement('span');deductUnit.style.cssText='font-size:11px;color:#92400E;font-weight:500';
     deductUnit.textContent='KG';
     deductWrap.appendChild(deductKGInp);deductWrap.appendChild(deductUnit);
@@ -18095,7 +18101,16 @@ function printFGOut(outId){
   if(hasM)totParts.push('<strong>'+totM.toFixed(1)+'</strong> 米');
   if(approxM)totParts.push('约 '+esc(approxM)+' 米左右');
   if(out.dlvNo)totParts.push('客户单号：'+esc(out.dlvNo));
-  var totBar='<div class="tot-bar"><span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+totParts.join('　')+'</div>';
+  // 该送货单关联的退货/扣损，打印在合计栏下方，便于时间久了核对（送货单本身数量不变）
+  var _shipRets=(DB.fgreturns||[]).filter(function(x){return x&&x.outId===out.id&&x.status!=='cancelled';});
+  var _retNote='';
+  if(_shipRets.length){
+    var _dedKg=_shipRets.reduce(function(s,x){return s+((typeof retKgDeduct==='function'?retKgDeduct(x):parseFloat(x.deductKG)||parseFloat(x.deductKg)||0))||0;},0);
+    var _hasPhys=_shipRets.some(function(x){return (x.rollIds||[]).length>0||x.status==='completed';});
+    if(_dedKg>0)_retNote='<div style="margin-top:5px;padding:5px 10px;background:#FFFBEB;border:1px dashed #FCD34D;border-radius:4px;font-size:10px;color:#B45309;font-weight:700">'
+      +(_hasPhys?'※ 本单已退货/扣损 ':'※ 本单已扣损 ')+_dedKg.toFixed(1)+' KG（对账已抵扣，实收以对账单为准）</div>';
+  }
+  var totBar='<div class="tot-bar"><span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+totParts.join('　')+'</div>'+_retNote;
 
   var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
     '<title>送货单 '+esc(shNo)+'</title>'+

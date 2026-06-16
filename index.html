@@ -2131,9 +2131,16 @@ var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:
     }
   }catch(e){}
 })();
+// 各云端表"必须存在的列"清单（缺了会导致数据传不上云→丢失）。
+// ★ 铁律：以后每加一个新字段，必须把它的 snake_case 列名加到这里 + 同步给用户建列 SQL。
 var REQUIRED_CLOUD_COLUMNS={
   fgo:['status','duplicate_of','no_restock_on_void','void_reason','voided_at'],
-  ar:['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note']
+  ar:['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note'],
+  t:['sub_proc','doc_ref','makeup_loss','fee_base','batch_mode','misc_cost'],
+  dd:['status','issued_at','unlock_reason','revisions'],
+  wd:['status','issued_at','unlock_reason','revisions'],
+  ret:['deduct_kg'],
+  sp:['misc_cost']
 };
 
 function countDirtySyncKeys(){
@@ -2158,11 +2165,13 @@ async function checkRequiredCloudSchema(key,table){
     // 这样推送时会主动剥离，避免反复触发 schema 错误
     var msg=res.error.message||'';
     var parsed=missingCloudColumnsForSchemaError(key,msg);
-    // 兜底：当解析不出具体字段名时，直接把 REQUIRED_CLOUD_COLUMNS 全部加入 skip
-    // 因为查询失败说明至少有一个字段缺失，全跳过最安全（这些都是新功能字段，没了不影响主业务）
+    // 仍然学习跳过，保证主同步不中断（数据先存本地不报错）
     var toSkip=parsed.length?parsed:cols.slice();
     _addSkippedCols(key,toSkip);
-    return {ok:true,msg:''};  // 永远 ok — 用户层不可见
+    // ★ 改为"报警但不阻断"：能解析出具体缺列时，明确报出来→数据健康自检红色提示，
+    //   提醒立即补列，否则这些数据传不上云、有丢失风险。解析不出则沿用静默(避免误报)。
+    if(parsed.length)return {ok:false,msg:'云端缺列：'+parsed.join('、'),missing:parsed};
+    return {ok:true,msg:''};
   }catch(e){
     // 网络异常等也不报警，让主同步流程处理
     return {ok:true,msg:''};
@@ -2216,7 +2225,7 @@ async function runDataHealthWatch(){
     var _hwmChg=false;
     rows.forEach(function(r){
       if(r.cloudErr&&/离线|未连接/.test(r.cloudErr))return; // 纯离线跳过
-      if(r.schemaErr){alarms.push(r.label+'（云端结构未升级）');return;}
+      if(r.schemaErr){alarms.push(r.label+'：'+(r.schemaErr||'云端结构未升级')+'（数据传不上云，有丢失风险）');return;}
       if(r.cloudErr){alarms.push(r.label+'（云端表异常）');return;}
       if(typeof r.cloud==='number'&&r.local>r.cloud){
         alarms.push(r.label+'：本机 '+r.local+' 条 > 云端 '+r.cloud+' 条，'+(r.local-r.cloud)+' 条未上云');

@@ -2077,7 +2077,7 @@ var _origSave = DB.save.bind(DB);
 // ── 全表自动快照：每个业务表每次保存时都在独立 key 留副本，刷新/同步都不会覆盖 ──
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
 var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1,users:1,sp:1,fh:1};
-var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单',sp:'现货采购',fh:'布行档案'};
+var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单',sp:'现货采购',fh:'布行档案',qt:'报价单',rc:'应付对账',cnotices:'打办通知单'};
 // ── 数据保护自检：业务表若漏接快照保护名单，启动时控制台报警，从根上防止"孤儿模块"再丢数据 ──
 (function _auditStoreProtection(){
   try{
@@ -2173,6 +2173,9 @@ async function runDataHealthWatch(){
     if(_testMode||!_supabaseData||!isOnline())return; // 离线/测试态不报警（不算数据丢失）
     var rows=await getSyncSafetyRows();
     var alarms=[];
+    // 历史最高条数(high-water-mark)：记录每表曾达到的最大条数，突然大幅减少→疑似丢失
+    var _hwm={};try{_hwm=JSON.parse(localStorage.getItem('gjr5_hwm')||'{}');}catch(e){_hwm={};}
+    var _hwmChg=false;
     rows.forEach(function(r){
       if(r.cloudErr&&/离线|未连接/.test(r.cloudErr))return; // 纯离线跳过
       if(r.schemaErr){alarms.push(r.label+'（云端结构未升级）');return;}
@@ -2180,7 +2183,15 @@ async function runDataHealthWatch(){
       if(typeof r.cloud==='number'&&r.local>r.cloud){
         alarms.push(r.label+'：本机 '+r.local+' 条 > 云端 '+r.cloud+' 条，'+(r.local-r.cloud)+' 条未上云');
       }
+      // ── 突然大幅减少检测：本地/云端取较大值与历史最高比，掉≥3条且少于7成→报警 ──
+      var nowMax=Math.max(r.local||0,(typeof r.cloud==='number'?r.cloud:0));
+      var prev=_hwm[r.key]||0;
+      if(nowMax>=prev){if(nowMax>prev){_hwm[r.key]=nowMax;_hwmChg=true;}}
+      else if(prev-nowMax>=3&&nowMax<prev*0.7){
+        alarms.push(r.label+'：历史最多 '+prev+' 条，现只剩 '+nowMax+' 条，疑似丢失！');
+      }
     });
+    if(_hwmChg){try{localStorage.setItem('gjr5_hwm',JSON.stringify(_hwm));}catch(e){}}
     showDataHealthBanner(alarms);
   }catch(e){console.warn('[数据健康自检]',e);}
 }

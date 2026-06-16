@@ -13131,10 +13131,15 @@ function openARecModal(id){
       [{v:'deduct',l:'扣减'},{v:'add',l:'附加费'}].forEach(function(o){var opt=new Option(o.l,o.v);if(d&&d.type===o.v)opt.selected=true;typeSel.appendChild(opt);});
       var descInp=document.createElement('input');descInp.className='ar-adj-desc';descInp.placeholder='说明（如：品质扣款、小缸费）';descInp.value=d?d.desc||'':'';descInp.style.cssText='flex:3;padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;background:#fff;outline:none';
       var refInp=document.createElement('input');refInp.className='ar-adj-ref';refInp.placeholder='涉及订单/码单';refInp.value=d?d.ref||'':'';refInp.style.cssText='flex:2;padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;background:#fff;outline:none';
+      // 损耗KG × 单价 计算器（选填）：两个都填则自动算出下方"金额"。金额框仍是最终依据，可手改。
+      var kgInp=document.createElement('input');kgInp.className='ar-adj-kg';kgInp.type='number';kgInp.step='0.1';kgInp.placeholder='损耗KG';kgInp.title='损耗KG（选填，用于自动算金额）';kgInp.value=(d&&d.lossKg!=null)?d.lossKg:'';kgInp.style.cssText='width:72px;padding:5px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;background:#fff;outline:none;text-align:right';
+      var prInp=document.createElement('input');prInp.className='ar-adj-pr';prInp.type='number';prInp.step='0.01';prInp.placeholder='单价';prInp.title='单价 元/KG（选填）';prInp.value=(d&&d.lossPr!=null)?d.lossPr:'';prInp.style.cssText='width:64px;padding:5px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;background:#fff;outline:none;text-align:right';
       var amtInp=document.createElement('input');amtInp.className='ar-adj-amt';amtInp.placeholder='金额';amtInp.type='number';amtInp.step='0.01';amtInp.value=d?d.amt||'':'';amtInp.style.cssText='flex:1;padding:5px 8px;border:1.5px solid #FECACA;border-radius:6px;font-size:11px;color:#DC2626;font-weight:600;text-align:right;background:#FEF2F2;outline:none';
       amtInp.oninput=recalcBalance;
+      function _autoAdjAmt(){var k=parseFloat(kgInp.value)||0,p=parseFloat(prInp.value)||0;if(k>0&&p>0){amtInp.value=(k*p).toFixed(2);recalcBalance();}}
+      kgInp.oninput=_autoAdjAmt;prInp.oninput=_autoAdjAmt;
       var del=mkBtn('×','btn bsm br',function(){row.remove();recalcBalance();});
-      row.appendChild(typeSel);row.appendChild(descInp);row.appendChild(refInp);row.appendChild(amtInp);row.appendChild(del);
+      row.appendChild(typeSel);row.appendChild(descInp);row.appendChild(refInp);row.appendChild(kgInp);row.appendChild(prInp);row.appendChild(amtInp);row.appendChild(del);
       adjWrap.appendChild(row);
     }
     initAdj.forEach(function(d){addAdjRow(d);});
@@ -13332,7 +13337,9 @@ function openARecModal(id){
       var ref=row.querySelector('.ar-adj-ref').value.trim();
       var amt=parseFloat(row.querySelector('.ar-adj-amt').value)||0;
       var type=row.querySelector('.ar-adj-type').value;
-      if(desc||amt)adjustments.push({type:type,desc:desc,ref:ref,amt:String(amt)});
+      var lossKg=(row.querySelector('.ar-adj-kg')||{}).value||'';
+      var lossPr=(row.querySelector('.ar-adj-pr')||{}).value||'';
+      if(desc||amt)adjustments.push({type:type,desc:desc,ref:ref,amt:String(amt),lossKg:lossKg,lossPr:lossPr});
     });
     var deductTotal=adjustments.filter(function(a){return a.type==='deduct';}).reduce(function(s,a){return s+(parseFloat(a.amt)||0);},0);
     var addTotal=adjustments.filter(function(a){return a.type==='add';}).reduce(function(s,a){return s+(parseFloat(a.amt)||0);},0);

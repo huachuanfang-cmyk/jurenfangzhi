@@ -16448,6 +16448,16 @@ function openFGReturn(outId){
       +'① <b>退货</b>：勾选疋料 → 实物回仓(B级) + 扣损KG自动抵扣对账<br>'
       +'② <b>纯扣损</b>：不勾疋料，仅填扣损KG → 只抵扣对账，不回仓';
     body.appendChild(tip);
+    // 一键纯扣损：取消所有疋料勾选，避免误动库存（货不退回时用）
+    var pureBtn=mkBtn('&#127991; 切到纯扣损（货不退回·一键取消所有疋料勾选）','btn bsm bs',function(){
+      selAllCb.checked=false;
+      rollCbs.forEach(function(cb){cb.checked=false;});
+      if(deductKGInp)deductKGInp._userSet=true;
+      updateStat();
+      if(deductKGInp)deductKGInp.focus();
+    });
+    pureBtn.style.marginBottom='6px';
+    body.appendChild(pureBtn);
   },function(){
     // ── 保存逻辑 ──
     var reason=document.getElementById('fgret-reason');

@@ -1048,6 +1048,44 @@ function mergeRestoreTrksFromBackup(file){
   reader.readAsText(file);
 }
 
+// ── 全面补全：拿备份和本机逐表比对，把本机缺失的记录补回来。只增不删、不覆盖现有、已作废(墓碑)的不复活 ──
+function mergeRestoreAllFromBackup(file){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      if(!data.timestamp&&!data.orders){alert('文件格式不正确，请选择巨人纺织ERP的备份文件');return;}
+      var ts=data.timestamp?new Date(data.timestamp).toLocaleString():'未知时间';
+      // 备份字段名 → 本地DB键 → 中文名
+      var MAP=[['custs','c','客户'],['facts','f','加工厂'],['mats','mat','物料'],['orders','o','销售订单'],
+        ['trks','t','加工跟踪'],['yarns','yn','纱线采购'],['yarnouts','yo','发料回仓'],['greyfabs','gfy','坯布'],
+        ['fgins','fgi','成品入库'],['fgouts','fgo','成品出货'],['fgreturns','ret','退货'],['fgrolls','fgr','成品疋料'],
+        ['quots','qt','报价单'],['arecs','ar','应收对账'],['recons','rc','应付对账'],['wdocs','wd','织厂加工单'],
+        ['ddocs','dd','染整加工单'],['cnotices','cnotices','打办通知'],['fabstalls','fh','布行'],['spots','sp','现货采购']];
+      var plan=[],totalAdd=0;
+      MAP.forEach(function(m){
+        var bak=data[m[0]];if(!Array.isArray(bak)||!bak.length)return;
+        var cur=DB.load(m[1])||[];if(!Array.isArray(cur))cur=[];
+        var curIds={};cur.forEach(function(x){if(x&&x.id)curIds[x.id]=true;});
+        var tomb=(typeof tombstoneIdsForKey==='function')?tombstoneIdsForKey(m[1]):{};
+        var add=bak.filter(function(x){return x&&x.id&&!curIds[x.id]&&!tomb[x.id];});
+        if(add.length){plan.push({key:m[1],nm:m[2],add:add,cur:cur});totalAdd+=add.length;}
+      });
+      if(!totalAdd){alert('✅ 体检完成：备份里的记录本机都在，没有缺失。');return;}
+      var msg=plan.map(function(p){return '  · '+p.nm+'：补回 '+p.add.length+' 条';}).join('\n');
+      if(!confirm('【全面补全 · 只增不删、不覆盖现有、已作废的不复活】\n\n'
+        +'用备份('+ts+')对比本机，发现以下缺失：\n\n'+msg+'\n\n共 '+totalAdd+' 条。\n确认补回？'))return;
+      verifyPwd(function(){
+        plan.forEach(function(p){DB.save(p.key,p.cur.concat(p.add));});
+        try{if(typeof logAction==='function')logAction('全面补全','备份恢复','多表','共补回'+totalAdd+'条，来自'+ts);}catch(le){}
+        showToast('已补回 '+totalAdd+' 条缺失记录，正在刷新','success');
+        setTimeout(function(){location.reload();},1000);
+      });
+    }catch(err){alert('恢复失败：'+err.message);}
+  };
+  reader.readAsText(file);
+}
+
 // ═══ SUPABASE 配置 ═══
 var SUPABASE_URL = 'https://upgudkwdnplzfylitqzq.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_TNSfUp_ax3UDKxTI9PV6hA_kCb0mbPY';
@@ -6249,6 +6287,15 @@ function pgBackup(){
   trkBtn.innerHTML='&#128229; 合并找回加工跟踪（不覆盖现有）';
   trkBtn.onclick=function(){trkFile.click();};
   s2safe.appendChild(trkFile);s2safe.appendChild(trkBtn);
+
+  // 全面补全：一键比对备份和本机所有表，补回缺失记录（只增不删）
+  var allFile=document.createElement('input');allFile.type='file';allFile.accept='.json';allFile.style.cssText='display:none';
+  allFile.onchange=function(){if(this.files&&this.files[0])mergeRestoreAllFromBackup(this.files[0]);};
+  var allBtn=document.createElement('button');
+  allBtn.className='btn';allBtn.style.cssText='display:block;margin-top:12px;padding:9px 24px;font-size:13px;border:1.5px solid #2563EB;color:#fff;background:#2563EB;font-weight:700';
+  allBtn.innerHTML='&#128270; 全面补全：比对备份找回所有缺失（只增不删，推荐）';
+  allBtn.onclick=function(){allFile.click();};
+  s2safe.appendChild(allFile);s2safe.appendChild(allBtn);
   s2b.appendChild(s2safe);
 
   sec2.appendChild(s2b);pg.appendChild(sec2);

@@ -1503,6 +1503,11 @@ function snakeToCamel(obj){
   return r;
 }
 
+// ── 退货重量兼容读取：云端同步(snakeToCamel)会把 totalKG/deductKG 转成小写 totalKg/deductKg，
+//    历史/云端拉回的退货是小写、本地新建是大写，两种都认，避免退货从对账单/毛利里凭空消失。──
+function retKgTotal(ret){if(!ret)return 0;return parseFloat(ret.totalKG)||parseFloat(ret.totalKg)||0;}
+function retKgDeduct(ret){if(!ret)return 0;return parseFloat(ret.deductKG)||parseFloat(ret.deductKg)||0;}
+
 // 字段名转换：驼峰→蛇形（从前端保存到Supabase）
 function camelToSnake(obj){
   if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
@@ -1566,8 +1571,7 @@ function normalizeLocalRowsBeforeSave(key,rows){
 
 function rowsToCloudPayloadForKey(key,rows){
   var payload = (rows||[]).map(function(x){return camelToSnake(prepareCloudRow(key,x));});
-  // ret: deductKG 只存本地用于对账，云端 fg_returns 表尚未有该列（或 schema 缓存为 deduct_kG），避免错误
-  if(key==='ret') payload = withoutCloudColumns(payload, ['deduct_kg','deduct_kG']);
+  // ret: 云端 fg_returns 已有 deduct_kg 列，不再剥离，让退货扣损量正常上云（否则刷新后扣损丢失变0）
   return payload;
 }
 
@@ -1651,6 +1655,10 @@ function _addSkippedCols(key,cols){
       var arr=window._cloudColSkip&&window._cloudColSkip[k];if(!arr)return;
       window._cloudColSkip[k]=arr.filter(function(c){return _lockCols.indexOf(c)<0;});
     });
+    // 退货扣损列：fg_returns 已有 deduct_kg 列，清除其跳过记录让扣损量正常上云
+    if(window._cloudColSkip&&window._cloudColSkip['ret']){
+      window._cloudColSkip['ret']=window._cloudColSkip['ret'].filter(function(c){return c!=='deduct_kg'&&c!=='deduct_kG';});
+    }
     localStorage.setItem('gjr5_skip_cols',JSON.stringify(window._cloudColSkip||{}));
   }catch(e){}
 })();
@@ -5109,7 +5117,7 @@ function pgGrossProfit(){
     if(!ret||ret.status==='cancelled')return;
     var ord=ordOf(ret);if(!ord)return;
     var unitPr=parseFloat(ord.unitPr)||0;
-    var dq=parseFloat(ret.deductKG)||parseFloat(ret.totalKG)||0;
+    var dq=retKgDeduct(ret)||retKgTotal(ret);
     var retRolls=rolls.filter(function(x){return (ret.rollIds||[]).indexOf(x.id)>=0;});
     var ex=orderColorExtra(ord,(retRolls[0]&&retRolls[0].colorNm)||''); // 退货颜色加价(唯一出处)
     if(dq>0&&unitPr>0)getOS(ord).rev-=dq*(unitPr+ex); // 退货扣收入也含加价，与对账单一致
@@ -11825,7 +11833,7 @@ function getARecReturnRows(rec, fgoutsDB, orders, rolls){
     var _retExtra=orderColorExtra(ord,_retClr);
     unitPr=unitPr+_retExtra;
     var outAmt=(byM?mSum:kg)*unitPr;
-    var deductKG=parseFloat(ret.deductKG)||parseFloat(ret.totalKG)||0;
+    var deductKG=retKgDeduct(ret)||retKgTotal(ret);
     if(deductKG<=0)return;
     var retAmt=kg>0&&outAmt>0?(deductKG/kg)*outAmt:deductKG*unitPr;
     var retRolls=rolls.filter(function(x){return (ret.rollIds||[]).indexOf(x.id)>=0;});
@@ -12786,8 +12794,8 @@ function openARecModal(id){
         var retRecs=(retForMatched||{})[o.id];
         if(retRecs&&retRecs.length){
           retRecs.forEach(function(retRec){
-            var retTotalKG=parseFloat(retRec.totalKG)||0;
-            var retDeductKG=parseFloat(retRec.deductKG)||retTotalKG;
+            var retTotalKG=retKgTotal(retRec);
+            var retDeductKG=retKgDeduct(retRec)||retTotalKG;
             if(retDeductKG<=0)return;
             // 按扣损KG比例计算金额
             var retAmtVal=0;
@@ -16174,8 +16182,8 @@ function pgFGStock(){
         tr.appendChild(mkRTd(esc(ret.custNm||''),'font-weight:600'));
         tr.appendChild(mkRTd(esc(ret.ordNo||''),'font-family:monospace'));
         tr.appendChild(mkRTd(esc(ret.reason||''),'color:#B91C1C'));
-        tr.appendChild(mkRTd((ret.totalKG||0).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
-        tr.appendChild(mkRTd((parseFloat(ret.deductKG)||0).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
+        tr.appendChild(mkRTd(retKgTotal(ret).toFixed(1),'text-align:center;font-weight:600;color:#D97706'));
+        tr.appendChild(mkRTd(retKgDeduct(ret).toFixed(1),'text-align:center;font-weight:700;color:#DC2626'));
         // 处理结果状态
         var retStatusMap={pending:'⏳ 待处理',restored:'✅ 已恢复在库',repaired:'🔧 已回修入库',deducted:'✂ 已扣损报废',returned_supplier:'↩ 已退回布行',voided:'🚫 已作废'};
         var retStatusStyle={pending:'color:#D97706;font-weight:700',restored:'color:#059669;font-weight:700',repaired:'color:#2563EB;font-weight:700',deducted:'color:#DC2626;font-weight:700',returned_supplier:'color:#EA580C;font-weight:700',voided:'color:#6b7280;font-weight:700'};
@@ -18142,7 +18150,7 @@ function printFGReturn(retId){
 
   var totParts=['合计：<strong>'+rolls.length+'</strong> 匹'];
   if(hasRolls)totParts.push('<strong>'+totKG.toFixed(1)+'</strong> KG');
-  totParts.push('扣损：<strong style="color:#DC2626">'+parseFloat(ret.deductKG||0).toFixed(1)+'</strong> KG');
+  totParts.push('扣损：<strong style="color:#DC2626">'+retKgDeduct(ret).toFixed(1)+'</strong> KG');
   var totBar='<div class="tot-bar"><span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+totParts.join('　')+'</div>';
 
   var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
@@ -18237,7 +18245,7 @@ function printFGReturn(retId){
       '<span style="color:#888;font-size:9px;letter-spacing:.5px;margin-right:10px">TOTAL</span>'+
       '<span>合计：<strong>'+rolls.length+'</strong> 匹'+
       (hasRolls?'　<strong>'+totKG.toFixed(1)+'</strong> KG':'')+
-      '　扣损：<strong style="color:#DC2626">'+parseFloat(ret.deductKG||0).toFixed(1)+'</strong> KG'+
+      '　扣损：<strong style="color:#DC2626">'+retKgDeduct(ret).toFixed(1)+'</strong> KG'+
       '</span>'+
     '</div>'+
 

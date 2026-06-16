@@ -1026,6 +1026,15 @@ var _supabase = null;
 var _supabaseData = null;
 var _authUser = null;
 
+// ★★★ 新增业务模块/数据表时，必须同时改下面全部 6 处，否则该模块数据"只在本地、无保护"，
+//     一旦覆盖/清缓存就永久丢失（现货采购 2026-06 就是这么丢的）。启动自检 _auditStoreProtection 会兜底报警。
+//   1) TABLE_MAP（本处，键→云端表名）
+//   2) DB 的 getter/setter（搜 get spots）+ DB.snapshot()（备份要包含它）
+//   3) applyRestoreData（恢复要还原它）
+//   4) _SNAP_KEYS（急救/每日快照保护）
+//   5) SYNC_SAFETY_KEYS（刷新前安全检查显示）
+//   6) forceFullSync 的 _allKeys（拉取主电脑前留快照）
+//   ★ 并在 Supabase 建对应的表（否则同步层会静默剥离，数据上不了云）
 var TABLE_MAP = {
   c:'customers', f:'factories', mat:'materials', o:'orders',
   t:'trackings', wd:'weaving_docs', qt:'quotations',
@@ -2027,6 +2036,21 @@ var _origSave = DB.save.bind(DB);
 // 涵盖 TABLE_MAP 全部 18 张表（之前只保护 6 张，导致退货/对账/加工单等也可能丢失）
 var _SNAP_KEYS={c:1,f:1,mat:1,o:1,t:1,wd:1,qt:1,ar:1,rc:1,dd:1,yn:1,yo:1,fgi:1,gfy:1,fgo:1,fgr:1,cnotices:1,ret:1,users:1,sp:1,fh:1};
 var SYNC_SAFETY_KEYS={c:'客户档案',f:'加工厂档案',mat:'物料档案',o:'销售订单',fgi:'成品入库批次',fgr:'成品疋料/库存',fgo:'成品出货单',ret:'退货单',ar:'应收对账单',yn:'纱线采购',yo:'发料/回仓',gfy:'坯布发货',wd:'织厂加工单',dd:'染整加工单',sp:'现货采购',fh:'布行档案'};
+// ── 数据保护自检：业务表若漏接快照保护名单，启动时控制台报警，从根上防止"孤儿模块"再丢数据 ──
+(function _auditStoreProtection(){
+  try{
+    var _infra={tmb:1}; // 墓碑表是基础设施，不需业务快照保护
+    var _missing=[];
+    Object.keys(TABLE_MAP).forEach(function(k){
+      if(_infra[k])return;
+      if(!_SNAP_KEYS[k])_missing.push(k+' → '+TABLE_MAP[k]);
+    });
+    if(_missing.length){
+      console.warn('[数据保护自检] ⚠ 这些业务表未纳入 _SNAP_KEYS 快照保护，覆盖/清缓存时可能丢失：\n  '+_missing.join('\n  ')
+        +'\n  请补齐 TABLE_MAP 上方注释列出的 6 处 + Supabase 建表。');
+    }
+  }catch(e){}
+})();
 var REQUIRED_CLOUD_COLUMNS={
   fgo:['status','duplicate_of','no_restock_on_void','void_reason','voided_at'],
   ar:['receipt_account_type','receipt_account_name','receipt_account_bank','receipt_account_no','receipt_account_note']

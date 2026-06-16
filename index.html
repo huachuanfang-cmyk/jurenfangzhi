@@ -2688,6 +2688,10 @@ function applyRestoreData(d){
   if(d.recons)DB.recons=d.recons;
   if(d.wdocs)DB.wdocs=d.wdocs;
   if(d.ddocs)DB.ddocs=d.ddocs;
+  // ★ 修复恢复漏洞：原本漏了现货采购/布行档案/打办通知单，导致备份里有、恢复却不还原
+  if(d.spots)DB.spots=d.spots;
+  if(d.fabstalls)DB.fabstalls=d.fabstalls;
+  if(d.cnotices)DB.save('cnotices',d.cnotices);
 }
 
 // ═══ 自动快照系统（浏览器内7天滚动存档）═══

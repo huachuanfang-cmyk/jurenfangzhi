@@ -11824,7 +11824,7 @@ function getARecReturnRows(rec, fgoutsDB, orders, rolls){
     var out=fgoutsDB.find(function(x){return x.id===ret.outId;});if(!out)return;
     var ord=orders.find(function(x){return x.no===out.ordNo;})||{};
     var oRolls=rolls.filter(function(x){return (out.rollIds||[]).indexOf(x.id)>=0;});
-    var kg=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0):(parseFloat(out.totalKG)||parseFloat(out.kg)||0);
+    var kg=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0):(parseFloat(out.totalKG)||parseFloat(out.totalKg)||parseFloat(out.kg)||0);
     var mSum=oRolls.length>0?oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0):(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
     var unitPr=parseFloat(ord.unitPr)||0;
     var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);
@@ -11876,7 +11876,7 @@ function outBillAmount(out,ord,allRolls){
     amt=oRolls.reduce(function(s,r){var qq=byM?(parseFloat(r.m)||0):(parseFloat(r.kg)||0);return s+qq*(unitPr+orderColorExtra(ord,r.colorNm));},0);
     dispExtra=orderColorExtra(ord,oRolls[0]&&oRolls[0].colorNm);
   }else{
-    kg=parseFloat(out.totalKG)||parseFloat(out.kg)||0;
+    kg=parseFloat(out.totalKG)||parseFloat(out.totalKg)||parseFloat(out.kg)||0;
     m=parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0;
     dispExtra=orderColorExtra(ord,out.colorNm||out.clrNm||out.clr||'');
     amt=(byM?Number(m.toFixed(1)):Number(kg.toFixed(1)))*(unitPr+dispExtra);
@@ -12234,7 +12234,7 @@ function printARec(id){
     // KG/米：有疋数据用疋数求和，无疋数据从出货记录取
     var kg=oRolls.length>0
       ?oRolls.reduce(function(s,x){return s+(parseFloat(x.kg)||0);},0)
-      :(parseFloat(out.totalKG)||parseFloat(out.kg)||0);
+      :(parseFloat(out.totalKG)||parseFloat(out.totalKg)||parseFloat(out.kg)||0);
     var mSum=oRolls.length>0
       ?oRolls.reduce(function(s,x){return s+(parseFloat(x.m)||0);},0)
       :(parseFloat((out.approxM||'').replace(/[^0-9.]/g,''))||0);
@@ -12715,7 +12715,7 @@ function openARecModal(id){
           // KG：有疋数据求和；无疋数据从出货记录字段取
           kg=oRolls.length>0
             ?oRolls.reduce(function(s,r){return s+(parseFloat(r.kg)||0);},0)
-            :(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
+            :(parseFloat(o.totalKG)||parseFloat(o.totalKg)||parseFloat(o.kg)||0);
           mTot=oRolls.length>0
             ?oRolls.reduce(function(s,r){return s+(parseFloat(r.m)||0);},0)
             :(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
@@ -12942,7 +12942,7 @@ function openARecModal(id){
               }
               var ord=orders.find(function(x){return x.no===o.ordNo;})||{};
               var oRolls=rollsX.filter(function(rr){return (o.rollIds||[]).indexOf(rr.id)>=0;});
-              var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.kg)||0);
+              var kg=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.kg)||0);},0):(parseFloat(o.totalKG)||parseFloat(o.totalKg)||parseFloat(o.kg)||0);
               var mTot=oRolls.length>0?oRolls.reduce(function(s,rr){return s+(parseFloat(rr.m)||0);},0):(parseFloat((o.approxM||'').replace(/[^0-9.]/g,''))||0);
               var unitPr=parseFloat(ord.unitPr)||0;
               var byM=(String(ord.prUnit||'').toUpperCase().indexOf('M')>=0)||(String(ord.prUnit||'').indexOf('米')>=0);

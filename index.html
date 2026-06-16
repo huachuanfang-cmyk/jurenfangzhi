@@ -1019,6 +1019,35 @@ function restoreLocalOnlyFromBackup(file){
   reader.readAsText(file);
 }
 
+// ── 合并找回加工跟踪：从备份把"本机缺失"的加工跟踪补回来，按 id 去重，当前已有的一律保留、不覆盖，其它表也不碰 ──
+function mergeRestoreTrksFromBackup(file){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      if(!data.timestamp&&!data.trks&&!data.orders){alert('文件格式不正确，请选择巨人纺织ERP的备份文件');return;}
+      var bak=data.trks||[];
+      if(!bak.length){alert('该备份里没有加工跟踪数据。');return;}
+      var cur=DB.trks||[];if(!Array.isArray(cur))cur=[];
+      var curIds={};cur.forEach(function(x){if(x&&x.id)curIds[x.id]=true;});
+      var add=bak.filter(function(x){return x&&x.id&&!curIds[x.id];});
+      var ts=data.timestamp?new Date(data.timestamp).toLocaleString():'未知时间';
+      if(!add.length){alert('备份里的加工跟踪本机都已存在，无需补回。');return;}
+      if(!confirm('【合并找回加工跟踪 · 不覆盖、不动其它表】\n\n'
+        +'备份('+ts+')里有 '+bak.length+' 条；当前本机 '+cur.length+' 条。\n'
+        +'将把备份里本机缺失的 '+add.length+' 条补回来，当前已有的全部保留。\n'
+        +'订单、对账等其它数据完全不动。\n\n确认补回？'))return;
+      verifyPwd(function(){
+        DB.trks=cur.concat(add);
+        try{if(typeof logAction==='function')logAction('合并找回','备份恢复','加工跟踪','补回 '+add.length+' 条，来自'+ts);}catch(le){}
+        showToast('已补回 '+add.length+' 条加工跟踪','success');
+        setTimeout(function(){location.reload();},900);
+      });
+    }catch(err){alert('恢复失败：'+err.message);}
+  };
+  reader.readAsText(file);
+}
+
 // ═══ SUPABASE 配置 ═══
 var SUPABASE_URL = 'https://upgudkwdnplzfylitqzq.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_TNSfUp_ax3UDKxTI9PV6hA_kCb0mbPY';
@@ -1659,9 +1688,10 @@ function _addSkippedCols(key,cols){
     if(window._cloudColSkip&&window._cloudColSkip['ret']){
       window._cloudColSkip['ret']=window._cloudColSkip['ret'].filter(function(c){return c!=='deduct_kg'&&c!=='deduct_kG';});
     }
-    // 补产标记列：trackings 加 makeup_loss 后，清除跳过记录让其正常上云
+    // 加工跟踪新列：trackings 补 sub_proc/doc_ref/makeup_loss 后，清除跳过记录让其正常上云
     if(window._cloudColSkip&&window._cloudColSkip['t']){
-      window._cloudColSkip['t']=window._cloudColSkip['t'].filter(function(c){return c!=='makeup_loss';});
+      var _trkCols=['makeup_loss','sub_proc','doc_ref'];
+      window._cloudColSkip['t']=window._cloudColSkip['t'].filter(function(c){return _trkCols.indexOf(c)<0;});
     }
     localStorage.setItem('gjr5_skip_cols',JSON.stringify(window._cloudColSkip||{}));
   }catch(e){}
@@ -6199,6 +6229,15 @@ function pgBackup(){
   safeBtn.innerHTML='&#128507; 只恢复现货采购等本地模块';
   safeBtn.onclick=function(){fileInp2.click();};
   s2safe.appendChild(fileInp2);s2safe.appendChild(safeBtn);
+
+  // 合并找回加工跟踪：从备份补回本机缺失的加工跟踪，保留现有、不覆盖、不动其它表
+  var trkFile=document.createElement('input');trkFile.type='file';trkFile.accept='.json';trkFile.style.cssText='display:none';
+  trkFile.onchange=function(){if(this.files&&this.files[0])mergeRestoreTrksFromBackup(this.files[0]);};
+  var trkBtn=document.createElement('button');
+  trkBtn.className='btn';trkBtn.style.cssText='padding:8px 24px;font-size:13px;border:1.5px solid #16a34a;color:#16a34a;background:#fff;font-weight:700;margin-left:10px';
+  trkBtn.innerHTML='&#128229; 合并找回加工跟踪（不覆盖现有）';
+  trkBtn.onclick=function(){trkFile.click();};
+  s2safe.appendChild(trkFile);s2safe.appendChild(trkBtn);
   s2b.appendChild(s2safe);
 
   sec2.appendChild(s2b);pg.appendChild(sec2);

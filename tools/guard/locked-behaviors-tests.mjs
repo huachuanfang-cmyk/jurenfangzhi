@@ -138,15 +138,21 @@ test('本地优先锁必须为「软合并」模式（拉云端新增）', () =>
 });
 
 // ═══════════════════════════════════════════════
-// 锁 8：schema 检查不能阻断用户
-// 原 bug：缺字段就显示「数据库未升级」，要求手工跑 SQL
+// 锁 8（2026-06 更新）：schema 检查不阻断同步，但真缺列时允许报警
+// 背景：现货采购/加工跟踪等多次「缺列→静默传不上云→数据丢失」事故后，
+//   决定让缺列变「响」——能解析出具体缺列时返回 ok:false 驱动数据健康自检报警。
+// 但仍须：①不阻断同步(继续学习跳过、数据先存本地) ②不因模糊/瞬时错误误报。
 // ═══════════════════════════════════════════════
-test('checkRequiredCloudSchema 永远返回 ok:true', () => {
+test('checkRequiredCloudSchema 不阻断同步，且仅在真缺列时才报警', () => {
   const fn = html.match(/async function checkRequiredCloudSchema[\s\S]*?\n\}/);
   if (!fn) throw new Error('找不到 checkRequiredCloudSchema 函数');
-  // 不应有任何返回 ok:false 的代码路径
-  if (/return\s*\{ok:false/.test(fn[0])) {
-    throw new Error('schema 检查又开始返回 ok:false 了，用户会再次被「数据库未升级」吓到');
+  // 必须仍学习跳过缺列，保证主同步不中断（数据先存本地）
+  if (!/_addSkippedCols/.test(fn[0])) {
+    throw new Error('schema 检查不再学习跳过缺列，缺列会导致同步中断');
+  }
+  // ok:false 只允许出现在「已解析出具体缺列名」的分支(parsed.length)，避免模糊错误误报吓人
+  if (/return\s*\{ok:false/.test(fn[0]) && !/parsed\.length/.test(fn[0])) {
+    throw new Error('schema 检查在无法确定缺列时也返回 ok:false，会误报吓到用户');
   }
 });
 

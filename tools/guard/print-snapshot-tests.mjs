@@ -355,6 +355,8 @@ function getHelpers() {
       extractFn('metersToKG'),
       extractFn('orderColorExtra'),
       extractFn('outBillAmount'),
+      extractFn('retKgTotal'),
+      extractFn('retKgDeduct'),
       extractFn('getARecReturnRows'),
       extractFn('printDoc'),
     ];

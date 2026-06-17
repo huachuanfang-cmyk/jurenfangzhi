@@ -18959,6 +18959,7 @@ function openGreyFabM(id,readonly){
   om(modal);
   // 挂载到 DOM 后再初始化一次：build 阶段 modal 尚未挂载，querySelectorAll 取不到行
   checkGFMode();
+  calcGFTotal();
 }
 
 function calcGFTotal(){

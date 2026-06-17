@@ -4566,7 +4566,7 @@ function delF(id){
 // 幅宽单位选项
 var MAT_WIDTH_UNITS=['cm','寸','\'\''];
 // 成份列表（全局复用）
-var MAT_COMP_BASE=['棉','人棉','莫代尔','天丝','聚酯纤维','莱卡','腈纶','锦纶','丙纶','CVC','羊毛','桑蚕丝','莱赛尔','氨纶'];
+var MAT_COMP_BASE=['棉','人棉','莫代尔','天丝','聚酯纤维','莱卡','腈纶','锦纶','丙纶','CVC','羊毛','桑蚕丝','莱赛尔','醋酸','氨纶'];
 // 成份排序：主体成份按占比降序，氨纶/莱卡弹性纤维排最后
 function compSort(arr){
   var elastic=['氨纶','莱卡','斯潘德克斯','弹力纤维'];
@@ -10828,7 +10828,7 @@ function openQuotModal(id){
     function openCompPicker(current,cb){
       // 已选的靠前
       var selected=current.map(function(c){return c.nm;});
-      var COMP_BASE=['棉','人棉','莫代尔','天丝','聚酯纤维','莱卡','腈纶','锦纶','丙纶','CVC','羊毛','桑蚕丝','莱赛尔','氨纶'];
+      var COMP_BASE=['棉','人棉','莫代尔','天丝','聚酯纤维','莱卡','腈纶','锦纶','丙纶','CVC','羊毛','桑蚕丝','莱赛尔','醋酸','氨纶'];
       var COMP_LIST=selected.concat(COMP_BASE.filter(function(n){return selected.indexOf(n)<0;}));
       var overlay=document.createElement('div');overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.3);z-index:9999;display:flex;align-items:center;justify-content:center';
       var box=document.createElement('div');box.style.cssText='background:#fff;border-radius:8px;padding:16px;width:360px;max-height:420px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)';

@@ -2438,6 +2438,14 @@ window.addEventListener('online', function(){
 // ── 自动同步：切回本标签页时静默拉取云端最新（B/C 电脑无需手动刷新）──
 // 写入早已实时上云（DB.save 内联 upsert）；这里补「其它设备的改动自动拉下来」
 var _lastAutoSync=Date.now();
+// 后台同步只能刷新未离开的工作台；业务页包含未保存的表单，不能重建。
+var _pageRevision=0;
+function refreshDashboardAfterSync(revision){
+  if(revision!==_pageRevision)return;
+  if(document.querySelector('.mo, .lite-ov'))return;
+  var on=document.querySelector('.ni.on');
+  if(on&&on.dataset.page==='dash'&&typeof go==='function')go('dash');
+}
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState!=='visible')return;
   if(!_authReady||!_authUser)return;          // 未登录不同步
@@ -2445,9 +2453,9 @@ document.addEventListener('visibilitychange',function(){
   if(document.querySelector('.mo'))return;      // 有弹窗（正在编辑）不打断
   if(Date.now()-_lastAutoSync<30000)return;     // 30 秒内不重复
   _lastAutoSync=Date.now();
+  var revision=_pageRevision;
   pullFromSupabase(true).then(function(){       // 静默拉取
-    // 刷新当前页面视图，让新数据立即显示
-    try{var on=document.querySelector('.ni.on');var p=on&&on.dataset.page;if(p&&typeof go==='function')go(p);}catch(e){}
+    refreshDashboardAfterSync(revision);
   }).catch(function(){});
 });
 
@@ -2597,6 +2605,7 @@ function checkStorageQuota(){
   }catch(e){}
 }
 async function onAuthSuccess(){
+  var revision=_pageRevision;
   _authReady = true;
   document.getElementById('login-overlay').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
@@ -2693,11 +2702,8 @@ async function onAuthSuccess(){
     if(needMigrate) showToast('本地数据已自动同步到云端 ✓','success');
   }
   _auditIssues = DB.audit();
-  // 若用户在 pull 期间（10~15秒）已手动导航到其他页面，保留当前页并刷新数据；
-  // 否则（首次加载、尚未导航）才跳工作台。修复"同步后被强制踢回工作台"的 bug。
-  var _navd=document.querySelector('.ni.on');
-  var _navPage=_navd&&_navd.dataset&&_navd.dataset.page;
-  go(_navPage&&_navPage!=='dash'?_navPage:'dash');
+  // 同步期间用户可能已开始编辑，禁止重建业务页或关闭弹窗。
+  refreshDashboardAfterSync(revision);
   // 同步与自动迁移settle后，后台自动对账"本机vs云端"，有未上云数据立刻顶部红色报警
   setTimeout(function(){runDataHealthWatch();},9000);
 }
@@ -3457,6 +3463,7 @@ document.querySelectorAll('.ni').forEach(function(el){
 // 页面初始化：加载工作台（延迟确保所有函数和DOM就绪）
 setTimeout(function(){if(!_testMode)go('dash');},0);
 function go(p){
+  _pageRevision++;
   // R3：越权拦截 — 当前角色不能进的页面，挡回工作台
   if(!canAccessPage(p)){showToast('你的角色无权访问该功能','error');p='dash';}
   document.querySelectorAll('.ni').forEach(function(el){el.classList.toggle('on',el.dataset.page===p);});

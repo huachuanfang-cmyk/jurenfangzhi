@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const commands = [
+  [process.execPath, ['tools/guard/edit-sync-tests.mjs'], 'editor sync guard'],
   [process.execPath, ['tools/guard/regression-tests.mjs'], 'regression guard'],
   [process.execPath, ['tools/guard/business-rule-registry-tests.mjs'], 'business rule registry guard'],
   [process.execPath, ['tools/guard/dirty-sync-tests.mjs'], 'dirty sync guard'],

@@ -205,7 +205,7 @@ input[type=number]{-moz-appearance:textfield}
 <div id="mn">
   <div class="topb">
     <div><h1 id="pt">工作台</h1><p id="ps">东莞市巨人纺织有限公司</p></div>
-    <div id="clk" style="font-size:11px;color:var(--t3)"></div>
+    <div style="text-align:center;font-size:11px;color:var(--t3)"><div id="clk"></div><div id="app-build" style="font-size:10px" title="当前前端版本">编辑保护 1022.2</div></div>
     <div style="display:flex;gap:6px"><button id="chpwd-btn" class="btn bs bsm" style="display:none;font-size:12px;padding:4px 10px" title="修改我的登录密码" onclick="openChangePassword()">🔑 修改密码</button><button id="lock-btn" class="btn bs bsm" style="display:none;font-size:14px;padding:4px 10px" title="一键锁屏" onclick="lockScreen()">🔒</button><button id="logout-btn" class="btn bs bsm" style="display:none">安全退出</button></div>
   </div>
   <div class="pg" id="pg"></div>
@@ -3442,7 +3442,11 @@ var PM={dash:['工作台','今日概览与待处理事项'],fgstock:['成品库�
 
 // ═══ NAV ═══
 document.querySelectorAll('.ni').forEach(function(el){
-  el.addEventListener('click',function(){go(el.dataset.page);});
+  el.addEventListener('click',function(){
+    // 重复点击当前菜单不应销毁正在编辑的页面或弹窗。
+    if(el.classList.contains('on'))return;
+    go(el.dataset.page);
+  });
 });
 // ═══ 侧边栏分组折叠（减少视觉臃肿；用 CSS 类，独立于角色隐藏的 inline display）═══
 (function initMenuCollapse(){
@@ -8601,6 +8605,8 @@ function ensureWDTaskKey(oid){
 }
 
 function pgDW(){
+  // 同一编辑器已挂载时保留 DOM（含未保存的规格、颜色及工序）。
+  if(document.getElementById('wd-o'))return;
   var pg=document.getElementById('pg');pg.innerHTML='';
   // #1 订单搜索框量大保护：默认排除已全部出货完成/已取消的订单(几年后单子多了不卡)。
   //    但"已建过织厂单"的订单必须保留(否则下达后自己那张单就找不到了)。
@@ -9449,6 +9455,8 @@ function ensureDDTaskKey(oid){
   return key;
 }
 function pgDD(){
+  // 防止任意重复导航/延迟回调把当前订单重建成空表。
+  if(document.getElementById('dd-o'))return;
   var pg=document.getElementById('pg');pg.innerHTML='';
   // #1 同织厂:默认隐藏已全部出货完成的订单,但已建过染整单的保留
   var _ddOrdIds={};(DB.ddocs||[]).forEach(function(d){if(d&&d.ordId)_ddOrdIds[ddBaseOrdId(d.ordId)]=1;});
